@@ -1,0 +1,11 @@
+query,recommendation
+GDP growth slowing,Consider increasing bond assets to mitigate risks from potential economic slowdown.
+GDP showing strong growth,Increase equity assets to capitalize on favorable investment conditions.
+Interest rates rising,Shift focus to bond assets as higher rates may impact borrowing-sensitive sectors.
+Interest rates falling,Increase real estate assets to take advantage of lower borrowing costs.
+Unemployment rate increasing,Reduce equity assets to account for potential economic weakness and reduced consumer spending.
+Unemployment rate decreasing,Increase equity assets to benefit from improved economic conditions and corporate profits.
+VIX above 20,Reduce equity assets to manage risks associated with high market volatility.
+VIX below 12,Increase equity assets to capitalize on low market volatility and investor confidence.
+VIX within normal range (12-20),Maintain current asset allocation as market conditions are stable.
+Combination of rising interest rates and high VIX,Focus on bond assets to hedge against market volatility and borrowing cost impacts.

@@ -1,0 +1,23 @@
+services:
+  my-agentic-workflow-front:
+    build:
+      context: ./
+      dockerfile: Dockerfile.frontend
+    image: my-agentic-workflow-front:latest
+    ports:
+      - "3000:3000"
+    restart: always
+    container_name: my-agentic-workflow-front-container
+  my-agentic-workflow-back:
+    build:
+      context: ./
+      dockerfile: Dockerfile.backend
+    image: my-agentic-workflow-back:latest
+    volumes:
+      - ~/.aws/credentials:/root/.aws/credentials:ro
+      - ~/.aws/config:/root/.aws/config:ro
+      - ~/.aws/sso/cache:/root/.aws/sso/cache:rw  # Only make cache writable
+    ports:
+      - "8000:8000"
+    restart: always
+    container_name: my-agentic-workflow-back-container
