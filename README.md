@@ -27,51 +27,6 @@ Our system leverages MongoDB's advanced capabilities to deliver:
 - **90% reduction** in manual analysis effort
 - Preserve and leverage institutional knowledge
 
-## 🏗️ Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     Frontend (Next.js)                       │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐      │
-│  │Dashboard │ │  Wafer   │ │    AI    │ │   RCA    │      │
-│  │ Monitor  │ │   Map    │ │Assistant │ │  Panel   │      │
-│  └──────────┘ └──────────┘ └──────────┘ └──────────┘      │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                   Backend (FastAPI + LangGraph)              │
-│  ┌──────────────────────────────────────────────────┐      │
-│  │            LangGraph Agent Workflow              │      │
-│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐  │      │
-│  │  │Detect  │→│Retrieve│→│Analyze │→│Generate│  │      │
-│  │  │Anomaly │ │Similar │ │Correlate│ │  RCA   │  │      │
-│  │  └────────┘ └────────┘ └────────┘ └────────┘  │      │
-│  └──────────────────────────────────────────────────┘      │
-│                                                              │
-│  ┌──────────────────────────────────────────────────┐      │
-│  │                  AI Services                      │      │
-│  │  • Voyage AI Multimodal Embeddings               │      │
-│  │  • Claude (via AWS Bedrock)                      │      │
-│  │  • Vector Search & RAG                           │      │
-│  └──────────────────────────────────────────────────┘      │
-└─────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    MongoDB Atlas                             │
-│  ┌──────────────────────────────────────────────────┐      │
-│  │           Collections & Features                   │      │
-│  │  • process_sensor_ts (Time Series)               │      │
-│  │  • wafer_defects (Documents + Images)            │      │
-│  │  • historical_knowledge (RAG content)            │      │
-│  │  • Vector Indexes (Multimodal search)            │      │
-│  │  • Change Streams (Real-time detection)          │      │
-│  │  • Aggregation Pipelines (Correlation)           │      │
-│  └──────────────────────────────────────────────────┘      │
-└─────────────────────────────────────────────────────────────┘
-```
-
 ## 🛠️ Technology Stack
 
 ### Backend
@@ -143,7 +98,7 @@ Our system leverages MongoDB's advanced capabilities to deliver:
    Create `.env` file in the backend directory:
    ```env
    MONGODB_URI=mongodb+srv://your-cluster.mongodb.net/
-   MDB_DATABASE_NAME=smf-yield-defect
+   MDB_DATABASE_NAME=your-database-name
    VOYAGE_API_KEY=your-voyage-api-key
    AWS_REGION=us-east-1
    AWS_ACCESS_KEY_ID=your-aws-key
@@ -385,7 +340,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - The semiconductor manufacturing community for domain expertise
 
 ---
-
-**Built with ❤️ by the MongoDB Solutions Architecture Team**
-
-For questions or support, please open an issue or contact the development team.
