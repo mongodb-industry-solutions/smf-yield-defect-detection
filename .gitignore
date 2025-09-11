@@ -11,6 +11,7 @@ env.bak/
 venv.bak/
 brainstorm-ideas/
 backend/by_claude
+migration_scripts/
 
 # Config
 **/config.yml
