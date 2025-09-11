@@ -13,6 +13,7 @@ import csv
 
 from agent_state import AgentState
 from embedder import Embedder
+from services.embedding_service import EmbeddingService
 from agent_profiles import AgentProfiles
 from mdb_timeseries_coll_creator import TimeSeriesCollectionCreator
 from mdb_vector_search_idx_creator import VectorSearchIDXCreator
@@ -70,26 +71,143 @@ class AgentTools(MongoDBConnector):
             self.collection_name = collection_name
             self.collection = self.get_collection(self.collection_name)
 
+    async def get_sensor_anomalies(self, state: dict) -> dict:
+        """
+        Fetches recent sensor anomalies from MongoDB time series collection.
+        """
+        message = "[Tool] Retrieved sensor anomalies from MongoDB."
+        logger.info(message)
+        
+        try:
+            from motor.motor_asyncio import AsyncIOMotorClient
+            client = AsyncIOMotorClient(self.uri)
+            db = client[self.database_name]
+            
+            # Fetch recent anomalies (particle_count > 1000)
+            pipeline = [
+                {
+                    "$match": {
+                        "$or": [
+                            {"metrics.particle_count": {"$gt": 1000}},
+                            {"metrics.rf_power": {"$gt": 150}},
+                            {"metrics.temperature": {"$gt": 22}}
+                        ]
+                    }
+                },
+                {"$sort": {"timestamp": -1}},
+                {"$limit": 20}
+            ]
+            
+            cursor = db["process_sensor_ts"].aggregate(pipeline)
+            data_records = await cursor.to_list(length=None)
+            
+            # Convert ObjectIds and datetime objects
+            for record in data_records:
+                record = convert_objectids(record)
+            
+            client.close()
+            
+            state.setdefault("updates", []).append(f"Found {len(data_records)} sensor anomalies")
+            logger.info(f"Found {len(data_records)} sensor anomalies")
+            
+        except Exception as e:
+            logger.error(f"Error fetching sensor data: {e}")
+            data_records = []
+            state.setdefault("updates", []).append(f"Error fetching sensor data: {e}")
+        
+        return {"timeseries_data": data_records, "thread_id": state.get("thread_id", "")}
+    
     def get_data_from_csv(self, state: dict) -> dict:
         """
-        Reads data from a CSV file and dynamically infers field names.
+        DEPRECATED: Reads data from a CSV file. Use get_sensor_anomalies instead.
         """
-        message = "[Tool] Retrieved data from CSV file."
+        # Redirect to MongoDB-based method
+        import asyncio
+        return asyncio.run(self.get_sensor_anomalies(state))
+
+    async def get_wafer_defects(self, state: dict) -> dict:
+        """
+        Fetches recent wafer defects from MongoDB.
+        """
+        message = "[Tool] Retrieved wafer defects from MongoDB."
         logger.info(message)
-
-        # Load CSV data
-        csv_loader = CSVLoader(filepath=self.csv_data, collection_name=self.mdb_timeseries_collection)
-        csv_filepath = csv_loader.filepath
-
-        data_records = []
-        with open(csv_filepath, "r") as file:
-            reader = csv.DictReader(file)  # Automatically infers field names from the header row
-            for row in reader:
-                data_records.append(row)
-
-        state.setdefault("updates", []).append(message)
-        return {"timeseries_data": data_records, "thread_id": state.get("thread_id", "")}
-
+        
+        try:
+            from motor.motor_asyncio import AsyncIOMotorClient
+            client = AsyncIOMotorClient(self.uri)
+            db = client[self.database_name]
+            
+            # Fetch recent high-severity defects
+            pipeline = [
+                {"$match": {"defect_summary.severity": {"$in": ["high", "critical"]}}},
+                {"$sort": {"inspection_timestamp": -1}},
+                {"$limit": 10},
+                {"$project": {
+                    "wafer_id": 1,
+                    "lot_id": 1,
+                    "defect_summary": 1,
+                    "process_context": 1,
+                    "inspection_timestamp": 1
+                }}
+            ]
+            
+            cursor = db["wafer_defects"].aggregate(pipeline)
+            defects = await cursor.to_list(length=None)
+            
+            for defect in defects:
+                defect = convert_objectids(defect)
+            
+            client.close()
+            
+            state.setdefault("updates", []).append(f"Found {len(defects)} wafer defects")
+            state["wafer_defects"] = defects
+            logger.info(f"Found {len(defects)} wafer defects")
+            
+        except Exception as e:
+            logger.error(f"Error fetching wafer defects: {e}")
+            state["wafer_defects"] = []
+            state.setdefault("updates", []).append(f"Error fetching wafer defects: {e}")
+        
+        return state
+    
+    async def get_recent_alerts(self, state: dict) -> dict:
+        """
+        Fetches recent alerts from MongoDB.
+        """
+        message = "[Tool] Retrieved recent alerts from MongoDB."
+        logger.info(message)
+        
+        try:
+            from motor.motor_asyncio import AsyncIOMotorClient
+            client = AsyncIOMotorClient(self.uri)
+            db = client[self.database_name]
+            
+            # Fetch recent open alerts
+            pipeline = [
+                {"$match": {"status": "open"}},
+                {"$sort": {"timestamp": -1}},
+                {"$limit": 5}
+            ]
+            
+            cursor = db["alerts"].aggregate(pipeline)
+            alerts = await cursor.to_list(length=None)
+            
+            for alert in alerts:
+                alert = convert_objectids(alert)
+            
+            client.close()
+            
+            state.setdefault("updates", []).append(f"Found {len(alerts)} open alerts")
+            state["alerts"] = alerts
+            logger.info(f"Found {len(alerts)} open alerts")
+            
+        except Exception as e:
+            logger.error(f"Error fetching alerts: {e}")
+            state["alerts"] = []
+            state.setdefault("updates", []).append(f"Error fetching alerts: {e}")
+        
+        return state
+    
     def get_data_from_mdb(self, state: dict) -> dict:
         """
         Reads data from a MongoDB collection and dynamically infers field names.
@@ -259,24 +377,41 @@ class AgentTools(MongoDBConnector):
         state["next_step"] = "embedding_node"
         return state
 
-    def get_query_embedding(self, state: AgentState) -> AgentState:
-        """Generates the query embedding."""
-        logger.info("[Action] Generating Query Embedding...")
-        state.setdefault("updates", []).append("Generating query embedding...")
+    async def get_query_embedding(self, state: AgentState) -> AgentState:
+        """Generates the query embedding using Voyage AI."""
+        logger.info("[Action] Generating Query Embedding with Voyage AI...")
+        state.setdefault("updates", []).append("Generating query embedding with Voyage AI...")
 
         # Get the query text
         text = state["query_reported"]
 
-        try: 
-            # Instantiate the Embedder
-            embedder = Embedder(collection_name=self.mdb_embeddings_collection)
-            embedding = embedder.get_embedding(text)
-            state.setdefault("updates", []).append("Query embedding generated!")
-            logger.info("Query embedding generated!")
+        try:
+            # Use Voyage AI embedding service from Phase 3
+            embedding_service = EmbeddingService()
+            await embedding_service.initialize()
+            
+            # Generate embedding using voyage-multimodal-3
+            embedding = await embedding_service.generate_text_embedding(text)
+            
+            state.setdefault("updates", []).append("Query embedding generated with Voyage AI!")
+            logger.info("Query embedding generated successfully with voyage-multimodal-3")
+            
+            # Cleanup
+            embedding_service.cleanup()
+            
         except Exception as e:
-            logger.error(f"Error generating query embedding: {e}")
-            state.setdefault("updates", []).append("Error generating query embedding; using dummy vector.")
-            embedding = [0.0] * 1024
+            logger.error(f"Error generating Voyage AI embedding: {e}")
+            logger.info("Falling back to legacy Cohere embeddings...")
+            try:
+                # Fallback to original Cohere method
+                embedder = Embedder(collection_name=self.mdb_embeddings_collection)
+                embedding = embedder.get_embedding(text)
+                state.setdefault("updates", []).append("Query embedding generated with Cohere (fallback)")
+            except Exception as fallback_error:
+                logger.error(f"Fallback also failed: {fallback_error}")
+                state.setdefault("updates", []).append("Error generating embedding; using dummy vector.")
+                embedding = [0.0] * 1024
+                
         return {**state, "embedding_vector": embedding, "next_step": "vector_search_tool"}
     
     @staticmethod
@@ -320,11 +455,19 @@ class AgentTools(MongoDBConnector):
                 # Persist each record in the time-series data
                 for record in combined_data["timeseries"]:
                     try:
-                        # Parse timestamp and convert values dynamically
-                        record["timestamp"] = datetime.datetime.strptime(record["timestamp"], "%Y-%m-%dT%H:%M:%SZ")
+                        # Check if timestamp needs parsing (if it's a string)
+                        if isinstance(record.get("timestamp"), str):
+                            record["timestamp"] = datetime.datetime.strptime(record["timestamp"], "%Y-%m-%dT%H:%M:%SZ")
+                        # Skip conversion for already valid datetime objects
+                        
+                        # Convert numeric fields only if they're strings
                         for key in record:
-                            if key != "timestamp" and key != "thread_id":
-                                record[key] = float(record[key])
+                            if key not in ["timestamp", "thread_id", "_id", "metadata", "metrics", "equipment_id", "process_step"]:
+                                if isinstance(record[key], str):
+                                    try:
+                                        record[key] = float(record[key])
+                                    except ValueError:
+                                        pass  # Keep as string if not convertible
                     except Exception as e:
                         logger.error(f"Error processing record: {e}")
                     record["thread_id"] = state.get("thread_id", "")
@@ -388,13 +531,25 @@ class AgentTools(MongoDBConnector):
         logger.info(LLM_RECOMMENDATION_PROMPT)
 
         try:
-            # Instantiate the chat completion model
+            # Instantiate the chat completion model with better parameters
             chat_completions = BedrockAnthropicChatCompletions(model_id=self.chatcompletions_model_id)
-            # Generate a chain of thought based on the prompt
-            llm_recommendation = chat_completions.predict(LLM_RECOMMENDATION_PROMPT)
+            # Generate a recommendation with reasonable temperature and token limit
+            llm_recommendation = chat_completions.predict(
+                LLM_RECOMMENDATION_PROMPT,
+                temperature=0.3,  # More reasonable than 0.00001
+                max_tokens=1024   # More space for complex analysis
+            )
         except Exception as e:
             logger.error(f"Error generating LLM recommendation: {e}")
-            llm_recommendation = "Unable to generate recommendation at this time."
+            # Provide more useful fallback with context
+            llm_recommendation = f"""Unable to generate AI recommendation due to error: {str(e)[:100]}
+            
+Based on available data:
+- Query: {state.get('query_reported', 'Unknown')}
+- Data points analyzed: {len(state.get('timeseries_data', []))}
+- Historical matches found: {len(state.get('historical_recommendations_list', []))}
+
+Suggested manual review of sensor data and historical patterns."""
 
         logger.info("LLM Recommendation:")
         logger.info(llm_recommendation)
@@ -437,7 +592,7 @@ def get_data_from_mdb_tool(state: dict) -> dict:
     agent_tools = AgentTools(collection_name=mdb_timeseries_collection)
     return agent_tools.get_data_from_mdb(state)
 
-def vector_search_tool(state: dict) -> dict:
+async def vector_search_tool(state: dict) -> dict:
     """Performs a vector search in a MongoDB collection."""
     # Load configuration
     config = ConfigLoader()
@@ -445,35 +600,81 @@ def vector_search_tool(state: dict) -> dict:
     mdb_embeddings_collection = config.get("MDB_EMBEDDINGS_COLLECTION")
     # Instantiate the AgentTools class
     agent_tools = AgentTools(collection_name=mdb_embeddings_collection)
+    # Call sync method directly
     return agent_tools.vector_search(state=state)
 
-def generate_chain_of_thought_tool(state: AgentState) -> AgentState:
+async def generate_chain_of_thought_tool(state: AgentState) -> AgentState:
     """Generates the chain of thought for the agent."""
     agent_tools = AgentTools()
+    # Call sync method directly - it contains blocking I/O that's fine in async context
     return agent_tools.generate_chain_of_thought(state=state)
 
-def process_data_tool(state: AgentState) -> AgentState:
+async def process_data_tool(state: AgentState) -> AgentState:
     """Processes the data."""
     agent_tools = AgentTools()
+    # Call sync method directly 
     return agent_tools.process_data(state=state)
 
-def get_query_embedding_tool(state: AgentState) -> AgentState:
+async def get_query_embedding_tool(state: AgentState) -> AgentState:
     """Generates the query embedding."""
     agent_tools = AgentTools()
-    return agent_tools.get_query_embedding(state=state)
+    return await agent_tools.get_query_embedding(state=state)
 
-def process_vector_search_tool(state: AgentState) -> AgentState:
+async def process_vector_search_tool(state: AgentState) -> AgentState:
     """Processes the vector search results."""
     agent_tools = AgentTools()
+    # Call sync method directly
     return agent_tools.process_vector_search(state=state)
 
-def persist_data_tool(state: AgentState) -> AgentState:
+async def persist_data_tool(state: AgentState) -> AgentState:
     """Persists the data into MongoDB."""
     # Instantiate the AgentTools class
     agent_tools = AgentTools()
+    
+    # Store session data to agent_sessions collection for Phase 4
+    try:
+        db = agent_tools.db
+        sessions_collection = db["agent_sessions"]
+        
+        session_data = {
+            "thread_id": state.get("thread_id"),
+            "query": state.get("query_reported", ""),
+            "chain_of_thought": state.get("chain_of_thought", ""),
+            "sensor_anomalies": state.get("timeseries_data", []),
+            "wafer_defects": state.get("wafer_defects", []),
+            "alerts": state.get("alerts", []),
+            "embedding_vector": state.get("embedding_vector", []),
+            "historical_recommendations": state.get("historical_recommendations_list", []),
+            "recommendation": state.get("recommendation_text", ""),
+            "updates": state.get("updates", []),
+            "timestamp": datetime.datetime.utcnow()
+        }
+        
+        # Convert ObjectIds
+        session_data = convert_objectids(session_data)
+        
+        # Insert or update session
+        if state.get("thread_id"):
+            sessions_collection.update_one(
+                {"thread_id": state["thread_id"]},
+                {"$set": session_data},
+                upsert=True
+            )
+            logger.info(f"Session data persisted for thread: {state['thread_id']}")
+        else:
+            result = sessions_collection.insert_one(session_data)
+            logger.info(f"New session created with ID: {result.inserted_id}")
+            
+        state.setdefault("updates", []).append("Session data persisted to MongoDB")
+        
+    except Exception as e:
+        logger.error(f"Error persisting session data: {e}")
+        state.setdefault("updates", []).append(f"Error persisting session: {str(e)}")
+    
+    # Also run the original persist_data for backwards compatibility
     return agent_tools.persist_data(state=state)
 
-def get_llm_recommendation_tool(state: AgentState) -> AgentState:
+async def get_llm_recommendation_tool(state: AgentState) -> AgentState:
     """Generates the LLM recommendation."""
     # Load configuration
     config = ConfigLoader()
@@ -481,4 +682,20 @@ def get_llm_recommendation_tool(state: AgentState) -> AgentState:
     mdb_historical_recommendations_collection = config.get("MDB_HISTORICAL_RECOMMENDATIONS_COLLECTION")
     # Instantiate the AgentTools class
     agent_tools = AgentTools(collection_name=mdb_historical_recommendations_collection)
+    # Call sync method directly
     return agent_tools.get_llm_recommendation(state=state)
+
+async def get_sensor_anomalies_tool(state: dict) -> dict:
+    """Fetches recent sensor anomalies from MongoDB."""
+    agent_tools = AgentTools()
+    return await agent_tools.get_sensor_anomalies(state=state)
+
+async def get_wafer_defects_tool(state: dict) -> dict:
+    """Fetches correlated wafer defects from MongoDB."""
+    agent_tools = AgentTools()
+    return await agent_tools.get_wafer_defects(state=state)
+
+async def get_recent_alerts_tool(state: dict) -> dict:
+    """Fetches recent alerts from MongoDB."""
+    agent_tools = AgentTools()
+    return await agent_tools.get_recent_alerts(state=state)

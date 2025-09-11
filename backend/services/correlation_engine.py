@@ -1,0 +1,500 @@
+"""
+Correlation Engine Service
+Analyzes correlations between sensor anomalies and wafer defects
+"""
+from typing import List, Dict, Any, Optional, Tuple
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+from motor.motor_asyncio import AsyncIOMotorClient
+from bson import ObjectId
+import logging
+import os
+from dotenv import load_dotenv
+from collections import defaultdict, Counter
+
+load_dotenv()
+
+class CorrelationEngine:
+    def __init__(self, mongodb_uri: str = None, database: str = "smf-yield-defect"):
+        """Initialize the correlation engine"""
+        self.mongodb_uri = mongodb_uri or os.getenv("MONGODB_URI")
+        self.client = AsyncIOMotorClient(self.mongodb_uri)
+        self.db = self.client[database]
+        
+        # Collections
+        self.alerts_collection = self.db.alerts
+        self.wafer_defects_collection = self.db.wafer_defects
+        self.sensor_collection = self.db.process_sensor_ts
+        self.process_context_collection = self.db.process_context
+        self.historical_knowledge_collection = self.db.historical_knowledge
+        
+        self.logger = logging.getLogger(__name__)
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+    
+    async def analyze_alert(self, alert_id: str) -> Dict[str, Any]:
+        """Main entry point for analyzing an alert"""
+        self.logger.info(f"Starting correlation analysis for alert {alert_id}")
+        
+        # Get alert details
+        alert = await self.alerts_collection.find_one({"_id": ObjectId(alert_id)})
+        if not alert:
+            raise ValueError(f"Alert {alert_id} not found")
+        
+        # Define time windows for analysis
+        alert_time = alert['timestamp']
+        equipment_id = alert['equipment_id']
+        
+        # Time windows: before alert, during alert, after alert
+        windows = {
+            "pre_alert": (alert_time - timedelta(hours=8), alert_time - timedelta(hours=1)),
+            "alert_window": (alert_time - timedelta(hours=1), alert_time + timedelta(hours=2)),
+            "post_alert": (alert_time + timedelta(hours=2), alert_time + timedelta(hours=8))
+        }
+        
+        # Find affected wafers
+        affected_wafers = await self.find_affected_wafers(equipment_id, windows)
+        
+        # Perform various correlation analyses
+        correlations = {
+            "temporal": await self.temporal_correlation(alert, affected_wafers, windows),
+            "batch": await self.batch_correlation(affected_wafers),
+            "recipe": await self.recipe_correlation(affected_wafers),
+            "spatial": await self.spatial_correlation(affected_wafers),
+            "equipment": await self.equipment_correlation(equipment_id, alert_time)
+        }
+        
+        # Calculate overall confidence score
+        confidence_score = self.calculate_confidence(correlations)
+        
+        # Generate insights
+        insights = self.generate_insights(correlations)
+        
+        # Prepare result
+        result = {
+            "alert_id": alert_id,
+            "analysis_timestamp": datetime.utcnow(),
+            "equipment_id": equipment_id,
+            "alert_severity": alert.get('severity'),
+            "affected_wafers": {
+                "total": len(affected_wafers['all']),
+                "pre_alert": len(affected_wafers['pre_alert']),
+                "during_alert": len(affected_wafers['alert_window']),
+                "post_alert": len(affected_wafers['post_alert'])
+            },
+            "correlations": correlations,
+            "confidence_score": confidence_score,
+            "insights": insights
+        }
+        
+        # Store correlation results in alert
+        await self.alerts_collection.update_one(
+            {"_id": ObjectId(alert_id)},
+            {"$set": {"correlation_analysis": result}}
+        )
+        
+        self.logger.info(f"Correlation analysis completed for alert {alert_id}")
+        return result
+    
+    async def find_affected_wafers(self, equipment_id: str, 
+                                   windows: Dict[str, Tuple]) -> Dict[str, List]:
+        """Find wafers processed on equipment during time windows"""
+        affected_wafers = {
+            "all": [],
+            "pre_alert": [],
+            "alert_window": [],
+            "post_alert": []
+        }
+        
+        for window_name, (start_time, end_time) in windows.items():
+            pipeline = [
+                {
+                    '$match': {
+                        'process_context.equipment_used': equipment_id,
+                        'inspection_timestamp': {
+                            '$gte': start_time,
+                            '$lte': end_time
+                        }
+                    }
+                },
+                {
+                    '$sort': {'inspection_timestamp': 1}
+                }
+            ]
+            
+            cursor = self.wafer_defects_collection.aggregate(pipeline)
+            wafers = await cursor.to_list(length=None)
+            
+            affected_wafers[window_name] = wafers
+            affected_wafers["all"].extend(wafers)
+        
+        self.logger.info(f"Found {len(affected_wafers['all'])} affected wafers")
+        return affected_wafers
+    
+    async def temporal_correlation(self, alert: dict, affected_wafers: Dict[str, List],
+                                  windows: Dict[str, Tuple]) -> Dict[str, Any]:
+        """Analyze temporal correlation between alert and defects"""
+        
+        if not affected_wafers['all']:
+            return {
+                "correlation_strength": 0,
+                "yield_impact": 0,
+                "defect_rate_change": 0,
+                "time_lag_hours": None
+            }
+        
+        # Calculate yield statistics for each window
+        window_stats = {}
+        for window_name in ['pre_alert', 'alert_window', 'post_alert']:
+            wafers = affected_wafers[window_name]
+            if wafers:
+                yields = [w['defect_summary']['yield_percentage'] for w in wafers]
+                defect_counts = [w['defect_summary']['failed_dies'] for w in wafers]
+                
+                window_stats[window_name] = {
+                    "avg_yield": np.mean(yields),
+                    "std_yield": np.std(yields),
+                    "avg_defects": np.mean(defect_counts),
+                    "wafer_count": len(wafers)
+                }
+            else:
+                window_stats[window_name] = {
+                    "avg_yield": 100,
+                    "std_yield": 0,
+                    "avg_defects": 0,
+                    "wafer_count": 0
+                }
+        
+        # Calculate yield drop
+        baseline_yield = window_stats['pre_alert']['avg_yield']
+        alert_yield = window_stats['alert_window']['avg_yield']
+        post_yield = window_stats['post_alert']['avg_yield']
+        
+        yield_drop = baseline_yield - min(alert_yield, post_yield)
+        
+        # Calculate defect rate change
+        baseline_defects = window_stats['pre_alert']['avg_defects']
+        alert_defects = window_stats['alert_window']['avg_defects']
+        defect_increase = alert_defects - baseline_defects if baseline_defects > 0 else 0
+        
+        # Calculate time lag to first significant defect
+        time_lag_hours = None
+        alert_time = alert['timestamp']
+        
+        for wafer in affected_wafers['alert_window'] + affected_wafers['post_alert']:
+            if wafer['defect_summary']['yield_percentage'] < baseline_yield - 5:  # 5% threshold
+                time_lag_hours = (wafer['inspection_timestamp'] - alert_time).total_seconds() / 3600
+                break
+        
+        # Calculate correlation strength (0-1 scale)
+        correlation_strength = min(1.0, yield_drop / 20)  # Normalize to 20% max drop
+        
+        return {
+            "correlation_strength": round(correlation_strength, 3),
+            "yield_impact": round(yield_drop, 2),
+            "defect_rate_change": round(defect_increase, 1),
+            "time_lag_hours": round(time_lag_hours, 2) if time_lag_hours else None,
+            "window_statistics": window_stats
+        }
+    
+    async def batch_correlation(self, affected_wafers: Dict[str, List]) -> Dict[str, Any]:
+        """Analyze correlation with material batches"""
+        
+        all_wafers = affected_wafers['all']
+        if not all_wafers:
+            return {"suspect_batches": [], "batch_impact": {}}
+        
+        # Analyze slurry batches
+        batch_stats = defaultdict(lambda: {
+            "wafer_count": 0,
+            "total_yield": 0,
+            "defect_patterns": [],
+            "failed_dies": []
+        })
+        
+        for wafer in all_wafers:
+            slurry_batch = wafer.get('process_context', {}).get('slurry_batch')
+            if slurry_batch:
+                batch_stats[slurry_batch]["wafer_count"] += 1
+                batch_stats[slurry_batch]["total_yield"] += wafer['defect_summary']['yield_percentage']
+                batch_stats[slurry_batch]["defect_patterns"].append(
+                    wafer['defect_summary'].get('defect_pattern', 'unknown')
+                )
+                batch_stats[slurry_batch]["failed_dies"].append(
+                    wafer['defect_summary']['failed_dies']
+                )
+        
+        # Calculate statistics for each batch
+        batch_analysis = {}
+        for batch_id, stats in batch_stats.items():
+            if stats["wafer_count"] > 0:
+                avg_yield = stats["total_yield"] / stats["wafer_count"]
+                pattern_counts = Counter(stats["defect_patterns"])
+                dominant_pattern = pattern_counts.most_common(1)[0][0] if pattern_counts else "unknown"
+                
+                batch_analysis[batch_id] = {
+                    "avg_yield": round(avg_yield, 2),
+                    "wafer_count": stats["wafer_count"],
+                    "dominant_pattern": dominant_pattern,
+                    "avg_failed_dies": round(np.mean(stats["failed_dies"]), 1),
+                    "pattern_distribution": dict(pattern_counts)
+                }
+        
+        # Identify suspect batches (lowest yield)
+        if batch_analysis:
+            sorted_batches = sorted(batch_analysis.items(), key=lambda x: x[1]["avg_yield"])
+            suspect_batches = [
+                {
+                    "batch_id": batch_id,
+                    "yield": info["avg_yield"],
+                    "wafer_count": info["wafer_count"],
+                    "dominant_pattern": info["dominant_pattern"]
+                }
+                for batch_id, info in sorted_batches[:3]  # Top 3 worst batches
+            ]
+        else:
+            suspect_batches = []
+        
+        return {
+            "suspect_batches": suspect_batches,
+            "batch_impact": batch_analysis
+        }
+    
+    async def recipe_correlation(self, affected_wafers: Dict[str, List]) -> Dict[str, Any]:
+        """Analyze correlation with process recipes"""
+        
+        all_wafers = affected_wafers['all']
+        if not all_wafers:
+            return {"recipe_impact": {}, "worst_recipe": None}
+        
+        # Get recipe information from metadata
+        recipe_stats = defaultdict(lambda: {
+            "wafer_count": 0,
+            "total_yield": 0,
+            "defect_types": []
+        })
+        
+        for wafer in all_wafers:
+            # Get recipe from sensor metadata
+            metadata = wafer.get('metadata', {})
+            recipe_id = metadata.get('recipe_id')
+            
+            if recipe_id:
+                recipe_stats[recipe_id]["wafer_count"] += 1
+                recipe_stats[recipe_id]["total_yield"] += wafer['defect_summary']['yield_percentage']
+                
+                # Collect defect types
+                for defect in wafer.get('defects', []):
+                    recipe_stats[recipe_id]["defect_types"].append(defect.get('type', 'unknown'))
+        
+        # Calculate statistics
+        recipe_analysis = {}
+        for recipe_id, stats in recipe_stats.items():
+            if stats["wafer_count"] > 0:
+                avg_yield = stats["total_yield"] / stats["wafer_count"]
+                defect_type_counts = Counter(stats["defect_types"])
+                
+                recipe_analysis[recipe_id] = {
+                    "avg_yield": round(avg_yield, 2),
+                    "wafer_count": stats["wafer_count"],
+                    "common_defects": dict(defect_type_counts.most_common(3))
+                }
+        
+        # Find worst performing recipe
+        worst_recipe = None
+        if recipe_analysis:
+            worst_recipe = min(recipe_analysis.items(), key=lambda x: x[1]["avg_yield"])
+            worst_recipe = {
+                "recipe_id": worst_recipe[0],
+                **worst_recipe[1]
+            }
+        
+        return {
+            "recipe_impact": recipe_analysis,
+            "worst_recipe": worst_recipe
+        }
+    
+    async def spatial_correlation(self, affected_wafers: Dict[str, List]) -> Dict[str, Any]:
+        """Analyze spatial patterns in defects"""
+        
+        all_wafers = affected_wafers['all']
+        if not all_wafers:
+            return {"dominant_patterns": [], "pattern_frequency": {}}
+        
+        # Count defect patterns
+        pattern_counts = Counter()
+        pattern_yields = defaultdict(list)
+        
+        for wafer in all_wafers:
+            pattern = wafer['defect_summary'].get('defect_pattern', 'unknown')
+            pattern_counts[pattern] += 1
+            pattern_yields[pattern].append(wafer['defect_summary']['yield_percentage'])
+        
+        # Calculate average yield for each pattern
+        pattern_analysis = {}
+        for pattern, count in pattern_counts.items():
+            yields = pattern_yields[pattern]
+            pattern_analysis[pattern] = {
+                "frequency": count,
+                "percentage": round((count / len(all_wafers)) * 100, 1),
+                "avg_yield": round(np.mean(yields), 2),
+                "yield_std": round(np.std(yields), 2)
+            }
+        
+        # Identify dominant patterns
+        dominant_patterns = [
+            {"pattern": pattern, **stats}
+            for pattern, stats in sorted(
+                pattern_analysis.items(),
+                key=lambda x: x[1]["frequency"],
+                reverse=True
+            )[:3]
+        ]
+        
+        return {
+            "dominant_patterns": dominant_patterns,
+            "pattern_frequency": pattern_analysis
+        }
+    
+    async def equipment_correlation(self, equipment_id: str, 
+                                   alert_time: datetime) -> Dict[str, Any]:
+        """Analyze equipment-specific patterns"""
+        
+        # Get recent sensor data for the equipment
+        start_time = alert_time - timedelta(hours=24)
+        end_time = alert_time + timedelta(hours=1)
+        
+        pipeline = [
+            {
+                '$match': {
+                    'equipment_id': equipment_id,
+                    'timestamp': {
+                        '$gte': start_time,
+                        '$lte': end_time
+                    }
+                }
+            },
+            {
+                '$sort': {'timestamp': 1}
+            }
+        ]
+        
+        cursor = self.sensor_collection.aggregate(pipeline)
+        sensor_data = await cursor.to_list(length=None)
+        
+        if not sensor_data:
+            return {
+                "maintenance_due": False,
+                "utilization_rate": 0,
+                "recent_anomalies": 0
+            }
+        
+        # Calculate equipment statistics
+        # Check for maintenance patterns (simplified)
+        timestamps = [d['timestamp'] for d in sensor_data]
+        time_diffs = np.diff([t.timestamp() for t in timestamps])
+        
+        # If there are large gaps, might indicate maintenance
+        maintenance_due = bool(np.max(time_diffs) > 3600) if len(time_diffs) > 0 else False
+        
+        # Calculate utilization rate
+        total_time = (end_time - start_time).total_seconds() / 3600
+        active_time = len(sensor_data) * 0.5  # Assuming 30-min intervals
+        utilization_rate = min(100, (active_time / total_time) * 100)
+        
+        # Count recent anomalies (particle count > 1000)
+        recent_anomalies = sum(
+            1 for d in sensor_data 
+            if d.get('metrics', {}).get('particle_count', 0) > 1000
+        )
+        
+        return {
+            "maintenance_due": maintenance_due,
+            "utilization_rate": round(utilization_rate, 1),
+            "recent_anomalies": recent_anomalies,
+            "data_points": len(sensor_data)
+        }
+    
+    def calculate_confidence(self, correlations: Dict[str, Any]) -> float:
+        """Calculate overall confidence score for the correlation analysis"""
+        
+        weights = {
+            "temporal": 0.35,
+            "batch": 0.25,
+            "spatial": 0.20,
+            "recipe": 0.10,
+            "equipment": 0.10
+        }
+        
+        scores = {
+            "temporal": correlations["temporal"].get("correlation_strength", 0),
+            "batch": min(1.0, len(correlations["batch"].get("suspect_batches", [])) / 3),
+            "spatial": min(1.0, len(correlations["spatial"].get("dominant_patterns", [])) / 3),
+            "recipe": 0.5 if correlations["recipe"].get("worst_recipe") else 0,
+            "equipment": min(1.0, correlations["equipment"].get("recent_anomalies", 0) / 10)
+        }
+        
+        confidence = sum(scores[key] * weights[key] for key in weights)
+        return round(confidence, 3)
+    
+    def generate_insights(self, correlations: Dict[str, Any]) -> List[str]:
+        """Generate human-readable insights from correlation analysis"""
+        
+        insights = []
+        
+        # Temporal insights
+        temporal = correlations.get("temporal", {})
+        if temporal.get("yield_impact", 0) > 5:
+            insights.append(
+                f"Significant yield drop of {temporal['yield_impact']:.1f}% detected "
+                f"following the excursion event"
+            )
+        
+        if temporal.get("time_lag_hours") is not None:
+            insights.append(
+                f"Defects appeared approximately {temporal['time_lag_hours']:.1f} hours "
+                f"after the sensor excursion"
+            )
+        
+        # Batch insights
+        batch = correlations.get("batch", {})
+        if batch.get("suspect_batches"):
+            worst_batch = batch["suspect_batches"][0]
+            insights.append(
+                f"Slurry batch {worst_batch['batch_id']} shows poor performance "
+                f"with {worst_batch['yield']:.1f}% yield"
+            )
+        
+        # Spatial insights
+        spatial = correlations.get("spatial", {})
+        if spatial.get("dominant_patterns"):
+            pattern = spatial["dominant_patterns"][0]
+            insights.append(
+                f"Dominant defect pattern is '{pattern['pattern']}' "
+                f"occurring in {pattern['percentage']:.1f}% of wafers"
+            )
+        
+        # Recipe insights
+        recipe = correlations.get("recipe", {})
+        if recipe.get("worst_recipe"):
+            worst = recipe["worst_recipe"]
+            insights.append(
+                f"Recipe {worst['recipe_id']} associated with lower yields "
+                f"({worst['avg_yield']:.1f}%)"
+            )
+        
+        # Equipment insights
+        equipment = correlations.get("equipment", {})
+        if equipment.get("maintenance_due"):
+            insights.append("Equipment shows patterns suggesting maintenance may be needed")
+        
+        if equipment.get("recent_anomalies", 0) > 5:
+            insights.append(
+                f"Equipment has experienced {equipment['recent_anomalies']} "
+                f"anomalies in the past 24 hours"
+            )
+        
+        return insights

@@ -55,14 +55,16 @@
         "rules": "Prioritize critical excursions, document all correlations, ensure traceability of recommendations.",
         "goals": "Minimize yield loss through rapid defect detection and accurate root cause analysis."
     },
-    "EMBEDDINGS_MODEL_NAME": "Cohere Embed English V3 Model (within AWS Bedrock)",
-    "EMBEDDINGS_MODEL_ID": "cohere.embed-english-v3",
+    "EMBEDDINGS_MODEL_NAME": "Voyage AI Multimodal V3",
+    "EMBEDDINGS_MODEL_ID": "voyage-multimodal-3",
     "CHATCOMPLETIONS_MODEL_NAME": "Anthropic Claude 3 Haiku (within AWS Bedrock)",
     "CHATCOMPLETIONS_MODEL_ID": "anthropic.claude-3-haiku-20240307-v1:0",
     "AGENT_WORKFLOW_GRAPH": {
         "nodes": [
             {"id": "reasoning_node", "tool": "agent_tools.generate_chain_of_thought_tool"},
-            {"id": "data_from_csv", "tool": "agent_tools.get_data_from_csv_tool"},
+            {"id": "fetch_sensor_data", "tool": "agent_tools.get_sensor_anomalies_tool"},
+            {"id": "fetch_wafer_defects", "tool": "agent_tools.get_wafer_defects_tool"},
+            {"id": "fetch_alerts", "tool": "agent_tools.get_recent_alerts_tool"},
             {"id": "process_data", "tool": "agent_tools.process_data_tool"},
             {"id": "embedding_node", "tool": "agent_tools.get_query_embedding_tool"},
             {"id": "vector_search", "tool": "agent_tools.vector_search_tool"},
@@ -71,8 +73,10 @@
             {"id": "recommendation_node", "tool": "agent_tools.get_llm_recommendation_tool"}
         ],
         "edges": [
-            {"from": "reasoning_node", "to": "data_from_csv"},
-            {"from": "data_from_csv", "to": "process_data"},
+            {"from": "reasoning_node", "to": "fetch_sensor_data"},
+            {"from": "fetch_sensor_data", "to": "fetch_wafer_defects"},
+            {"from": "fetch_wafer_defects", "to": "fetch_alerts"},
+            {"from": "fetch_alerts", "to": "process_data"},
             {"from": "process_data", "to": "embedding_node"},
             {"from": "embedding_node", "to": "vector_search"},
             {"from": "vector_search", "to": "process_vector_search"},

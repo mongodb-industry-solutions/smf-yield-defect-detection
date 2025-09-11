@@ -66,11 +66,34 @@ class AgentCheckpointer(MongoDBConnector):
         except Exception as e:
             logger.error(f"[MongoDB] Error initializing MongoDB saver: {e}")
             return None
+    
+    async def get_latest_checkpoint(self, session_id: str):
+        """
+        Get the latest checkpoint for a session.
         
+        Args:
+            session_id: The session/thread ID
+            
+        Returns:
+            Dict containing the checkpoint data or None if not found
+        """
+        try:
+            checkpoint_collection = self.get_collection(self.checkpoint_collection_name)
+            checkpoint = await checkpoint_collection.find_one(
+                {"thread_id": session_id},
+                sort=[("timestamp", -1)]
+            )
+            return checkpoint
+        except Exception as e:
+            logger.error(f"Error getting checkpoint for session {session_id}: {e}")
+            return None
 
 
 if __name__ == "__main__":
 
     # Example usage
-    mongodb_saver = AgentCheckpointer().create_mongodb_saver()
+    config = ConfigLoader()
+    checkpoint_collection = config.get("MDB_CHECKPOINTER_COLLECTION", "checkpoints")
+    checkpointer = AgentCheckpointer(collection_name=checkpoint_collection)
+    mongodb_saver = checkpointer.create_mongodb_saver()
     print(mongodb_saver)

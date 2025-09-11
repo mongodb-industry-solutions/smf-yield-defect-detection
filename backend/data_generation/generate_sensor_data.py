@@ -95,7 +95,7 @@ def generate_sensor_data(days: int = 30) -> List[Dict[str, Any]]:
             
             # Create record
             record = {
-                "timestamp": current_date.isoformat() + "Z",
+                "timestamp": current_date,  # Use datetime object directly for time series
                 "equipment_id": equipment_id,
                 "process_step": equipment_id.split("_")[0],
                 "metrics": {

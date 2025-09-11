@@ -59,9 +59,30 @@ def create_workflow_graph(checkpointer=None):
         return graph.compile()
 
 
+class WorkflowGraphBuilder:
+    """Builder class for creating workflow graphs from configuration"""
+    
+    def __init__(self, config_path: str = "config/config.json", checkpointer=None):
+        """
+        Initialize the workflow graph builder.
+        
+        Args:
+            config_path: Path to configuration file
+            checkpointer: Optional checkpointer for state persistence
+        """
+        self.config_loader = ConfigLoader()
+        self.graph_config = self.config_loader.get("AGENT_WORKFLOW_GRAPH")
+        self.checkpointer = checkpointer
+    
+    def build(self):
+        """Build and return the compiled workflow graph"""
+        return create_workflow_graph(self.checkpointer)
+
+
 if __name__ == "__main__":
     # Example usage
-    workflow = create_workflow_graph()
+    builder = WorkflowGraphBuilder()
+    workflow = builder.build()
 
     # Graph compilation and visualization
     graph = workflow.get_graph()
