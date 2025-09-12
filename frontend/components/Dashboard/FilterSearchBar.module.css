@@ -1,0 +1,108 @@
+.filterSearchBar {
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e0e4e7;
+  padding: 16px;
+  margin-bottom: 20px;
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.searchSection {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.searchInput {
+  flex: 1;
+  max-width: 400px;
+}
+
+.filterToggle {
+  position: relative;
+}
+
+.filterBadge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #e11900;
+  color: white;
+  border-radius: 10px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  min-width: 18px;
+  text-align: center;
+}
+
+.clearButton {
+  transition: all 0.2s ease;
+}
+
+.clearButton:hover {
+  background: #fff0f0;
+  border-color: #e11900;
+}
+
+.filterPanel {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e0e4e7;
+  display: flex;
+  gap: 32px;
+  flex-wrap: wrap;
+  animation: expandDown 0.3s ease-out;
+}
+
+@keyframes expandDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 200px;
+  }
+}
+
+.filterGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+  min-width: 250px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .searchSection {
+    flex-wrap: wrap;
+  }
+  
+  .searchInput {
+    flex: 1 1 100%;
+    max-width: none;
+    margin-bottom: 8px;
+  }
+  
+  .filterPanel {
+    flex-direction: column;
+    gap: 16px;
+  }
+  
+  .filterGroup {
+    min-width: auto;
+  }
+}

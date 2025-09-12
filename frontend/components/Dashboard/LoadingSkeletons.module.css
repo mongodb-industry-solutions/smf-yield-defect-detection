@@ -1,0 +1,212 @@
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #f0f2f4 25%,
+    #e0e4e7 50%,
+    #f0f2f4 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 4px;
+}
+
+/* Equipment Card Skeleton */
+.equipmentCardSkeleton {
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e0e4e7;
+  padding: 0;
+  height: 250px;
+}
+
+.equipmentCardSkeleton .cardHeader {
+  padding: 16px;
+  border-bottom: 1px solid #e0e4e7;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.titleSkeleton {
+  width: 120px;
+  height: 20px;
+  @extend .skeleton;
+}
+
+.badgeSkeleton {
+  width: 60px;
+  height: 24px;
+  border-radius: 12px;
+  @extend .skeleton;
+}
+
+.equipmentCardSkeleton .cardBody {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.metricSkeleton {
+  width: 100%;
+  height: 20px;
+  @extend .skeleton;
+}
+
+.sparklineSkeleton {
+  width: 120px;
+  height: 35px;
+  margin: 8px auto;
+  @extend .skeleton;
+}
+
+.equipmentCardSkeleton .cardFooter {
+  padding: 8px 12px;
+  border-top: 1px solid #f0f2f4;
+  background: #fafbfc;
+}
+
+.footerSkeleton {
+  width: 80px;
+  height: 12px;
+  margin: 0 auto;
+  @extend .skeleton;
+}
+
+/* Alert Card Skeleton */
+.alertCardSkeleton {
+  flex: 0 0 320px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e0e4e7;
+  padding: 16px;
+}
+
+.alertCardSkeleton .alertHeader {
+  display: flex;
+  gap: 12px;
+}
+
+.iconSkeleton {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  @extend .skeleton;
+}
+
+.alertCardSkeleton .alertContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.messageSkeleton {
+  width: 100%;
+  height: 14px;
+  @extend .skeleton;
+}
+
+.correlationSkeleton {
+  width: 80%;
+  height: 12px;
+  @extend .skeleton;
+}
+
+/* Metric Card Skeleton */
+.metricCardSkeleton {
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e0e4e7;
+  padding: 16px;
+  height: 180px;
+}
+
+.metricCardSkeleton .metricHeader {
+  margin-bottom: 12px;
+}
+
+.labelSkeleton {
+  width: 100px;
+  height: 14px;
+  @extend .skeleton;
+}
+
+.metricCardSkeleton .metricValue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.valueSkeleton {
+  width: 60px;
+  height: 32px;
+  @extend .skeleton;
+}
+
+.trendSkeleton {
+  width: 40px;
+  height: 16px;
+  @extend .skeleton;
+}
+
+.chartSkeleton {
+  width: 100%;
+  height: 80px;
+  @extend .skeleton;
+}
+
+/* Container Skeletons */
+.fleetSkeleton {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  padding: 20px;
+}
+
+.alertsPanelSkeleton {
+  display: flex;
+  gap: 16px;
+  padding: 20px;
+  overflow-x: auto;
+  justify-content: center;
+}
+
+.metricsSkeleton {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 20px;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .fleetSkeleton {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .fleetSkeleton {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+  }
+  
+  .alertsPanelSkeleton {
+    flex-direction: column;
+  }
+  
+  .metricsSkeleton {
+    grid-template-columns: 1fr;
+  }
+}

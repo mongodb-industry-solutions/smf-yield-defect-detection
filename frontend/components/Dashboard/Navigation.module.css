@@ -1,0 +1,51 @@
+.navigation {
+  background: white;
+  border-bottom: 2px solid #e0e4e7;
+  padding: 0 32px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.tabContainer {
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+/* Override LeafyGreen tab styles for consistency */
+.navigation :global(.lg-tabs-tab-list-container) {
+  border-bottom: none;
+}
+
+.navigation :global(.lg-tabs-tab) {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  padding: 18px 32px;
+  color: #6b778c;
+  transition: all 0.2s ease;
+}
+
+.navigation :global(.lg-tabs-tab:hover) {
+  color: #00684a;
+  background: rgba(0, 104, 74, 0.04);
+}
+
+.navigation :global(.lg-tabs-tab[aria-selected="true"]) {
+  color: #00684a;
+  font-weight: 700;
+  border-bottom: 3px solid #00684a;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .navigation {
+    padding: 0 16px;
+  }
+  
+  .navigation :global(.lg-tabs-tab) {
+    padding: 14px 20px;
+    font-size: 12px;
+  }
+}

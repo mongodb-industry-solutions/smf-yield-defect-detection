@@ -190,3 +190,4 @@ backend/data_generation/*.md
 backend/data_generation/*.json
 IMPLEMENTATION_PLAN.md
 IMPLEMENTATION_STATUS.md
+frontend/PHASE5_IMPLEMENTATION_PLAN.md

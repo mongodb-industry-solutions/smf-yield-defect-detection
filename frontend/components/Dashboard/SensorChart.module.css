@@ -1,0 +1,160 @@
+.chartCard {
+  padding: 0;
+  overflow: hidden;
+  height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  padding: 16px 20px;
+  border-bottom: 1px solid #e0e4e7;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #ffffff;
+}
+
+.titleSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  color: #00684a;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+.connectionStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.connected {
+  background-color: #00ed64;
+}
+
+.disconnected {
+  background-color: #c1c7cd;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 237, 100, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(0, 237, 100, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 237, 100, 0);
+  }
+}
+
+.currentValue {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.normalValue {
+  font-size: 24px;
+  font-weight: 600;
+  color: #00684a;
+}
+
+.alertValue {
+  font-size: 24px;
+  font-weight: 600;
+  color: #ea3943;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 50%, 100% {
+    opacity: 1;
+  }
+  25%, 75% {
+    opacity: 0.6;
+  }
+}
+
+.chartContainer {
+  flex: 1;
+  padding: 20px;
+  position: relative;
+  min-height: 0;
+}
+
+.noData {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  color: #6b778c;
+}
+
+.alertBar {
+  background: linear-gradient(90deg, #ea3943, #d32f2f);
+  color: white;
+  padding: 12px 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: slideIn 0.3s ease-out;
+}
+
+.alertText {
+  color: white;
+  margin: 0;
+  font-weight: 500;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .chartCard {
+    height: 300px;
+  }
+  
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .status {
+    width: 100%;
+    justify-content: space-between;
+  }
+  
+  .normalValue,
+  .alertValue {
+    font-size: 20px;
+  }
+}

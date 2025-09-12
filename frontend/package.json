@@ -10,21 +10,29 @@
   },
   "dependencies": {
     "@fontsource/geist-mono": "^5.2.5",
+    "@leafygreen-ui/badge": "^10.1.2",
+    "@leafygreen-ui/banner": "^10.1.0",
     "@leafygreen-ui/button": "^23.0.0",
-    "@leafygreen-ui/card": "^12.0.2",
+    "@leafygreen-ui/card": "^12.0.9",
     "@leafygreen-ui/code": "^16.0.5",
-    "@leafygreen-ui/icon-button": "^16.0.3",
+    "@leafygreen-ui/icon": "^14.5.0",
+    "@leafygreen-ui/icon-button": "^16.0.12",
     "@leafygreen-ui/leafygreen-provider": "^4.0.2",
     "@leafygreen-ui/modal": "^17.0.3",
-    "@leafygreen-ui/tabs": "^14.0.2",
+    "@leafygreen-ui/segmented-control": "^11.0.7",
+    "@leafygreen-ui/table": "^15.1.3",
+    "@leafygreen-ui/tabs": "^14.2.5",
     "@leafygreen-ui/text-input": "^14.0.8",
     "@leafygreen-ui/tooltip": "^13.0.4",
     "@leafygreen-ui/typography": "^20.1.1",
+    "chart.js": "^4.5.0",
     "geist": "^1.3.1",
     "next": "^14.2.25",
     "react": "^18.2.0",
+    "react-chartjs-2": "^5.3.0",
     "react-dom": "^18.2.0",
     "react-icons": "^5.0.1",
-    "react-markdown": "^9.0.1"
+    "react-markdown": "^9.0.1",
+    "socket.io-client": "^4.8.1"
   }
 }

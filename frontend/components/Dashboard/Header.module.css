@@ -1,0 +1,65 @@
+.header {
+  background: linear-gradient(135deg, #001e2b 0%, #00684a 100%);
+  color: white;
+  padding: 28px 32px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.topSection {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  max-width: 1800px;
+  margin: 0 auto;
+}
+
+.branding {
+  text-align: center;
+}
+
+.titleContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+
+.title {
+  margin: 0;
+  font-size: 32px;
+  font-weight: 700;
+  color: white;
+  letter-spacing: -0.5px;
+}
+
+.subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.85);
+  font-weight: 400;
+}
+
+/* Responsive design */
+@media (max-width: 1024px) {
+  .header {
+    padding: 24px;
+  }
+  
+  .title {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 768px) {
+  .header {
+    padding: 20px 16px;
+  }
+  
+  .title {
+    font-size: 24px;
+  }
+  
+  .subtitle {
+    font-size: 13px;
+  }
+}

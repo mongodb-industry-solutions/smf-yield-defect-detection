@@ -1,0 +1,309 @@
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: #f7f9fb;
+}
+
+.main {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* New Monitoring Dashboard Layout */
+.monitoringDashboard {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: auto;
+  background: #f7f9fb;
+  padding: 20px;
+}
+
+.dashboardLayout {
+  display: flex;
+  gap: 20px;
+  width: 100%;
+  max-width: 1920px;
+  margin: 0 auto;
+  height: calc(100vh - 200px);
+}
+
+.metricsSection {
+  flex: 0 0 60%;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  padding-right: 10px;
+  padding-bottom: 20px;
+}
+
+.metricCard {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  border: 1px solid rgba(224, 228, 231, 0.6);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  min-height: auto;
+  height: auto;
+  animation: fadeIn 0.4s ease-out;
+  overflow: visible;
+  position: relative;
+  margin-bottom: 20px;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fleetSection {
+  flex: 0 0 40%;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  border: 1px solid rgba(224, 228, 231, 0.6);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.filterBar {
+  padding: 0 20px;
+}
+
+.fleetContent {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Legacy monitoring layout for compatibility */
+.monitoringLayout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 100%;
+  overflow-y: auto;
+  min-height: 100vh;
+  width: 100%;
+}
+
+.mainContent {
+  display: grid;
+  grid-template-columns: 65% 35%;
+  gap: 20px;
+  padding: 20px;
+  overflow: hidden;
+  flex: 1;
+  min-height: 500px;
+  width: 100%;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.equipmentFleet {
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e0e4e7;
+  overflow: hidden;
+  height: 100%;
+  min-height: 0;
+}
+
+.criticalMetrics {
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e0e4e7;
+  overflow: hidden;
+}
+
+.intelligentAlerts {
+  background: white;
+  border-top: 2px solid #e0e4e7;
+  min-height: 250px;
+  overflow: visible;
+  padding-bottom: 30px;
+  margin: 0 auto 20px auto;
+  max-width: 1600px;
+  width: 100%;
+}
+
+.sectionHeader {
+  padding: 12px 16px;
+  background: #fafbfc;
+  border-bottom: 1px solid #e0e4e7;
+}
+
+.intelligentAlerts .sectionHeader {
+  text-align: center;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: #5e6c84;
+}
+
+/* Other tab content */
+.contentArea {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.placeholderCard {
+  padding: 32px;
+}
+
+.placeholderCard h2 {
+  color: #00684a;
+  margin-top: 0;
+  margin-bottom: 16px;
+}
+
+.placeholder {
+  margin-top: 24px;
+  padding: 48px;
+  background: #f7f9fb;
+  border: 2px dashed #c1c7cd;
+  border-radius: 8px;
+  text-align: center;
+  color: #6b778c;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Responsive - Large Desktop (>1400px) */
+@media (min-width: 1400px) {
+  .mainContent {
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+  
+  .dashboardLayout {
+    max-width: 1920px;
+  }
+}
+
+/* Responsive - Laptop (1024-1400px) */
+@media (min-width: 1024px) and (max-width: 1399px) {
+  .mainContent {
+    grid-template-columns: 55% 45%;
+  }
+  
+  .metricsSection {
+    flex: 0 0 55%;
+  }
+  
+  .fleetSection {
+    flex: 0 0 45%;
+  }
+}
+
+/* Responsive - Tablet (768-1024px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .monitoringLayout {
+    grid-template-rows: auto auto auto;
+  }
+  
+  .mainContent {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+  }
+  
+  .dashboardLayout {
+    flex-direction: column;
+    height: auto;
+  }
+  
+  .metricsSection,
+  .fleetSection {
+    flex: 1 1 auto;
+    width: 100%;
+  }
+  
+  .equipmentFleet {
+    min-height: 400px;
+  }
+  
+  .criticalMetrics {
+    min-height: 350px;
+  }
+}
+
+/* Responsive - Mobile (<768px) */
+@media (max-width: 767px) {
+  .monitoringLayout {
+    grid-template-rows: auto 1fr;
+  }
+  
+  .monitoringDashboard {
+    padding: 12px;
+  }
+  
+  .dashboardLayout {
+    flex-direction: column;
+    height: auto;
+    gap: 12px;
+  }
+  
+  .metricsSection,
+  .fleetSection {
+    flex: 1 1 auto;
+    width: 100%;
+    padding-right: 0;
+  }
+  
+  .metricCard {
+    min-height: 300px;
+  }
+  
+  .mainContent {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    gap: 12px;
+    padding: 12px;
+    overflow-y: auto;
+  }
+  
+  .equipmentFleet,
+  .criticalMetrics {
+    min-height: auto;
+    margin-bottom: 12px;
+  }
+  
+  .intelligentAlerts {
+    position: sticky;
+    bottom: 0;
+    max-height: 150px;
+    z-index: 10;
+  }
+  
+  .sectionTitle {
+    font-size: 11px;
+  }
+  
+  .contentArea {
+    padding: 16px;
+  }
+  
+  .placeholderCard {
+    padding: 20px;
+  }
+}

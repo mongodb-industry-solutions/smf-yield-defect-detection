@@ -1,0 +1,194 @@
+.alertsPanel {
+  height: 100%;
+  background: linear-gradient(135deg, #f7f9fb 0%, #ffffff 100%);
+  border-radius: 8px;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.alertsList {
+  display: flex;
+  gap: 16px;
+  padding: 20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-height: 160px;
+  justify-content: center;
+  width: 100%;
+  max-width: 1400px;
+  scrollbar-width: thin;
+  scrollbar-color: #c1c7c6 #f0f2f4;
+}
+
+.alertsList::-webkit-scrollbar {
+  height: 6px;
+}
+
+.alertsList::-webkit-scrollbar-track {
+  background: #f0f2f4;
+  border-radius: 3px;
+}
+
+.alertsList::-webkit-scrollbar-thumb {
+  background: #c1c7c6;
+  border-radius: 3px;
+}
+
+.alertCard {
+  flex: 0 0 320px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e0e4e7;
+  padding: 16px;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  animation: slideInRight 0.4s ease-out backwards;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Stagger animation for alert cards */
+.alertCard:nth-child(1) { animation-delay: 0.1s; }
+.alertCard:nth-child(2) { animation-delay: 0.2s; }
+.alertCard:nth-child(3) { animation-delay: 0.3s; }
+.alertCard:nth-child(4) { animation-delay: 0.4s; }
+
+.alertCard:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.alertCard.critical {
+  border-left: 4px solid #e11900;
+}
+
+.alertCard.warning {
+  border-left: 4px solid #fbb13c;
+}
+
+.alertCard.predictive {
+  border-left: 4px solid #0884dc;
+}
+
+.alertCard.info {
+  border-left: 4px solid #00684a;
+}
+
+.alertHeader {
+  display: flex;
+  gap: 12px;
+}
+
+.alertIcon {
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.alertContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.alertTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.alertMessage {
+  color: #1e2d3d;
+  margin-bottom: 12px;
+  line-height: 1.5;
+}
+
+.correlation,
+.recommendation,
+.impact {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding: 8px;
+  background: #f7f9fb;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.correlation {
+  background: #fff9f0;
+  color: #7a5f00;
+}
+
+.recommendation {
+  background: #f0f9ff;
+  color: #004074;
+}
+
+.impact {
+  background: #fff0f0;
+  color: #740000;
+}
+
+.alertTime {
+  flex-shrink: 0;
+  color: #6b778c;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.noAlerts {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 48px;
+  text-align: center;
+  color: #6b778c;
+  width: 100%;
+  min-height: 160px;
+}
+
+/* Compact mode for smaller screens */
+@media (max-width: 1400px) {
+  .alertCard {
+    flex: 0 0 280px;
+  }
+}
+
+@media (max-width: 768px) {
+  .alertsList {
+    flex-direction: column;
+    overflow-x: hidden;
+    overflow-y: auto;
+    max-height: 400px;
+  }
+  
+  .alertCard {
+    flex: 1 1 auto;
+  }
+  
+  .alertHeader {
+    flex-direction: column;
+  }
+  
+  .alertTime {
+    align-self: flex-start;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #f0f2f4;
+    width: 100%;
+  }
+}

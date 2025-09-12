@@ -1,0 +1,162 @@
+.fabPulseBar {
+  background: linear-gradient(135deg, #ffffff 0%, #f7f9fb 100%);
+  border-bottom: 2px solid #e0e4e7;
+  padding: 10px 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  width: 100%;
+}
+
+.pulseContainer {
+  max-width: 1600px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.statusIndicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 24px;
+  border-right: 1px solid #e0e4e7;
+}
+
+.statusDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #00ed64;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 237, 100, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(0, 237, 100, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 237, 100, 0);
+  }
+}
+
+.statusText {
+  color: #00684a;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.pulseMetric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.metricLabel {
+  color: #5e6c84;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metricValue {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.value {
+  font-size: 24px;
+  color: #1e2d3d;
+  line-height: 1;
+}
+
+.trendIcon {
+  transition: all 0.2s ease;
+}
+
+.positive {
+  color: #00ed64;
+}
+
+.negative {
+  color: #e11900;
+}
+
+.neutral {
+  color: #6b778c;
+}
+
+/* Severity states */
+.critical .value {
+  color: #e11900;
+}
+
+.warning .value {
+  color: #fbb13c;
+}
+
+.good .value {
+  color: #00684a;
+}
+
+/* Responsive */
+@media (max-width: 1400px) {
+  .pulseContainer {
+    gap: 24px;
+  }
+  
+  .value {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .pulseContainer {
+    gap: 16px;
+  }
+  
+  .metricLabel {
+    font-size: 10px;
+  }
+  
+  .value {
+    font-size: 18px;
+  }
+}
+
+@media (max-width: 768px) {
+  .fabPulseBar {
+    padding: 8px 16px;
+  }
+  
+  .pulseContainer {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  
+  .statusIndicator {
+    width: 100%;
+    padding-right: 0;
+    border-right: none;
+    border-bottom: 1px solid #e0e4e7;
+    padding-bottom: 8px;
+    margin-bottom: 4px;
+  }
+  
+  .pulseMetric {
+    flex: 0 0 calc(50% - 6px);
+  }
+  
+  .value {
+    font-size: 16px;
+  }
+}

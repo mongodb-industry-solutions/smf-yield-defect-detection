@@ -1,0 +1,306 @@
+.yieldMapCard {
+  height: auto;
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  background: transparent;
+  border-radius: 0;
+  border: none;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.titleSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.processing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #6b778c;
+}
+
+.spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #e0e4e7;
+  border-top-color: #0884dc;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.batchSelector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: rgba(247, 249, 251, 0.5);
+  border-radius: 6px;
+  margin-bottom: 12px;
+}
+
+.batchTabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+}
+
+.batchTab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(224, 228, 231, 0.5);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 70px;
+}
+
+.batchTab:hover {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+}
+
+.batchTab.active {
+  background: #00684a;
+  border-color: #00684a;
+  color: white;
+}
+
+.batchLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: inherit;
+}
+
+.batchTab.active .batchLabel {
+  color: white;
+}
+
+.batchYield {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.batchYield.critical {
+  color: #e11900;
+}
+
+.batchYield.warning {
+  color: #fbb13c;
+}
+
+.batchYield.good {
+  color: #00684a;
+}
+
+.batchTab.active .batchYield {
+  color: white;
+}
+
+.lotInfo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(247, 249, 251, 0.5);
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.lotBadge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(255, 255, 255, 0.7);
+  border-radius: 4px;
+  border: 1px solid rgba(224, 228, 231, 0.5);
+}
+
+.mapContainer {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(250, 251, 252, 0.3);
+  border-radius: 8px;
+  margin-bottom: 16px;
+  min-height: 420px;
+  overflow: visible;
+  position: relative;
+}
+
+.waferCanvas {
+  background: transparent;
+  transition: opacity 0.3s ease;
+  flex-shrink: 0;
+  display: block;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.waferCanvas.processing {
+  opacity: 0.5;
+}
+
+.mapStats {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  min-width: 180px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.statDivider {
+  height: 1px;
+  background: rgba(224, 228, 231, 0.5);
+  margin: 8px 0;
+}
+
+.trendIndicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.patternBadge {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(247, 249, 251, 0.5);
+  border-radius: 4px;
+  width: fit-content;
+}
+
+.defectCount {
+  color: #e11900;
+  font-size: 16px;
+}
+
+.goodCount {
+  color: #00684a;
+  font-size: 16px;
+}
+
+.legend {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  padding: 12px;
+  background: rgba(247, 249, 251, 0.3);
+  border-radius: 6px;
+  margin-bottom: 16px;
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legendColor {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.legendColor.good {
+  background: #00ed64;
+}
+
+.legendColor.defect {
+  background: #e11900;
+}
+
+.legendColor.edge {
+  background: #c1c7c6;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid #e0e4e7;
+}
+
+.updateTime {
+  color: #6b778c;
+  font-size: 11px;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+  color: #6b778c;
+}
+
+.actions svg {
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.actions svg:hover {
+  color: #0884dc;
+}
+
+@media (max-width: 1200px) {
+  .mapContainer {
+    flex-direction: column;
+  }
+  
+  .mapStats {
+    flex-direction: row;
+    justify-content: space-around;
+    width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .waferCanvas {
+    width: 200px !important;
+    height: 200px !important;
+  }
+  
+  .legend {
+    gap: 12px;
+    font-size: 12px;
+  }
+}

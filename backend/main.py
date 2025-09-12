@@ -1,7 +1,7 @@
 from db.mdb import MongoDBConnector
 
 import logging
-import datetime
+from datetime import datetime, timedelta, timezone
 
 import json
 from bson import ObjectId
@@ -114,7 +114,7 @@ async def run_agent(query_reported: str = Query("Default query reported by the u
         "updates": [],
         "thread_id": ""
     }
-    thread_id = f"thread_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    thread_id = f"thread_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     initial_state["thread_id"] = thread_id
     config = {"configurable": {"thread_id": thread_id}}
     try:
@@ -136,7 +136,7 @@ async def run_agent(query_reported: str = Query("Default query reported by the u
                 session_metadata = {
                     "thread_id": thread_id,
                     "query_reported": query_reported,
-                    "created_at": datetime.datetime.now(datetime.timezone.utc),
+                    "created_at": datetime.now(timezone.utc),
                     "status": "completed",
                     "recommendation": final_state["recommendation_text"]
                 }
@@ -154,7 +154,7 @@ async def run_agent(query_reported: str = Query("Default query reported by the u
                 session_metadata = {
                     "thread_id": thread_id,
                     "query_reported": query_reported,
-                    "created_at": datetime.datetime.now(datetime.timezone.utc),
+                    "created_at": datetime.now(timezone.utc),
                     "status": "error",
                     "error_message": str(e)
                 }
@@ -614,6 +614,363 @@ async def get_alert_statistics(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ====================== Real-time Monitoring Dashboard APIs ======================
+
+@app.get("/sensors/realtime")
+async def get_realtime_sensors(
+    equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
+    metric: Optional[str] = Query(None, description="Specific metric to retrieve"),
+    limit: int = Query(50, description="Number of records to return")
+):
+    """
+    Get real-time sensor data for monitoring dashboard
+    """
+    try:
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            sensor_collection = mdb_connector.get_collection(MDB_TIMESERIES_COLLECTION)
+            
+            # Build query
+            query = {}
+            if equipment_id:
+                query["equipment_id"] = equipment_id
+            
+            # Get latest sensor readings
+            pipeline = [
+                {"$match": query},
+                {"$sort": {"timestamp": -1}},
+                {"$limit": limit}
+            ]
+            
+            if equipment_id:
+                # Get single equipment data
+                sensors = list(sensor_collection.aggregate(pipeline))
+            else:
+                # Get latest from each equipment
+                pipeline = [
+                    {"$sort": {"timestamp": -1}},
+                    {"$group": {
+                        "_id": "$equipment_id",
+                        "latest": {"$first": "$$ROOT"}
+                    }},
+                    {"$replaceRoot": {"newRoot": "$latest"}},
+                    {"$limit": limit}
+                ]
+                sensors = list(sensor_collection.aggregate(pipeline))
+            
+            # Convert ObjectIds
+            sensors = convert_objectids(sensors)
+            
+            return {
+                "count": len(sensors),
+                "data": sensors
+            }
+            
+    except Exception as e:
+        logger.error(f"Error fetching realtime sensors: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/sensors/stream/{equipment_id}")
+async def get_sensor_stream(
+    equipment_id: str,
+    window_minutes: int = Query(60, description="Time window in minutes"),
+    interval: int = Query(1, description="Data point interval in minutes")
+):
+    """
+    Get sensor data stream for specific equipment
+    """
+    try:
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            sensor_collection = mdb_connector.get_collection(MDB_TIMESERIES_COLLECTION)
+            
+            # Calculate time window
+            end_time = datetime.now()
+            start_time = end_time - timedelta(minutes=window_minutes)
+            
+            # Aggregate data with time buckets
+            pipeline = [
+                {"$match": {
+                    "equipment_id": equipment_id,
+                    "timestamp": {"$gte": start_time, "$lte": end_time}
+                }},
+                {"$sort": {"timestamp": 1}},
+                {"$group": {
+                    "_id": {
+                        "$dateTrunc": {
+                            "date": "$timestamp",
+                            "unit": "minute",
+                            "binSize": interval
+                        }
+                    },
+                    "metrics": {"$avg": "$metrics"},
+                    "count": {"$sum": 1}
+                }},
+                {"$sort": {"_id": 1}}
+            ]
+            
+            data_points = list(sensor_collection.aggregate(pipeline))
+            
+            # Format response
+            formatted_data = []
+            for point in data_points:
+                formatted_data.append({
+                    "timestamp": point["_id"],
+                    "metrics": point["metrics"],
+                    "sample_count": point["count"]
+                })
+            
+            return {
+                "equipment_id": equipment_id,
+                "window_minutes": window_minutes,
+                "interval_minutes": interval,
+                "data_points": formatted_data,
+                "count": len(formatted_data)
+            }
+            
+    except Exception as e:
+        logger.error(f"Error fetching sensor stream for {equipment_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/wafers/latest")
+async def get_latest_wafers(
+    limit: int = Query(10, description="Number of wafers to return"),
+    pattern: Optional[str] = Query(None, description="Filter by defect pattern"),
+    min_yield: Optional[float] = Query(None, description="Minimum yield percentage")
+):
+    """
+    Get latest wafer inspection results
+    """
+    try:
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            wafer_collection = mdb_connector.get_collection("wafer_defects")
+            
+            # Build query
+            query = {}
+            if pattern:
+                query["defect_summary.defect_pattern"] = pattern
+            if min_yield:
+                query["defect_summary.yield_percentage"] = {"$gte": min_yield}
+            
+            # Get latest wafers
+            wafers = list(wafer_collection.find(query).sort("inspection_timestamp", -1).limit(limit))
+            
+            # Remove large image data for API response
+            for wafer in wafers:
+                if "ink_map" in wafer and "thumbnail_base64" in wafer["ink_map"]:
+                    # Keep only first 100 chars of thumbnail for preview
+                    wafer["ink_map"]["has_thumbnail"] = True
+                    wafer["ink_map"]["thumbnail_preview"] = wafer["ink_map"]["thumbnail_base64"][:100] + "..."
+                    del wafer["ink_map"]["thumbnail_base64"]
+            
+            wafers = convert_objectids(wafers)
+            
+            return {
+                "count": len(wafers),
+                "wafers": wafers
+            }
+            
+    except Exception as e:
+        logger.error(f"Error fetching latest wafers: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/wafers/batches")
+async def get_wafer_batches(
+    limit: int = Query(5, description="Number of batches to return"),
+    include_stats: bool = Query(True, description="Include batch statistics")
+):
+    """
+    Get wafer batch history with statistics
+    """
+    try:
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            wafer_collection = mdb_connector.get_collection("wafer_defects")
+            
+            # Aggregate by lot_id to get batches
+            pipeline = [
+                {"$sort": {"inspection_timestamp": -1}},
+                {"$group": {
+                    "_id": "$lot_id",
+                    "batch_timestamp": {"$first": "$inspection_timestamp"},
+                    "wafer_count": {"$sum": 1},
+                    "avg_yield": {"$avg": "$defect_summary.yield_percentage"},
+                    "min_yield": {"$min": "$defect_summary.yield_percentage"},
+                    "max_yield": {"$max": "$defect_summary.yield_percentage"},
+                    "patterns": {"$addToSet": "$defect_summary.defect_pattern"},
+                    "wafers": {"$push": {
+                        "wafer_id": "$wafer_id",
+                        "yield": "$defect_summary.yield_percentage",
+                        "pattern": "$defect_summary.defect_pattern"
+                    }}
+                }},
+                {"$sort": {"batch_timestamp": -1}},
+                {"$limit": limit}
+            ]
+            
+            batches = list(wafer_collection.aggregate(pipeline))
+            
+            # Format response
+            formatted_batches = []
+            for batch in batches:
+                batch_data = {
+                    "lot_id": batch["_id"],
+                    "timestamp": batch["batch_timestamp"],
+                    "wafer_count": batch["wafer_count"]
+                }
+                
+                if include_stats:
+                    batch_data.update({
+                        "avg_yield": round(batch["avg_yield"], 2),
+                        "min_yield": round(batch["min_yield"], 2),
+                        "max_yield": round(batch["max_yield"], 2),
+                        "defect_patterns": batch["patterns"],
+                        "wafer_details": batch["wafers"][:5]  # Limit details
+                    })
+                
+                formatted_batches.append(batch_data)
+            
+            return {
+                "count": len(formatted_batches),
+                "batches": formatted_batches
+            }
+            
+    except Exception as e:
+        logger.error(f"Error fetching wafer batches: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/equipment/status")
+async def get_equipment_status():
+    """
+    Get equipment fleet status matrix
+    """
+    try:
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            sensor_collection = mdb_connector.get_collection(MDB_TIMESERIES_COLLECTION)
+            
+            # Get latest status for each equipment
+            pipeline = [
+                {"$sort": {"timestamp": -1}},
+                {"$group": {
+                    "_id": "$equipment_id",
+                    "latest_reading": {"$first": "$$ROOT"},
+                    "avg_metrics": {"$avg": "$metrics"}
+                }},
+                {"$project": {
+                    "equipment_id": "$_id",
+                    "process_step": "$latest_reading.process_step",
+                    "last_update": "$latest_reading.timestamp",
+                    "current_metrics": "$latest_reading.metrics",
+                    "status": {
+                        "$cond": {
+                            "if": {"$gt": ["$latest_reading.metrics.particle_count", 1000]},
+                            "then": "critical",
+                            "else": {
+                                "$cond": {
+                                    "if": {"$gt": ["$latest_reading.metrics.particle_count", 800]},
+                                    "then": "warning",
+                                    "else": "good"
+                                }
+                            }
+                        }
+                    }
+                }}
+            ]
+            
+            equipment_list = list(sensor_collection.aggregate(pipeline))
+            
+            # Group by process type
+            equipment_matrix = {}
+            for eq in equipment_list:
+                process = eq.get("process_step", "UNKNOWN")
+                if process not in equipment_matrix:
+                    equipment_matrix[process] = []
+                
+                equipment_matrix[process].append({
+                    "equipment_id": eq["equipment_id"],
+                    "status": eq["status"],
+                    "metrics": eq["current_metrics"],
+                    "last_update": eq["last_update"]
+                })
+            
+            return {
+                "matrix": equipment_matrix,
+                "total_equipment": len(equipment_list),
+                "timestamp": datetime.now().isoformat()
+            }
+            
+    except Exception as e:
+        logger.error(f"Error fetching equipment status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/equipment/{equipment_id}/metrics")
+async def get_equipment_metrics(
+    equipment_id: str,
+    hours: int = Query(24, description="Time window in hours")
+):
+    """
+    Get detailed metrics for specific equipment
+    """
+    try:
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            sensor_collection = mdb_connector.get_collection(MDB_TIMESERIES_COLLECTION)
+            
+            # Calculate time window
+            end_time = datetime.now()
+            start_time = end_time - timedelta(hours=hours)
+            
+            # Get metrics statistics
+            pipeline = [
+                {"$match": {
+                    "equipment_id": equipment_id,
+                    "timestamp": {"$gte": start_time, "$lte": end_time}
+                }},
+                {"$group": {
+                    "_id": None,
+                    "total_readings": {"$sum": 1},
+                    "avg_particle_count": {"$avg": "$metrics.particle_count"},
+                    "max_particle_count": {"$max": "$metrics.particle_count"},
+                    "min_particle_count": {"$min": "$metrics.particle_count"},
+                    "avg_rf_power": {"$avg": "$metrics.rf_power"},
+                    "avg_temperature": {"$avg": "$metrics.temperature"},
+                    "avg_pressure": {"$avg": "$metrics.chamber_pressure"},
+                    "excursions": {
+                        "$sum": {
+                            "$cond": [{"$gt": ["$metrics.particle_count", 1000]}, 1, 0]
+                        }
+                    }
+                }}
+            ]
+            
+            stats = list(sensor_collection.aggregate(pipeline))
+            
+            if not stats:
+                return {
+                    "equipment_id": equipment_id,
+                    "message": "No data available for specified time window"
+                }
+            
+            metrics = stats[0]
+            del metrics["_id"]
+            
+            # Calculate utilization (simplified)
+            utilization = min(100, (metrics["total_readings"] / (hours * 60)) * 100)
+            
+            return {
+                "equipment_id": equipment_id,
+                "time_window_hours": hours,
+                "metrics": metrics,
+                "utilization_percentage": round(utilization, 2),
+                "health_score": 100 - (metrics.get("excursions", 0) * 10)  # Simple health score
+            }
+            
+    except Exception as e:
+        logger.error(f"Error fetching equipment metrics for {equipment_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.websocket("/ws/alerts")
 async def websocket_alerts(websocket: WebSocket):
     """
@@ -637,6 +994,93 @@ async def websocket_alerts(websocket: WebSocket):
         logger.error(f"WebSocket error: {e}")
         if websocket in active_connections:
             active_connections.remove(websocket)
+
+
+@app.websocket("/ws/sensors")
+async def websocket_sensors(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time sensor data streaming
+    """
+    await websocket.accept()
+    
+    try:
+        # Send initial data
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            sensor_collection = mdb_connector.get_collection(MDB_TIMESERIES_COLLECTION)
+            
+            while True:
+                # Get latest sensor data
+                pipeline = [
+                    {"$sort": {"timestamp": -1}},
+                    {"$group": {
+                        "_id": "$equipment_id",
+                        "latest": {"$first": "$$ROOT"}
+                    }},
+                    {"$replaceRoot": {"newRoot": "$latest"}},
+                    {"$limit": 10}
+                ]
+                
+                sensors = list(sensor_collection.aggregate(pipeline))
+                sensors = convert_objectids(sensors)
+                
+                # Send to client
+                await websocket.send_json({
+                    "type": "sensor_update",
+                    "timestamp": datetime.now().isoformat(),
+                    "data": sensors
+                })
+                
+                # Wait before next update
+                await asyncio.sleep(2)  # Update every 2 seconds
+                
+    except WebSocketDisconnect:
+        logger.info("Sensor WebSocket client disconnected")
+    except Exception as e:
+        logger.error(f"Sensor WebSocket error: {e}")
+        await websocket.close()
+
+
+@app.websocket("/ws/wafers")
+async def websocket_wafers(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time wafer updates
+    """
+    await websocket.accept()
+    
+    try:
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            wafer_collection = mdb_connector.get_collection("wafer_defects")
+            
+            while True:
+                # Get latest wafer inspection
+                latest_wafer = wafer_collection.find_one(
+                    {},
+                    sort=[("inspection_timestamp", -1)]
+                )
+                
+                if latest_wafer:
+                    # Remove large image data
+                    if "ink_map" in latest_wafer and "thumbnail_base64" in latest_wafer["ink_map"]:
+                        latest_wafer["ink_map"]["has_thumbnail"] = True
+                        del latest_wafer["ink_map"]["thumbnail_base64"]
+                    
+                    latest_wafer = convert_objectids(latest_wafer)
+                    
+                    # Send to client
+                    await websocket.send_json({
+                        "type": "wafer_update",
+                        "timestamp": datetime.now().isoformat(),
+                        "wafer": latest_wafer
+                    })
+                
+                # Wait before next update
+                await asyncio.sleep(5)  # Update every 5 seconds
+                
+    except WebSocketDisconnect:
+        logger.info("Wafer WebSocket client disconnected")
+    except Exception as e:
+        logger.error(f"Wafer WebSocket error: {e}")
+        await websocket.close()
 
 
 async def run_monitoring_loop():
@@ -989,7 +1433,7 @@ async def start_agent_session(
                     "result": result,
                     "recommendation_text": result.get("recommendation_text", ""),
                     "chain_of_thought": result.get("chain_of_thought", ""),
-                    "completed_at": datetime.datetime.now(datetime.timezone.utc)
+                    "completed_at": datetime.now(timezone.utc)
                 })
                 
                 logger.info(f"Agent session {session_id} completed successfully")
@@ -999,7 +1443,7 @@ async def start_agent_session(
                 await session_manager.update_session(session_id, {
                     "status": "failed",
                     "error": str(e),
-                    "failed_at": datetime.datetime.now(datetime.timezone.utc)
+                    "failed_at": datetime.now(timezone.utc)
                 })
         
         # Start the workflow in background but track it
@@ -1084,7 +1528,7 @@ async def resume_agent_session(session_id: str):
                     "result": result,
                     "recommendation_text": result.get("recommendation_text", ""),
                     "chain_of_thought": result.get("chain_of_thought", ""),
-                    "completed_at": datetime.datetime.now(datetime.timezone.utc)
+                    "completed_at": datetime.now(timezone.utc)
                 })
                 logger.info(f"Resumed session {session_id} completed")
             except Exception as e:
