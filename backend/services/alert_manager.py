@@ -7,10 +7,8 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from enum import Enum
 import logging
-from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo import DESCENDING
+from pymongo import MongoClient, DESCENDING
 from pymongo.errors import DuplicateKeyError
-import asyncio
 from bson import ObjectId
 
 logging.basicConfig(level=logging.INFO)
@@ -54,12 +52,12 @@ class AlertManager:
             mongodb_uri: MongoDB connection string
             database_name: Database name
         """
-        self.client = AsyncIOMotorClient(mongodb_uri)
+        self.client = MongoClient(mongodb_uri)
         self.db = self.client[database_name]
         self.alerts_collection = self.db["alerts"]
         self.alert_history_collection = self.db["alert_history"]
         
-        # Note: Call await alert_manager.initialize() after creation to set up indexes
+        # Note: Call alert_manager.initialize() after creation to set up indexes
         
         # Alert thresholds and rules
         self.severity_rules = {
@@ -85,32 +83,32 @@ class AlertManager:
             }
         }
     
-    async def initialize(self):
+    def initialize(self):
         """Initialize collections and indexes (must be called after creation)"""
-        await self._initialize_collections()
+        self._initialize_collections()
         logger.info("Alert Manager initialized")
         
-    async def _initialize_collections(self):
+    def _initialize_collections(self):
         """Create indexes for alert collections"""
         try:
             # Alerts collection indexes
-            await self.alerts_collection.create_index("alert_id", unique=True)
-            await self.alerts_collection.create_index([("timestamp", DESCENDING)])
-            await self.alerts_collection.create_index("status")
-            await self.alerts_collection.create_index("severity")
-            await self.alerts_collection.create_index("alert_type")
-            await self.alerts_collection.create_index("equipment_id")
-            await self.alerts_collection.create_index([("status", 1), ("severity", -1)])
+            self.alerts_collection.create_index("alert_id", unique=True)
+            self.alerts_collection.create_index([("timestamp", DESCENDING)])
+            self.alerts_collection.create_index("status")
+            self.alerts_collection.create_index("severity")
+            self.alerts_collection.create_index("alert_type")
+            self.alerts_collection.create_index("equipment_id")
+            self.alerts_collection.create_index([("status", 1), ("severity", -1)])
             
             # Alert history indexes
-            await self.alert_history_collection.create_index("alert_id")
-            await self.alert_history_collection.create_index([("timestamp", DESCENDING)])
+            self.alert_history_collection.create_index("alert_id")
+            self.alert_history_collection.create_index([("timestamp", DESCENDING)])
             
             logger.info("Alert collections initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing collections: {e}")
     
-    async def create_alert(
+    def create_alert(
         self,
         alert_type: AlertType,
         severity: AlertSeverity,
@@ -167,13 +165,13 @@ class AlertManager:
                 "escalation_level": 0
             }
             
-            await self.alerts_collection.insert_one(alert_doc)
+            self.alerts_collection.insert_one(alert_doc)
             
             # Add to history
-            await self._add_to_history(alert_id, "created", f"Alert created: {title}")
+            self._add_to_history(alert_id, "created", f"Alert created: {title}")
             
             # Send notifications based on severity
-            await self._send_notifications(alert_id, severity)
+            self._send_notifications(alert_id, severity)
             
             logger.info(f"Alert created: {alert_id} - {title} [{severity.value}]")
             return alert_id
@@ -185,7 +183,7 @@ class AlertManager:
             logger.error(f"Error creating alert: {e}")
             raise
     
-    async def acknowledge_alert(self, alert_id: str, acknowledged_by: str, notes: Optional[str] = None) -> bool:
+    def acknowledge_alert(self, alert_id: str, acknowledged_by: str, notes: Optional[str] = None) -> bool:
         """
         Acknowledge an alert
         
@@ -198,7 +196,7 @@ class AlertManager:
             Success status
         """
         try:
-            result = await self.alerts_collection.update_one(
+            result = self.alerts_collection.update_one(
                 {"alert_id": alert_id, "status": AlertStatus.OPEN.value},
                 {
                     "$set": {
@@ -211,7 +209,7 @@ class AlertManager:
             )
             
             if result.modified_count > 0:
-                await self._add_to_history(
+                self._add_to_history(
                     alert_id, 
                     "acknowledged", 
                     f"Alert acknowledged by {acknowledged_by}"
@@ -224,7 +222,7 @@ class AlertManager:
             logger.error(f"Error acknowledging alert {alert_id}: {e}")
             return False
     
-    async def update_alert_status(
+    def update_alert_status(
         self,
         alert_id: str,
         status: AlertStatus,
@@ -252,13 +250,13 @@ class AlertManager:
             if notes:
                 update_doc[f"{status.value}_notes"] = notes
                 
-            result = await self.alerts_collection.update_one(
+            result = self.alerts_collection.update_one(
                 {"alert_id": alert_id},
                 {"$set": update_doc}
             )
             
             if result.modified_count > 0:
-                await self._add_to_history(
+                self._add_to_history(
                     alert_id,
                     f"status_changed_{status.value}",
                     f"Status changed to {status.value} by {updated_by}"
@@ -271,7 +269,7 @@ class AlertManager:
             logger.error(f"Error updating alert {alert_id} status: {e}")
             return False
     
-    async def add_correlation_data(self, alert_id: str, correlation_data: Dict[str, Any]) -> bool:
+    def add_correlation_data(self, alert_id: str, correlation_data: Dict[str, Any]) -> bool:
         """
         Add correlation analysis results to an alert
         
@@ -283,7 +281,7 @@ class AlertManager:
             Success status
         """
         try:
-            result = await self.alerts_collection.update_one(
+            result = self.alerts_collection.update_one(
                 {"alert_id": alert_id},
                 {
                     "$set": {
@@ -294,7 +292,7 @@ class AlertManager:
             )
             
             if result.modified_count > 0:
-                await self._add_to_history(
+                self._add_to_history(
                     alert_id,
                     "correlation_added",
                     "Correlation analysis results added"
@@ -306,7 +304,7 @@ class AlertManager:
             logger.error(f"Error adding correlation data to alert {alert_id}: {e}")
             return False
     
-    async def add_rca_recommendations(self, alert_id: str, recommendations: List[Dict[str, Any]]) -> bool:
+    def add_rca_recommendations(self, alert_id: str, recommendations: List[Dict[str, Any]]) -> bool:
         """
         Add RCA recommendations to an alert
         
@@ -318,7 +316,7 @@ class AlertManager:
             Success status
         """
         try:
-            result = await self.alerts_collection.update_one(
+            result = self.alerts_collection.update_one(
                 {"alert_id": alert_id},
                 {
                     "$set": {
@@ -329,7 +327,7 @@ class AlertManager:
             )
             
             if result.modified_count > 0:
-                await self._add_to_history(
+                self._add_to_history(
                     alert_id,
                     "rca_added",
                     f"Added {len(recommendations)} RCA recommendations"
@@ -341,7 +339,7 @@ class AlertManager:
             logger.error(f"Error adding RCA recommendations to alert {alert_id}: {e}")
             return False
     
-    async def get_active_alerts(
+    def get_active_alerts(
         self,
         severity: Optional[AlertSeverity] = None,
         alert_type: Optional[AlertType] = None,
@@ -376,10 +374,8 @@ class AlertManager:
             if equipment_id:
                 query["equipment_id"] = equipment_id
             
-            cursor = self.alerts_collection.find(query)
-            cursor.sort([("severity", 1), ("timestamp", -1)])
-            cursor.limit(limit)
-            alerts = await cursor.to_list(length=limit)
+            cursor = self.alerts_collection.find(query).sort([("severity", 1), ("timestamp", -1)])
+            alerts = list(cursor.limit(limit))
             
             return alerts
             
@@ -387,7 +383,7 @@ class AlertManager:
             logger.error(f"Error retrieving active alerts: {e}")
             return []
     
-    async def get_alert_by_id(self, alert_id: str) -> Optional[Dict[str, Any]]:
+    def get_alert_by_id(self, alert_id: str) -> Optional[Dict[str, Any]]:
         """
         Get alert by ID
         
@@ -398,12 +394,12 @@ class AlertManager:
             Alert document or None
         """
         try:
-            return await self.alerts_collection.find_one({"alert_id": alert_id})
+            return self.alerts_collection.find_one({"alert_id": alert_id})
         except Exception as e:
             logger.error(f"Error retrieving alert {alert_id}: {e}")
             return None
     
-    async def get_alert_history(self, alert_id: str) -> List[Dict[str, Any]]:
+    def get_alert_history(self, alert_id: str) -> List[Dict[str, Any]]:
         """
         Get alert history
         
@@ -414,14 +410,13 @@ class AlertManager:
             List of history entries
         """
         try:
-            cursor = self.alert_history_collection.find({"alert_id": alert_id})
-            cursor.sort("timestamp", -1)
-            return await cursor.to_list(length=None)
+            cursor = self.alert_history_collection.find({"alert_id": alert_id}).sort("timestamp", -1)
+            return list(cursor)
         except Exception as e:
             logger.error(f"Error retrieving alert history for {alert_id}: {e}")
             return []
     
-    async def escalate_alert(self, alert_id: str, reason: str) -> bool:
+    def escalate_alert(self, alert_id: str, reason: str) -> bool:
         """
         Escalate an alert to higher priority
         
@@ -433,7 +428,7 @@ class AlertManager:
             Success status
         """
         try:
-            alert = await self.get_alert_by_id(alert_id)
+            alert = self.get_alert_by_id(alert_id)
             if not alert:
                 return False
             
@@ -448,7 +443,7 @@ class AlertManager:
             elif current_severity == AlertSeverity.HIGH.value:
                 new_severity = AlertSeverity.CRITICAL.value
             
-            result = await self.alerts_collection.update_one(
+            result = self.alerts_collection.update_one(
                 {"alert_id": alert_id},
                 {
                     "$set": {
@@ -461,14 +456,14 @@ class AlertManager:
             )
             
             if result.modified_count > 0:
-                await self._add_to_history(
+                self._add_to_history(
                     alert_id,
                     "escalated",
                     f"Alert escalated from {current_severity} to {new_severity}: {reason}"
                 )
                 
                 # Send escalation notifications
-                await self._send_escalation_notification(alert_id, new_severity, reason)
+                self._send_escalation_notification(alert_id, new_severity, reason)
                 
                 return True
             return False
@@ -477,7 +472,7 @@ class AlertManager:
             logger.error(f"Error escalating alert {alert_id}: {e}")
             return False
     
-    async def auto_close_resolved_alerts(self, age_days: int = 7) -> int:
+    def auto_close_resolved_alerts(self, age_days: int = 7) -> int:
         """
         Automatically close resolved alerts older than specified days
         
@@ -490,7 +485,7 @@ class AlertManager:
         try:
             cutoff_date = datetime.now() - timedelta(days=age_days)
             
-            result = await self.alerts_collection.update_many(
+            result = self.alerts_collection.update_many(
                 {
                     "status": AlertStatus.RESOLVED.value,
                     "resolved_at": {"$lt": cutoff_date}
@@ -513,7 +508,7 @@ class AlertManager:
             logger.error(f"Error auto-closing alerts: {e}")
             return 0
     
-    async def get_alert_statistics(self, time_window_hours: int = 24) -> Dict[str, Any]:
+    def get_alert_statistics(self, time_window_hours: int = 24) -> Dict[str, Any]:
         """
         Get alert statistics for dashboard
         
@@ -550,8 +545,7 @@ class AlertManager:
                 }
             ]
             
-            cursor = self.alerts_collection.aggregate(pipeline)
-            result = await cursor.to_list(length=None)
+            result = list(self.alerts_collection.aggregate(pipeline))
             
             if result:
                 stats = result[0]
@@ -607,7 +601,7 @@ class AlertManager:
             f"{severity.value.capitalize()} {alert_type.value.replace('_', ' ')}"
         )
     
-    async def _add_to_history(self, alert_id: str, action: str, description: str):
+    def _add_to_history(self, alert_id: str, action: str, description: str):
         """Add entry to alert history"""
         try:
             history_entry = {
@@ -616,18 +610,18 @@ class AlertManager:
                 "action": action,
                 "description": description
             }
-            await self.alert_history_collection.insert_one(history_entry)
+            self.alert_history_collection.insert_one(history_entry)
         except Exception as e:
             logger.error(f"Error adding to alert history: {e}")
     
-    async def _send_notifications(self, alert_id: str, severity: AlertSeverity):
+    def _send_notifications(self, alert_id: str, severity: AlertSeverity):
         """Send notifications based on alert severity"""
         # In production, this would integrate with notification services
         # For now, just log the notification
         logger.info(f"Notification sent for alert {alert_id} with severity {severity.value}")
         
         # Update alert document
-        await self.alerts_collection.update_one(
+        self.alerts_collection.update_one(
             {"alert_id": alert_id},
             {
                 "$push": {
@@ -640,11 +634,11 @@ class AlertManager:
             }
         )
     
-    async def _send_escalation_notification(self, alert_id: str, severity: str, reason: str):
+    def _send_escalation_notification(self, alert_id: str, severity: str, reason: str):
         """Send escalation notification"""
         logger.info(f"Escalation notification sent for alert {alert_id}: {reason}")
         
-        await self.alerts_collection.update_one(
+        self.alerts_collection.update_one(
             {"alert_id": alert_id},
             {
                 "$push": {

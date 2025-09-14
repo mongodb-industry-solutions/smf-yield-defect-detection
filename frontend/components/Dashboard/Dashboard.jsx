@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from './Header';
 import Navigation from './Navigation';
 import Card from '@leafygreen-ui/card';
@@ -19,11 +19,11 @@ import LiveParticleMonitor from './LiveParticleMonitor';
 import LiveWaferYieldMap from './LiveWaferYieldMap';
 import ProcessHealthMatrix from './ProcessHealthMatrix';
 
-// Import data
-import { equipmentStatus, fabMetrics } from '@/lib/mockData';
+// Import API services
+import { equipmentAPI } from '@/lib/api';
 
 // Import utilities
-import { WebSocketProvider } from '@/lib/websocket';
+import { WebSocketProvider } from '@/lib/websocket-native';
 import styles from './Dashboard.module.css';
 
 const Dashboard = () => {
@@ -32,12 +32,113 @@ const Dashboard = () => {
   const [statusFilter, setStatusFilter] = useState('all');
   const [typeFilter, setTypeFilter] = useState('all');
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
+  const [equipmentData, setEquipmentData] = useState([]);
+  const [isLoadingEquipment, setIsLoadingEquipment] = useState(true);
+  
+  // Transform backend equipment data to frontend format
+  const transformEquipmentData = (backendData) => {
+    const transformed = [];
+    
+    if (!backendData || !backendData.matrix) return [];
+    
+    Object.entries(backendData.matrix).forEach(([processType, equipmentList]) => {
+      equipmentList.forEach(eq => {
+        const metrics = eq.metrics || {};
+        
+        // Determine status based on thresholds
+        let status = 'good';
+        if (metrics.particle_count > 1200) status = 'critical';
+        else if (metrics.particle_count > 1000) status = 'warning';
+        else if (metrics.rf_power < 10) status = 'idle';
+        else if (metrics.temperature > 100) status = 'warning';
+        
+        // Calculate utilization
+        const utilization = metrics.rf_power ? 
+          Math.min(100, Math.round((metrics.rf_power / 1500) * 100)) : 50;
+        
+        // Transform metrics to frontend format
+        const transformedMetrics = {
+          particle_count: {
+            value: metrics.particle_count || 0,
+            status: metrics.particle_count > 1200 ? 'critical' : 
+                   metrics.particle_count > 1000 ? 'warning' : 'good',
+            threshold: 1000
+          },
+          pressure: {
+            value: metrics.chamber_pressure || 0,
+            status: metrics.chamber_pressure > 50 ? 'warning' : 'good',
+            threshold: 50
+          },
+          temperature: {
+            value: metrics.temperature || 0,
+            status: metrics.temperature > 100 ? 'warning' : 'good',
+            threshold: 100
+          },
+          rf_power: {
+            value: metrics.rf_power || 0,
+            status: metrics.rf_power > 1500 ? 'warning' : 
+                   metrics.rf_power < 10 ? 'idle' : 'good',
+            threshold: 1500
+          },
+          flow_rate: {
+            value: metrics.flow_rate || 0,
+            status: metrics.flow_rate < 5 ? 'warning' : 'good',
+            threshold: 100
+          }
+        };
+        
+        transformed.push({
+          id: eq.equipment_id,
+          name: eq.equipment_id.replace('_', '-'),
+          type: processType,
+          status: status,
+          utilization: utilization,
+          currentLot: `L-${Math.floor(Math.random() * 9000) + 1000}`,
+          nextMaintenance: `${Math.floor(Math.random() * 168)}h`,
+          lastMaintenance: `${Math.floor(Math.random() * 7)} days ago`,
+          metrics: transformedMetrics,
+          lastUpdate: eq.last_update
+        });
+      });
+    });
+    
+    return transformed;
+  };
+  
+  // Fetch equipment status from backend
+  const fetchEquipmentStatus = async () => {
+    try {
+      const response = await equipmentAPI.getEquipmentStatus();
+      const transformed = transformEquipmentData(response);
+      setEquipmentData(transformed);
+    } catch (error) {
+      console.error('Error fetching equipment status:', error);
+      // Could fall back to mock data here if needed
+    } finally {
+      setIsLoadingEquipment(false);
+    }
+  };
+  
+  useEffect(() => {
+    // Fetch equipment data on mount
+    fetchEquipmentStatus();
+    
+    // Refresh every 10 seconds
+    const interval = setInterval(() => {
+      fetchEquipmentStatus();
+    }, 10000);
+    
+    return () => clearInterval(interval);
+  }, []);
   
   const renderTabContent = () => {
     switch(activeTab) {
       case 'monitoring':
         return (
           <div className={styles.monitoringDashboard}>
+            {/* Fab Pulse Bar - Key KPIs */}
+            <FabPulseBar />
+            
             {/* Alert Ticker - Top scrolling alerts */}
             <AlertTicker />
             
@@ -75,7 +176,7 @@ const Dashboard = () => {
                 </div>
                 <div className={styles.fleetContent}>
                   <EquipmentFleetList 
-                    equipment={equipmentStatus}
+                    equipment={equipmentData}
                     searchTerm={searchTerm}
                     statusFilter={statusFilter}
                     typeFilter={typeFilter}

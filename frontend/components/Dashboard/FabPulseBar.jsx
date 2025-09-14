@@ -3,6 +3,7 @@
 import React from 'react';
 import { Body, Description } from '@leafygreen-ui/typography';
 import Icon from '@leafygreen-ui/icon';
+import { useDashboardData } from '@/contexts/DashboardDataProvider';
 import styles from './FabPulseBar.module.css';
 
 const PulseMetric = ({ label, value, unit, trend, severity, prefix = '', suffix = '' }) => {
@@ -49,13 +50,33 @@ const PulseMetric = ({ label, value, unit, trend, severity, prefix = '', suffix 
 };
 
 const FabPulseBar = ({ fabMetrics }) => {
-  const {
-    oee = { value: 87.3, unit: '%', trend: 'up' },
-    excursions = { value: 2, severity: 'warning', trend: 'down' },
-    toolsOnline = { value: '12/15', trend: 'stable' },
-    currentYield = { value: 94.2, unit: '%', trend: 'up' },
-    wip = { value: 423, unit: ' wafers', trend: 'up' }
-  } = fabMetrics || {};
+  const { kpi: kpiData, isLoading } = useDashboardData();
+  
+  // Use real data if available, otherwise fall back to defaults
+  const oee = kpiData ? {
+    value: kpiData.equipment_utilization || 87.3,
+    unit: '%',
+    trend: kpiData.equipment_utilization > 85 ? 'up' : 'down'
+  } : { value: 87.3, unit: '%', trend: 'up' };
+  
+  const excursions = kpiData ? {
+    value: kpiData.active_alerts || 0,
+    severity: kpiData.active_alerts > 5 ? 'critical' : kpiData.active_alerts > 2 ? 'warning' : 'good',
+    trend: kpiData.active_alerts < 3 ? 'down' : 'up'
+  } : { value: 2, severity: 'warning', trend: 'down' };
+  
+  const toolsOnline = kpiData && kpiData.equipment_status ? {
+    value: `${kpiData.equipment_status.online}/${kpiData.equipment_status.total}`,
+    trend: kpiData.equipment_status.online >= kpiData.equipment_status.total * 0.8 ? 'stable' : 'down'
+  } : { value: '12/15', trend: 'stable' };
+  
+  const currentYield = kpiData ? {
+    value: kpiData.current_yield ? parseFloat(kpiData.current_yield).toFixed(1) : 94.2,
+    unit: '%',
+    trend: kpiData.current_yield > 92 ? 'up' : 'down'
+  } : { value: 94.2, unit: '%', trend: 'up' };
+  
+  const wip = { value: 423, unit: ' wafers', trend: 'up' }; // WIP not in current backend
 
   return (
     <div className={styles.fabPulseBar}>

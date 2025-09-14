@@ -6,7 +6,8 @@ import { Body, Description, H3, Label } from '@leafygreen-ui/typography';
 import Badge from '@leafygreen-ui/badge';
 import Icon from '@leafygreen-ui/icon';
 import styles from './LiveWaferYieldMap.module.css';
-import { waferAPI } from '@/lib/api';
+import { useDashboardData } from '@/contexts/DashboardDataProvider';
+import { useWebSocket } from '@/lib/websocket-native';
 
 const LiveWaferYieldMap = () => {
   const [waferData, setWaferData] = useState(null);
@@ -19,6 +20,10 @@ const LiveWaferYieldMap = () => {
   const [selectedBatch, setSelectedBatch] = useState(0);
   const [batchHistory, setBatchHistory] = useState([]);
   const canvasRef = useRef(null);
+  
+  // Get data from context and WebSocket
+  const { wafers: contextWaferData, isLoading } = useDashboardData();
+  const { waferData: wsWaferData, isConnected } = useWebSocket();
   
   // Generate defect patterns
   const generateWaferMap = (forBatch = false) => {
@@ -110,22 +115,38 @@ const LiveWaferYieldMap = () => {
   // Fetch wafer batch data from backend
   const fetchWaferBatches = async () => {
     try {
-      const response = await waferAPI.getWaferBatches(5, true);
+      // First get latest wafers with die maps
+      const waferResponse = { wafers: contextWaferData || [] };
       
-      if (response && response.batches && response.batches.length > 0) {
-        const history = response.batches.map(batch => {
-          // Generate simulated map if not provided
-          const batchMap = generateWaferMap(true);
+      if (waferResponse && waferResponse.wafers && waferResponse.wafers.length > 0) {
+        const history = waferResponse.wafers.map(wafer => {
+          // Use real die_map from backend if available
+          let map = null;
+          if (wafer.die_map && Array.isArray(wafer.die_map)) {
+            // Backend die_map is a 25x25 2D array
+            map = wafer.die_map;
+          } else {
+            // Fallback to generated map if no die_map
+            const generated = generateWaferMap(true);
+            map = generated.map;
+          }
+          
+          // Get defect info from wafer data
+          const defectSummary = wafer.defect_summary || {};
+          const defects = defectSummary.failed_dies || defectSummary.defect_count || 0;
+          const yieldPct = defectSummary.yield_percentage || 
+                          ((625 - defects) / 625 * 100).toFixed(1);
+          const pattern = defectSummary.defect_pattern || defectSummary.pattern || 'random';
           
           return {
-            map: batchMap.map,
-            defects: batch.total_defects || batchMap.defects,
-            yieldPercentage: batch.avg_yield || batchMap.yieldPercentage,
-            pattern: batch.latest_wafer?.defect_summary?.pattern || batchMap.pattern,
-            lotId: batch.lot_id || batchMap.lotId,
-            timestamp: batch.latest_wafer?.inspection_date || new Date().toISOString(),
+            map: map,
+            defects: defects,
+            yieldPercentage: parseFloat(yieldPct),
+            pattern: pattern.toUpperCase(),
+            lotId: wafer.lot_id || wafer.wafer_id || `W-${wafer._id?.substr(-4)}`,
+            timestamp: wafer.inspection_timestamp || wafer.inspection_date || new Date().toISOString(),
             totalDies: 625,
-            goodDies: 625 - (batch.total_defects || batchMap.defects)
+            goodDies: 625 - defects
           };
         });
         
@@ -138,6 +159,9 @@ const LiveWaferYieldMap = () => {
           setPattern(currentBatch.pattern);
           setCurrentLot(currentBatch.lotId);
         }
+      } else {
+        // No data from backend, use simulated
+        generateSimulatedBatches();
       }
     } catch (error) {
       console.error('Error fetching wafer batches:', error);
@@ -164,18 +188,54 @@ const LiveWaferYieldMap = () => {
     setCurrentLot(currentBatch.lotId);
   };
   
+  // Handle WebSocket wafer updates
+  useEffect(() => {
+    if (wsWaferData && wsWaferData.length > 0) {
+      // Get latest wafer data from WebSocket
+      const latestWafer = wsWaferData[wsWaferData.length - 1];
+      
+      if (latestWafer && latestWafer.type === 'new_wafer') {
+        // Create new batch from WebSocket data
+        const newBatch = {
+          map: latestWafer.die_map || generateWaferMap(true).map,
+          defects: latestWafer.defect_count || 0,
+          yieldPercentage: latestWafer.yield_percentage || 92.0,
+          pattern: (latestWafer.pattern || 'RANDOM').toUpperCase(),
+          lotId: latestWafer.lot_id || `LOT-${Date.now()}`,
+          timestamp: latestWafer.timestamp || new Date().toISOString(),
+          totalDies: 625,
+          goodDies: 625 - (latestWafer.defect_count || 0)
+        };
+        
+        // Update batch history with new wafer
+        setBatchHistory(prev => [newBatch, ...prev.slice(0, 4)]);
+        
+        // Update current display if viewing current batch
+        if (selectedBatch === 0) {
+          setWaferData(newBatch.map);
+          setDefectCount(newBatch.defects);
+          setCurrentYield(newBatch.yieldPercentage);
+          setPattern(newBatch.pattern);
+          setCurrentLot(newBatch.lotId);
+        }
+      }
+    }
+  }, [wsWaferData, selectedBatch]);
+  
   // Initialize batch history once on mount
   useEffect(() => {
     setMounted(true);
     fetchWaferBatches();
     
-    // Poll for updates every 10 seconds
+    // Poll for updates every 10 seconds (fallback when WebSocket not connected)
     const interval = setInterval(() => {
-      fetchWaferBatches();
+      if (!isConnected) {
+        fetchWaferBatches();
+      }
     }, 10000);
     
     return () => clearInterval(interval);
-  }, []); // Only run once on mount
+  }, [isConnected]); // Only run once on mount
   
   // Handle live updates
   useEffect(() => {

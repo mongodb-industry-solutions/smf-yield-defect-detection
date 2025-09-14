@@ -4,11 +4,58 @@ import React, { useState, useEffect } from 'react';
 import { Body, Description } from '@leafygreen-ui/typography';
 import Icon from '@leafygreen-ui/icon';
 import styles from './AlertTicker.module.css';
+import { useDashboardData } from '@/contexts/DashboardDataProvider';
+import { useWebSocket } from '@/lib/websocket-native';
 
 const AlertTicker = ({ alerts = [] }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
   const [mounted, setMounted] = useState(false);
+  
+  // Get data from context and WebSocket
+  const { alerts: contextAlerts, isLoading } = useDashboardData();
+  const { alertData, isConnected } = useWebSocket();
+  const [backendAlerts, setBackendAlerts] = useState([]);
+  
+  // Process context alerts to frontend format
+  useEffect(() => {
+    if (contextAlerts && contextAlerts.length > 0) {
+      // Transform backend alerts to frontend format
+      const formattedAlerts = contextAlerts.map(alert => {
+        const icon = alert.severity === 'critical' ? '🔴' : 
+                     alert.severity === 'high' ? '⚠️' : 
+                     alert.severity === 'medium' ? '⚠️' : 'ℹ️';
+        
+        const equipment = alert.equipment_id || 'Unknown';
+        const violations = alert.violations || [];
+        const mainViolation = violations[0];
+        
+        let message = `${icon} ${equipment}: `;
+        if (mainViolation) {
+          message += `${mainViolation.metric} ${mainViolation.current_value > mainViolation.threshold ? 'exceeded' : 'drift'} (${mainViolation.current_value})`;
+        } else {
+          message += alert.alert_type || 'Alert detected';
+        }
+        
+        // Calculate time ago
+        const timestamp = new Date(alert.timestamp);
+        const now = new Date();
+        const diffMinutes = Math.floor((now - timestamp) / 60000);
+        const timeAgo = diffMinutes < 60 ? `${diffMinutes} min ago` : 
+                       `${Math.floor(diffMinutes / 60)} hours ago`;
+        
+        return {
+          id: alert._id,
+          type: alert.severity === 'critical' || alert.severity === 'high' ? 'critical' : 
+                alert.severity === 'medium' ? 'warning' : 'info',
+          message: message,
+          timestamp: timeAgo
+        };
+      });
+      
+      setBackendAlerts(formattedAlerts);
+    }
+  }, [contextAlerts]);
   
   // Mock real-time alerts if none provided
   const defaultAlerts = [
@@ -19,7 +66,35 @@ const AlertTicker = ({ alerts = [] }) => {
     { id: 5, type: 'warning', message: '⚠️ DEP-004: Flow rate instability detected', timestamp: '15 min ago' },
   ];
   
-  const displayAlerts = alerts.length > 0 ? alerts : defaultAlerts;
+  // Use backend alerts if available, otherwise use provided alerts or defaults
+  const displayAlerts = backendAlerts.length > 0 ? backendAlerts : 
+                        alerts.length > 0 ? alerts : defaultAlerts;
+  
+  // Handle WebSocket alert updates
+  useEffect(() => {
+    if (alertData && alertData.length > 0) {
+      // Get latest alert data from WebSocket
+      const latestAlert = alertData[alertData.length - 1];
+      
+      if (latestAlert && latestAlert.type === 'new_alert') {
+        // Transform WebSocket alert to frontend format
+        const icon = latestAlert.severity === 'critical' ? '🔴' : 
+                     latestAlert.severity === 'high' ? '⚠️' : 
+                     latestAlert.severity === 'medium' ? '⚠️' : 'ℹ️';
+        
+        const newAlert = {
+          id: latestAlert.alert_id || `alert-${Date.now()}`,
+          type: latestAlert.severity === 'critical' || latestAlert.severity === 'high' ? 'critical' : 
+                latestAlert.severity === 'medium' ? 'warning' : 'info',
+          message: `${icon} ${latestAlert.equipment || 'Unknown'}: ${latestAlert.message || 'Alert detected'}`,
+          timestamp: 'Just now'
+        };
+        
+        // Add new alert to the beginning of the list
+        setBackendAlerts(prev => [newAlert, ...prev].slice(0, 20)); // Keep max 20 alerts
+      }
+    }
+  }, [alertData]);
   
   useEffect(() => {
     setMounted(true);

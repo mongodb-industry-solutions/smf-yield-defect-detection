@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import TextInput from '@leafygreen-ui/text-input';
 import Button from '@leafygreen-ui/button';
-import SegmentedControl from '@leafygreen-ui/segmented-control';
+// import SegmentedControl from '@leafygreen-ui/segmented-control'; // Commented out - library not installed
 import Icon from '@leafygreen-ui/icon';
 import { Body } from '@leafygreen-ui/typography';
 import styles from './FilterSearchBar.module.css';
@@ -100,26 +100,32 @@ const FilterSearchBar = ({ onSearch, onFilter, onStatusFilter, onTypeFilter }) =
         <div className={styles.filterPanel}>
           <div className={styles.filterGroup}>
             <Body weight="medium">Status</Body>
-            <SegmentedControl
-              label="Status Filter"
-              name="status-filter"
-              options={statusOptions}
+            <select 
+              className={styles.filterSelect}
               value={selectedStatus}
-              onChange={(value) => handleStatusChange(value)}
-              size="small"
-            />
+              onChange={(e) => handleStatusChange(e.target.value)}
+            >
+              {statusOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
           
           <div className={styles.filterGroup}>
             <Body weight="medium">Equipment Type</Body>
-            <SegmentedControl
-              label="Type Filter"
-              name="type-filter"
-              options={typeOptions}
+            <select 
+              className={styles.filterSelect}
               value={selectedType}
-              onChange={(value) => handleTypeChange(value)}
-              size="small"
-            />
+              onChange={(e) => handleTypeChange(e.target.value)}
+            >
+              {typeOptions.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       )}

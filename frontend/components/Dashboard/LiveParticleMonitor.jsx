@@ -6,7 +6,8 @@ import { Body, Description, H3, Label } from '@leafygreen-ui/typography';
 import Badge from '@leafygreen-ui/badge';
 import Icon from '@leafygreen-ui/icon';
 import styles from './LiveParticleMonitor.module.css';
-import { sensorAPI } from '@/lib/api';
+import { useDashboardData } from '@/contexts/DashboardDataProvider';
+import { useWebSocket } from '@/lib/websocket-native';
 
 const LiveParticleMonitor = () => {
   const [data, setData] = useState([]);
@@ -14,8 +15,13 @@ const LiveParticleMonitor = () => {
   const [trend, setTrend] = useState('stable');
   const [alert, setAlert] = useState(null);
   const [mounted, setMounted] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
   const canvasRef = useRef(null);
+  
+  // Get data from context
+  const { sensors: contextSensorData, isLoading } = useDashboardData();
+  
+  // Get WebSocket data
+  const { sensorData, isConnected } = useWebSocket();
   
   // Generate realistic particle count data
   const generateDataPoint = () => {
@@ -25,57 +31,82 @@ const LiveParticleMonitor = () => {
     return Math.max(0, baseValue + noise + spike);
   };
   
-  // Fetch real sensor data
-  const fetchSensorData = async () => {
-    try {
-      // Get CMP tool data (for particle monitoring)
-      const response = await sensorAPI.getSensorStream('CMP_TOOL_01', 5, 1);
+  // Process sensor data from context
+  useEffect(() => {
+    if (contextSensorData && contextSensorData.length > 0) {
+      const particleData = contextSensorData.map(point => 
+        point.metrics?.particle_count || 0
+      );
       
-      if (response.data_points && response.data_points.length > 0) {
-        const particleData = response.data_points.map(point => 
-          point.metrics?.particle_count || 0
-        );
-        
-        setData(particleData);
-        
-        // Get latest value
-        const latest = particleData[particleData.length - 1];
-        setCurrentValue(Math.round(latest));
-        
-        // Determine trend
-        if (latest > 1000) {
-          setTrend('critical');
-          setAlert('EXCURSION DETECTED');
-        } else if (latest > 900) {
-          setTrend('warning');
-          setAlert('APPROACHING LIMIT');
-        } else {
-          setTrend('stable');
-          setAlert(null);
-        }
+      setData(particleData);
+      
+      // Get latest value
+      const latest = particleData[particleData.length - 1];
+      setCurrentValue(Math.round(latest));
+      
+      // Determine trend
+      if (latest > 1000) {
+        setTrend('critical');
+        setAlert('EXCURSION DETECTED');
+      } else if (latest > 900) {
+        setTrend('warning');
+        setAlert('APPROACHING LIMIT');
+      } else {
+        setTrend('stable');
+        setAlert(null);
       }
-    } catch (error) {
-      console.error('Error fetching sensor data:', error);
-      // Fallback to simulated data
+    } else if (!isLoading) {
+      // Fallback to simulated data if no context data
       const initialData = Array.from({ length: 50 }, () => generateDataPoint());
       setData(initialData);
-    } finally {
-      setIsLoading(false);
     }
-  };
+  }, [contextSensorData, isLoading]);
 
+  // Handle WebSocket data updates
+  useEffect(() => {
+    if (sensorData && sensorData.length > 0) {
+      // Get latest sensor data from WebSocket
+      const latestData = sensorData[sensorData.length - 1];
+      
+      if (latestData && latestData.data) {
+        // Extract particle counts from all sensors
+        const sensors = latestData.data;
+        const particleCounts = sensors
+          .filter(s => s.metrics && s.metrics.particle_count)
+          .map(s => s.metrics.particle_count);
+        
+        if (particleCounts.length > 0) {
+          // Use the highest particle count (worst case)
+          const maxParticles = Math.max(...particleCounts);
+          
+          // Update data array with new value
+          setData(prev => {
+            const updated = [...prev, maxParticles];
+            return updated.slice(-50); // Keep last 50 points
+          });
+          
+          setCurrentValue(Math.round(maxParticles));
+          
+          // Determine trend
+          if (maxParticles > 1000) {
+            setTrend('critical');
+            setAlert('EXCURSION DETECTED');
+          } else if (maxParticles > 900) {
+            setTrend('warning');
+            setAlert('APPROACHING LIMIT');
+          } else {
+            setTrend('stable');
+            setAlert(null);
+          }
+          
+          setIsLoading(false);
+        }
+      }
+    }
+  }, [sensorData]);
+  
   useEffect(() => {
     setMounted(true);
-    
-    // Initial fetch
-    fetchSensorData();
-    
-    // Set up polling for updates
-    const interval = setInterval(() => {
-      fetchSensorData();
-    }, 2000); // Update every 2 seconds
-    
-    return () => clearInterval(interval);
   }, []);
   
   // Draw chart on canvas
@@ -219,7 +250,13 @@ const LiveParticleMonitor = () => {
           <Icon glyph="Settings" size="small" />
           <Description>CMP-001 • CMP-002 • CMP-003</Description>
         </div>
-        <Description className={styles.updateTime}>Updates every 1s</Description>
+        <Description className={styles.updateTime}>
+          {isConnected ? (
+            <><Icon glyph="Refresh" size="small" /> Live</>  
+          ) : (
+            <>Updates every 2s</>  
+          )}
+        </Description>
       </div>
     </div>
   );

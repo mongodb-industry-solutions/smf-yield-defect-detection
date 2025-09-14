@@ -158,7 +158,7 @@ const EquipmentFleetList = ({ equipment = [], searchTerm = '', statusFilter = 'a
   if (sortedEquipment.length === 0) {
     return (
       <div className={styles.noResults}>
-        <Icon glyph="Search" size="large" fill="#6b778c" />
+        <Icon glyph="MagnifyingGlass" size="large" fill="#6b778c" />
         <Body>No equipment found matching your filters</Body>
         <Description>Try adjusting your search criteria</Description>
       </div>
