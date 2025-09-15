@@ -20,7 +20,10 @@ class ExcursionDetector:
         self.client = AsyncIOMotorClient(self.mongodb_uri)
         self.db = self.client[database]
         self.alerts_collection = self.db.alerts
-        self.sensor_collection = self.db.process_sensor_ts
+        # Use sensor_events collection for real-time monitoring (supports change streams)
+        self.sensor_collection = self.db.sensor_events  # Changed from process_sensor_ts
+        # Keep reference to time series collection for historical queries
+        self.timeseries_collection = self.db.process_sensor_ts
         self.logger = logging.getLogger(__name__)
         
         # Configure logging

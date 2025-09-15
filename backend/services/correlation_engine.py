@@ -25,7 +25,9 @@ class CorrelationEngine:
         # Collections
         self.alerts_collection = self.db.alerts
         self.wafer_defects_collection = self.db.wafer_defects
-        self.sensor_collection = self.db.process_sensor_ts
+        # Use sensor_events for recent data, process_sensor_ts for historical
+        self.sensor_collection = self.db.sensor_events  # For real-time correlation
+        self.timeseries_collection = self.db.process_sensor_ts  # For historical analysis
         self.process_context_collection = self.db.process_context
         self.historical_knowledge_collection = self.db.historical_knowledge
         

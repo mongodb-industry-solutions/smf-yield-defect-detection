@@ -11,14 +11,11 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 from fastapi import FastAPI, HTTPException, Request, Query, WebSocket, WebSocketDisconnect, BackgroundTasks, Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from config.config_loader import ConfigLoader
 from utils import convert_objectids, format_document
-
-from db.mdb import MongoDBConnector
 
 from agent_workflow_graph import create_workflow_graph
 from agent_state import AgentState
@@ -29,6 +26,7 @@ from services.excursion_detector import ExcursionDetector
 from services.correlation_engine import CorrelationEngine
 from services.rca_generator import RCAGenerator
 from services.alert_manager import AlertManager, AlertSeverity, AlertStatus, AlertType
+from services.websocket_manager import get_websocket_manager, ConnectionType
 
 import os
 from dotenv import load_dotenv
@@ -83,8 +81,53 @@ alert_manager = None
 monitoring_active = False
 monitoring_task = None
 
-# WebSocket connections for real-time updates
-active_connections: List[WebSocket] = []
+# WebSocket Manager for real-time updates
+ws_manager = get_websocket_manager()
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    Initialize monitoring services on application startup
+    """
+    global excursion_detector, correlation_engine, rca_generator, alert_manager, monitoring_active
+
+    logger.info("Initializing monitoring services on startup...")
+
+    try:
+        # Initialize services
+        excursion_detector = ExcursionDetector(
+            mongodb_uri=MDB_URI,
+            database=MDB_DATABASE_NAME
+        )
+
+        correlation_engine = CorrelationEngine(
+            mongodb_uri=MDB_URI,
+            database=MDB_DATABASE_NAME
+        )
+
+        rca_generator = RCAGenerator(
+            mongodb_uri=MDB_URI,
+            database=MDB_DATABASE_NAME
+        )
+
+        alert_manager = AlertManager(
+            mongodb_uri=MDB_URI,
+            database_name=MDB_DATABASE_NAME
+        )
+
+        # Initialize alert manager (sync setup)
+        alert_manager.initialize()
+
+        # Set monitoring as active but don't start the loop yet
+        # The loop will be started when needed via the /monitoring/start endpoint
+        monitoring_active = True
+
+        logger.info("✅ Monitoring services initialized successfully on startup")
+        logger.info("Services ready: ExcursionDetector, CorrelationEngine, RCAGenerator, AlertManager")
+
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize monitoring services on startup: {e}")
+        logger.warning("Services will be initialized on first use")
 
 @app.get("/")
 async def read_root(request: Request):
@@ -285,46 +328,60 @@ async def get_run_documents(thread_id: str = Query(..., description="Thread ID o
 @app.post("/monitoring/start")
 async def start_monitoring(background_tasks: BackgroundTasks):
     """
-    Start real-time monitoring services
+    Start real-time monitoring loop (services already initialized on startup)
     """
     global excursion_detector, correlation_engine, rca_generator, alert_manager, monitoring_active, monitoring_task
-    
+
     try:
-        if monitoring_active:
-            return {"status": "already_running", "message": "Monitoring is already active"}
-        
-        # Initialize services
-        excursion_detector = ExcursionDetector(
-            mongodb_uri=MDB_URI,
-            database=MDB_DATABASE_NAME
-        )
-        
-        correlation_engine = CorrelationEngine(
-            mongodb_uri=MDB_URI,
-            database=MDB_DATABASE_NAME
-        )
-        
-        rca_generator = RCAGenerator(
-            mongodb_uri=MDB_URI,
-            database=MDB_DATABASE_NAME
-        )
-        
-        alert_manager = AlertManager(
-            mongodb_uri=MDB_URI,
-            database_name=MDB_DATABASE_NAME
-        )
-        
-        # Initialize alert manager (async setup)
-        alert_manager.initialize()
-        
-        # Start monitoring in background
+        # Check if services are already initialized (from startup)
+        if not all([excursion_detector, correlation_engine, rca_generator, alert_manager]):
+            logger.info("Services not initialized on startup, initializing now...")
+
+            # Initialize services if not already done
+            excursion_detector = ExcursionDetector(
+                mongodb_uri=MDB_URI,
+                database=MDB_DATABASE_NAME
+            )
+
+            correlation_engine = CorrelationEngine(
+                mongodb_uri=MDB_URI,
+                database=MDB_DATABASE_NAME
+            )
+
+            rca_generator = RCAGenerator(
+                mongodb_uri=MDB_URI,
+                database=MDB_DATABASE_NAME
+            )
+
+            alert_manager = AlertManager(
+                mongodb_uri=MDB_URI,
+                database_name=MDB_DATABASE_NAME
+            )
+
+            # Initialize alert manager (sync setup)
+            alert_manager.initialize()
+
+        # Check if monitoring loop is already running
+        if monitoring_task and not monitoring_task.done():
+            return {
+                "status": "already_running",
+                "message": "Monitoring loop is already active",
+                "services": {
+                    "excursion_detector": "active",
+                    "correlation_engine": "active",
+                    "rca_generator": "active",
+                    "alert_manager": "active"
+                }
+            }
+
+        # Start monitoring loop in background
         monitoring_active = True
-        background_tasks.add_task(run_monitoring_loop)
-        
-        logger.info("Phase 2 monitoring services started")
+        monitoring_task = asyncio.create_task(run_monitoring_loop())
+
+        logger.info("Real-time monitoring loop started")
         return {
             "status": "started",
-            "message": "Real-time monitoring services initialized",
+            "message": "Real-time monitoring loop started (services initialized on startup)",
             "services": {
                 "excursion_detector": "active",
                 "correlation_engine": "active",
@@ -332,9 +389,9 @@ async def start_monitoring(background_tasks: BackgroundTasks):
                 "alert_manager": "active"
             }
         }
-        
+
     except Exception as e:
-        logger.error(f"Error starting monitoring services: {e}")
+        logger.error(f"Error starting monitoring loop: {e}")
         monitoring_active = False
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1200,24 +1257,26 @@ async def websocket_alerts(websocket: WebSocket):
     """
     WebSocket endpoint for real-time alert updates
     """
-    await websocket.accept()
-    active_connections.append(websocket)
-    
+    # Connect with WebSocket manager
+    client_id = await ws_manager.connect(
+        websocket=websocket,
+        connection_type=ConnectionType.ALERTS
+    )
+
     try:
         while True:
             # Keep connection alive and wait for messages
             data = await websocket.receive_text()
-            
-            # Echo back for now (could implement filtering based on client preferences)
-            await websocket.send_text(f"Monitoring active: {monitoring_active}")
-            
+
+            # Handle client messages (subscriptions, filters, etc.)
+            await ws_manager.handle_client_message(client_id, data)
+
     except WebSocketDisconnect:
-        active_connections.remove(websocket)
-        logger.info("WebSocket client disconnected")
+        await ws_manager.disconnect(client_id)
+        logger.info(f"Alert WebSocket client {client_id} disconnected")
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        if websocket in active_connections:
-            active_connections.remove(websocket)
+        logger.error(f"Alert WebSocket error for {client_id}: {e}")
+        await ws_manager.disconnect(client_id)
 
 
 @app.websocket("/ws/sensors")
@@ -1225,43 +1284,69 @@ async def websocket_sensors(websocket: WebSocket):
     """
     WebSocket endpoint for real-time sensor data streaming
     """
-    await websocket.accept()
-    
+    # Connect with WebSocket manager
+    client_id = await ws_manager.connect(
+        websocket=websocket,
+        connection_type=ConnectionType.SENSORS
+    )
+
     try:
-        # Send initial data
-        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
-            sensor_collection = mdb_connector.get_collection(MDB_TIMESERIES_COLLECTION)
-            
+        # Background task to send sensor updates
+        async def send_sensor_updates():
+            with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+                sensor_collection = mdb_connector.get_collection("sensor_events")  # Use real-time collection
+
+                while True:
+                    try:
+                        # Get latest sensor data
+                        pipeline = [
+                            {"$sort": {"timestamp": -1}},
+                            {"$group": {
+                                "_id": "$equipment_id",
+                                "latest": {"$first": "$$ROOT"}
+                            }},
+                            {"$replaceRoot": {"newRoot": "$latest"}},
+                            {"$limit": 10}
+                        ]
+
+                        sensors = list(sensor_collection.aggregate(pipeline))
+                        sensors = convert_objectids(sensors)
+
+                        # Send to this specific client
+                        await ws_manager.send_json_to_client(client_id, {
+                            "type": "sensor_update",
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "data": sensors
+                        })
+
+                        # Wait before next update
+                        await asyncio.sleep(2)  # Update every 2 seconds
+
+                    except Exception as e:
+                        logger.error(f"Error sending sensor updates to {client_id}: {e}")
+                        break
+
+        # Start background task
+        update_task = asyncio.create_task(send_sensor_updates())
+
+        try:
             while True:
-                # Get latest sensor data
-                pipeline = [
-                    {"$sort": {"timestamp": -1}},
-                    {"$group": {
-                        "_id": "$equipment_id",
-                        "latest": {"$first": "$$ROOT"}
-                    }},
-                    {"$replaceRoot": {"newRoot": "$latest"}},
-                    {"$limit": 10}
-                ]
-                
-                sensors = list(sensor_collection.aggregate(pipeline))
-                sensors = convert_objectids(sensors)
-                
-                # Send to client
-                await websocket.send_json({
-                    "type": "sensor_update",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "data": sensors
-                })
-                
-                # Wait before next update
-                await asyncio.sleep(2)  # Update every 2 seconds
-                
+                # Keep connection alive and wait for messages
+                data = await websocket.receive_text()
+
+                # Handle client messages (subscriptions, filters, etc.)
+                await ws_manager.handle_client_message(client_id, data)
+
+        finally:
+            # Cancel background task
+            update_task.cancel()
+
     except WebSocketDisconnect:
-        logger.info("Sensor WebSocket client disconnected")
+        await ws_manager.disconnect(client_id)
+        logger.info(f"Sensor WebSocket client {client_id} disconnected")
     except Exception as e:
-        logger.error(f"Sensor WebSocket error: {e}")
-        await websocket.close()
+        logger.error(f"Sensor WebSocket error for {client_id}: {e}")
+        await ws_manager.disconnect(client_id)
 
 
 @app.websocket("/ws/wafers")
@@ -1269,7 +1354,11 @@ async def websocket_wafers(websocket: WebSocket):
     """
     WebSocket endpoint for real-time wafer updates
     """
-    await websocket.accept()
+    manager = get_websocket_manager()
+    client_id = await manager.connect(
+        websocket, 
+        connection_type=ConnectionType.WAFERS
+    )
     
     try:
         with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
@@ -1290,8 +1379,8 @@ async def websocket_wafers(websocket: WebSocket):
                     
                     latest_wafer = convert_objectids(latest_wafer)
                     
-                    # Send to client
-                    await websocket.send_json({
+                    # Send to client using manager
+                    await manager.send_to_client(client_id, {
                         "type": "wafer_update",
                         "timestamp": datetime.now(timezone.utc).isoformat(),
                         "wafer": latest_wafer
@@ -1301,57 +1390,236 @@ async def websocket_wafers(websocket: WebSocket):
                 await asyncio.sleep(5)  # Update every 5 seconds
                 
     except WebSocketDisconnect:
-        logger.info("Wafer WebSocket client disconnected")
+        logger.info(f"Wafer WebSocket client {client_id} disconnected")
+        await manager.disconnect(client_id)
     except Exception as e:
-        logger.error(f"Wafer WebSocket error: {e}")
-        await websocket.close()
+        logger.error(f"Wafer WebSocket error for {client_id}: {e}")
+        await manager.disconnect(client_id)
+
+
+async def run_alert_correlation(alert_id: str):
+    """Run correlation analysis in background"""
+    try:
+        alert = alert_manager.get_alert_by_id(alert_id)
+        if not alert:
+            return
+
+        # Use existing CorrelationEngine - pass the MongoDB _id as string
+        correlation_engine = CorrelationEngine(MDB_URI)
+        # Convert ObjectId to string for the analyze_alert method
+        mongo_id = str(alert["_id"]) if "_id" in alert else alert_id
+        correlations = await correlation_engine.analyze_alert(mongo_id)
+
+        # Update alert with results
+        alert_manager.add_correlation_data(alert_id, correlations)
+
+        # Notify via WebSocket
+        await notify_websocket_clients({
+            "type": "correlation_complete",
+            "alert_id": alert_id,
+            "correlations": correlations
+        })
+
+        logger.info(f"✅ Correlation analysis completed for alert {alert_id}")
+    except Exception as e:
+        logger.error(f"Correlation failed for {alert_id}: {e}")
+
+
+async def run_alert_rca(alert_id: str, severity: AlertSeverity):
+    """Run RCA for critical alerts"""
+    if severity != AlertSeverity.CRITICAL:
+        return
+
+    try:
+        alert = alert_manager.get_alert_by_id(alert_id)
+        if not alert:
+            return
+
+        # Use existing RCAGenerator - pass the MongoDB _id as string
+        rca_gen = RCAGenerator(MDB_URI)
+        # Convert ObjectId to string for the generate_rca_hints method
+        mongo_id = str(alert["_id"]) if "_id" in alert else alert_id
+        rca_results = await rca_gen.generate_rca_hints(mongo_id)
+
+        # Update alert with RCA (convert to recommendations format if needed)
+        if isinstance(rca_results, dict) and "recommendations" in rca_results:
+            alert_manager.add_rca_recommendations(alert_id, rca_results["recommendations"])
+        elif isinstance(rca_results, list):
+            alert_manager.add_rca_recommendations(alert_id, rca_results)
+        else:
+            # Store as recommendations with the full RCA results
+            alert_manager.add_rca_recommendations(alert_id, [rca_results])
+
+        # Notify via WebSocket
+        await notify_websocket_clients({
+            "type": "rca_complete",
+            "alert_id": alert_id,
+            "rca": rca_results
+        })
+
+        logger.info(f"🔍 RCA analysis completed for critical alert {alert_id}")
+    except Exception as e:
+        logger.error(f"RCA failed for {alert_id}: {e}")
 
 
 async def run_monitoring_loop():
     """
-    Background task for continuous monitoring
+    Background task for continuous monitoring using MongoDB change streams
     """
     global monitoring_active
-    
-    logger.info("Starting monitoring loop")
-    
-    while monitoring_active:
-        try:
-            # Run excursion detection
-            # Note: ExcursionDetector.start_monitoring starts its own monitoring loop
-            # For now, we'll check for active alerts periodically
-            if alert_manager:
-                excursions = []  # In production, this would come from change streams
-                
-                # Process any detected excursions
-                for excursion in excursions:
-                    if alert_manager:
-                        # Create alert for excursion
-                        alert_id = alert_manager.create_alert(
-                            alert_type=AlertType.EXCURSION,
-                            severity=determine_severity(excursion),
-                            title=f"Excursion detected on {excursion.get('equipment_id')}",
-                            description=excursion.get('description', 'Threshold exceeded'),
-                            source_data=excursion,
-                            equipment_id=excursion.get('equipment_id')
-                        )
-                        
-                        # Notify WebSocket clients
-                        await notify_websocket_clients({
-                            "type": "new_alert",
-                            "alert_id": alert_id,
-                            "severity": determine_severity(excursion).value,
-                            "equipment_id": excursion.get('equipment_id')
-                        })
-            
-            # Sleep before next iteration
-            await asyncio.sleep(30)  # Check every 30 seconds
-            
-        except Exception as e:
-            logger.error(f"Error in monitoring loop: {e}")
-            await asyncio.sleep(60)  # Wait longer on error
-    
-    logger.info("Monitoring loop stopped")
+
+    logger.info("Starting real-time monitoring loop with change streams")
+
+    try:
+        # Get async MongoDB connection
+        async_client = AsyncIOMotorClient(MDB_URI)
+        async_db = async_client[MDB_DATABASE_NAME]
+        sensor_events_collection = async_db["sensor_events"]
+
+        # Define change stream pipeline to watch for inserts
+        pipeline = [
+            {"$match": {"operationType": "insert"}}
+        ]
+
+        # Start watching the sensor_events collection
+        async with sensor_events_collection.watch(pipeline) as stream:
+            logger.info("✅ Change stream connected - monitoring sensor_events collection")
+
+            while monitoring_active:
+                try:
+                    # Wait for the next change event
+                    async for change in stream:
+                        if not monitoring_active:
+                            break
+
+                        # Get the new sensor data
+                        sensor_data = change.get("fullDocument")
+                        if not sensor_data:
+                            continue
+
+                        logger.debug(f"New sensor data from {sensor_data.get('equipment_id')}")
+
+                        # Check for excursions (thresholds)
+                        excursion_detected = False
+                        excursion_type = None
+                        excursion_value = None
+
+                        metrics = sensor_data.get("metrics", {})
+
+                        # Check particle count threshold
+                        particle_count = metrics.get("particle_count", 0)
+                        if particle_count > 1000:
+                            excursion_detected = True
+                            excursion_type = "particle_excursion"
+                            excursion_value = particle_count
+                            logger.warning(f"⚠️ Particle excursion detected: {particle_count} on {sensor_data.get('equipment_id')}")
+
+                        # Check RF power drift
+                        rf_power = metrics.get("rf_power", 0)
+                        equipment_id = sensor_data.get("equipment_id", "")
+                        if "CMP" in equipment_id and abs(rf_power - 1200) > 150:
+                            excursion_detected = True
+                            excursion_type = "rf_power_drift"
+                            excursion_value = rf_power
+                            logger.warning(f"⚠️ RF power drift detected: {rf_power}W on {equipment_id}")
+                        elif "ETCH" in equipment_id and abs(rf_power - 1500) > 150:
+                            excursion_detected = True
+                            excursion_type = "rf_power_drift"
+                            excursion_value = rf_power
+                            logger.warning(f"⚠️ RF power drift detected: {rf_power}W on {equipment_id}")
+
+                        # Check temperature drift
+                        temperature = metrics.get("temperature", 0)
+                        if "CMP" in equipment_id and abs(temperature - 65) > 5:
+                            excursion_detected = True
+                            excursion_type = "temperature_drift"
+                            excursion_value = temperature
+                            logger.warning(f"⚠️ Temperature drift detected: {temperature}°C on {equipment_id}")
+
+                        # Create alert if excursion detected
+                        if excursion_detected and alert_manager:
+                            # Prepare excursion data
+                            excursion = {
+                                "equipment_id": sensor_data.get("equipment_id"),
+                                "timestamp": sensor_data.get("timestamp"),
+                                "excursion_type": excursion_type,
+                                "value": excursion_value,
+                                "metrics": metrics,
+                                "metadata": sensor_data.get("metadata", {}),
+                                "description": f"{excursion_type.replace('_', ' ').title()}: {excursion_value}"
+                            }
+
+                            # Determine severity based on excursion type and value
+                            severity = determine_severity(excursion)
+
+                            # Create alert
+                            alert_id = alert_manager.create_alert(
+                                alert_type=AlertType.EXCURSION,
+                                severity=severity,
+                                title=f"{excursion_type.replace('_', ' ').title()} on {equipment_id}",
+                                description=excursion["description"],
+                                source_data=excursion,
+                                equipment_id=equipment_id,
+                                lot_id=sensor_data.get("metadata", {}).get("lot_id"),
+                                wafer_id=sensor_data.get("metadata", {}).get("wafer_id")
+                            )
+
+                            logger.info(f"🚨 Alert created: {alert_id} for {excursion_type} on {equipment_id}")
+
+                            # Notify WebSocket clients
+                            await notify_websocket_clients({
+                                "type": "new_alert",
+                                "alert_id": alert_id,
+                                "severity": severity.value,
+                                "equipment_id": equipment_id,
+                                "excursion_type": excursion_type,
+                                "value": excursion_value,
+                                "timestamp": sensor_data.get("timestamp").isoformat() if hasattr(sensor_data.get("timestamp"), 'isoformat') else str(sensor_data.get("timestamp"))
+                            })
+
+                            # Trigger correlation analysis for all alerts
+                            asyncio.create_task(run_alert_correlation(alert_id))
+
+                            # Trigger RCA for critical alerts only
+                            asyncio.create_task(run_alert_rca(alert_id, severity))
+
+                        # Also check if this is just a normal update to broadcast
+                        elif not excursion_detected:
+                            # Broadcast normal sensor update to WebSocket clients
+                            await notify_websocket_clients({
+                                "type": "sensor_update",
+                                "equipment_id": sensor_data.get("equipment_id"),
+                                "metrics": metrics,
+                                "timestamp": sensor_data.get("timestamp").isoformat() if hasattr(sensor_data.get("timestamp"), 'isoformat') else str(sensor_data.get("timestamp"))
+                            })
+
+                except asyncio.CancelledError:
+                    logger.info("Monitoring loop cancelled")
+                    break
+                except Exception as e:
+                    logger.error(f"Error processing change stream event: {e}")
+                    # Continue monitoring despite errors
+                    continue
+
+    except Exception as e:
+        logger.error(f"Failed to establish change stream: {e}")
+        logger.info("Falling back to polling mode...")
+
+        # Fallback to polling if change streams fail
+        while monitoring_active:
+            try:
+                # Simple polling logic as backup
+                await asyncio.sleep(30)
+                logger.debug("Polling mode check (change streams unavailable)")
+
+            except Exception as poll_error:
+                logger.error(f"Error in polling mode: {poll_error}")
+                await asyncio.sleep(60)
+
+    finally:
+        if 'async_client' in locals():
+            async_client.close()
+        logger.info("Monitoring loop stopped")
 
 
 def determine_severity(excursion: Dict[str, Any]) -> AlertSeverity:
@@ -1386,20 +1654,30 @@ async def notify_websocket_clients(message: Dict[str, Any]):
     """
     Send message to all connected WebSocket clients
     """
-    if active_connections:
-        message_json = json.dumps(convert_objectids(message))
-        
-        # Send to all connected clients
-        disconnected = []
-        for connection in active_connections:
-            try:
-                await connection.send_text(message_json)
-            except:
-                disconnected.append(connection)
-        
-        # Remove disconnected clients
-        for conn in disconnected:
-            active_connections.remove(conn)
+    manager = get_websocket_manager()
+    
+    # Convert ObjectIds before sending
+    message_converted = convert_objectids(message)
+    
+    # Determine connection type based on message content
+    connection_type = None
+    if "alert" in message.get("type", "").lower():
+        connection_type = ConnectionType.ALERTS
+    elif "sensor" in message.get("type", "").lower():
+        connection_type = ConnectionType.SENSORS
+    elif "wafer" in message.get("type", "").lower():
+        connection_type = ConnectionType.WAFERS
+    
+    # Broadcast message
+    sent_count = await manager.broadcast(
+        message_converted,
+        connection_type=connection_type
+    )
+    
+    if sent_count > 0:
+        logger.info(f"Notified {sent_count} WebSocket clients")
+    else:
+        logger.debug("No WebSocket clients to notify")
 
 
 # =============================================
@@ -1783,7 +2061,12 @@ async def stream_agent_session(websocket: WebSocket, session_id: str):
     """
     Stream agent thoughts and results via WebSocket
     """
-    await websocket.accept()
+    manager = get_websocket_manager()
+    client_id = await manager.connect(
+        websocket,
+        connection_type=ConnectionType.AGENT,
+        metadata={"session_id": session_id}
+    )
     
     try:
         from agent_sessions import AgentSessionManager
@@ -1797,7 +2080,7 @@ async def stream_agent_session(websocket: WebSocket, session_id: str):
             
             if session:
                 # Send current state
-                await websocket.send_json({
+                await manager.send_to_client(client_id, {
                     "type": "update",
                     "session_id": session_id,
                     "status": session.get("status"),
@@ -1806,7 +2089,7 @@ async def stream_agent_session(websocket: WebSocket, session_id: str):
                 
                 # Check if session is complete
                 if session.get("status") in ["completed", "failed"]:
-                    await websocket.send_json({
+                    await manager.send_to_client(client_id, {
                         "type": "complete",
                         "session_id": session_id,
                         "result": session.get("result")
@@ -1816,10 +2099,11 @@ async def stream_agent_session(websocket: WebSocket, session_id: str):
             await asyncio.sleep(1)  # Poll every second
             
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for session {session_id}")
+        logger.info(f"WebSocket disconnected for session {session_id}, client {client_id}")
+        await manager.disconnect(client_id)
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
-        await websocket.close()
+        logger.error(f"WebSocket error for session {session_id}: {e}")
+        await manager.disconnect(client_id)
 
 
 @app.get("/agent/sessions")

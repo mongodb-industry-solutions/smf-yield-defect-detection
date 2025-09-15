@@ -12,7 +12,11 @@ venv.bak/
 brainstorm-ideas/
 backend/by_claude
 migration_scripts/
-
+test_*
+fix_*
+check_*
+create_*
+debug_*
 # Config
 **/config.yml
 **/config.yaml
@@ -191,3 +195,5 @@ backend/data_generation/*.json
 IMPLEMENTATION_PLAN.md
 IMPLEMENTATION_STATUS.md
 frontend/PHASE5_IMPLEMENTATION_PLAN.md
+backend/backend-integration-analysis.md
+backend-issues.md

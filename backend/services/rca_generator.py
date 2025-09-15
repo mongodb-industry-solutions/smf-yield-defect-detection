@@ -441,32 +441,60 @@ class RCAGenerator:
                 await self.semantic_search.initialize()
                 self.semantic_search._initialized = True
             
-            # Build semantic query from alert
+            # Build semantic query from alert - enhanced to use source_data
             query_parts = []
-            
+
             # Add alert type and description
             if alert.get("alert_type"):
                 query_parts.append(alert["alert_type"])
             if alert.get("description"):
                 query_parts.append(alert["description"])
-            
-            # Add excursion details
-            if alert.get("excursion_details"):
-                details = alert["excursion_details"]
-                metric = details.get("metric")
-                value = details.get("value")
-                if metric:
-                    query_parts.append(f"{metric} excursion")
-                    if value:
-                        query_parts.append(f"{metric} value {value}")
-            
-            # Add equipment context
-            if alert.get("affected_equipment"):
-                query_parts.append(f"equipment {alert['affected_equipment']}")
-            
-            # Add process step
-            if alert.get("process_step"):
-                query_parts.append(f"process {alert['process_step']}")
+
+            # Extract rich context from source_data (where excursion info is stored)
+            source_data = alert.get("source_data", {})
+            if source_data:
+                # Get excursion type and convert to readable form
+                excursion_type = source_data.get("excursion_type", "")
+                if excursion_type:
+                    # Convert particle_contamination -> "particle contamination"
+                    readable_type = excursion_type.replace("_", " ")
+                    query_parts.append(f"{readable_type} detected")
+
+                    # Add specific context based on excursion type
+                    if "particle" in excursion_type:
+                        query_parts.append("particle contamination CMP slurry filter")
+                    elif "temperature" in excursion_type:
+                        query_parts.append("temperature drift thermal control cooling")
+                    elif "rf_power" in excursion_type:
+                        query_parts.append("RF power drift chamber condition recipe")
+
+                # Extract metadata for process context
+                metadata = source_data.get("metadata", {})
+                process_step = metadata.get("process_step", metadata.get("step", ""))
+                if process_step:
+                    query_parts.append(f"{process_step} process")
+                    # Add process-specific keywords
+                    if "CMP" in process_step.upper():
+                        query_parts.append("chemical mechanical polishing slurry pad")
+                    elif "ETCH" in process_step.upper():
+                        query_parts.append("etching chamber plasma")
+                    elif "LITHO" in process_step.upper():
+                        query_parts.append("lithography reticle overlay")
+
+                # Add suspected issues from metadata
+                if metadata.get("suspected_issue"):
+                    query_parts.append(metadata["suspected_issue"])
+                if metadata.get("slurry_batch"):
+                    query_parts.append("slurry batch quality")
+
+                # Add equipment from source_data
+                equipment_id = source_data.get("equipment_id", "")
+                if equipment_id:
+                    query_parts.append(f"equipment {equipment_id}")
+
+            # Also check top-level fields as fallback
+            if alert.get("equipment_id") and "equipment" not in " ".join(query_parts):
+                query_parts.append(f"equipment {alert['equipment_id']}")
             
             query = " ".join(query_parts)
             
