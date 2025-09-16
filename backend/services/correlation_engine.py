@@ -66,7 +66,8 @@ class CorrelationEngine:
             "batch": await self.batch_correlation(affected_wafers),
             "recipe": await self.recipe_correlation(affected_wafers),
             "spatial": await self.spatial_correlation(affected_wafers),
-            "equipment": await self.equipment_correlation(equipment_id, alert_time)
+            "equipment": await self.equipment_correlation(equipment_id, alert_time),
+            "process_context": await self.process_context_correlation(alert)  # New correlation
         }
         
         # Calculate overall confidence score
@@ -214,9 +215,10 @@ class CorrelationEngine:
             "wafer_count": 0,
             "total_yield": 0,
             "defect_patterns": [],
-            "failed_dies": []
+            "failed_dies": [],
+            "is_problematic": False  # Track if batch is known to be problematic
         })
-        
+
         for wafer in all_wafers:
             slurry_batch = wafer.get('process_context', {}).get('slurry_batch')
             if slurry_batch:
@@ -237,12 +239,27 @@ class CorrelationEngine:
                 pattern_counts = Counter(stats["defect_patterns"])
                 dominant_pattern = pattern_counts.most_common(1)[0][0] if pattern_counts else "unknown"
                 
+                # Check if batch is problematic in process_context collection
+                context_id = batch_id
+                if batch_id.startswith("SLURRY_BATCH_"):
+                    parts = batch_id.split("_")
+                    if len(parts) >= 3:
+                        context_id = f"SB_{parts[2]}_{parts[3].zfill(3)}"
+
+                # Query process_context collection for batch status
+                batch_doc = await self.process_context_collection.find_one({
+                    "context_id": context_id
+                })
+
+                is_problematic = batch_doc.get("is_problematic", False) if batch_doc else False
+
                 batch_analysis[batch_id] = {
                     "avg_yield": round(avg_yield, 2),
                     "wafer_count": stats["wafer_count"],
                     "dominant_pattern": dominant_pattern,
                     "avg_failed_dies": round(np.mean(stats["failed_dies"]), 1),
-                    "pattern_distribution": dict(pattern_counts)
+                    "pattern_distribution": dict(pattern_counts),
+                    "is_problematic": is_problematic  # Add problematic flag
                 }
         
         # Identify suspect batches (lowest yield)
@@ -253,7 +270,8 @@ class CorrelationEngine:
                     "batch_id": batch_id,
                     "yield": info["avg_yield"],
                     "wafer_count": info["wafer_count"],
-                    "dominant_pattern": info["dominant_pattern"]
+                    "dominant_pattern": info["dominant_pattern"],
+                    "is_problematic": info.get("is_problematic", False)  # Include problematic flag
                 }
                 for batch_id, info in sorted_batches[:3]  # Top 3 worst batches
             ]
@@ -319,13 +337,151 @@ class CorrelationEngine:
             "worst_recipe": worst_recipe
         }
     
+    async def process_context_correlation(self, alert: dict) -> Dict[str, Any]:
+        """
+        Check if alert relates to known problematic process materials
+        Queries process_context collection for materials referenced in alert
+        """
+
+        # Extract material references from alert metadata
+        source_data = alert.get("source_data", {})
+        metadata = source_data.get("metadata", {})
+
+        problematic_materials = []
+        material_checks = {}
+
+        # Check slurry batch
+        if slurry_batch := metadata.get("slurry_batch"):
+            # Map common naming patterns to context IDs
+            # Handle both "SB_2025_XXX" and "SLURRY_BATCH_2025_XXX" formats
+            context_id = slurry_batch
+            if slurry_batch.startswith("SLURRY_BATCH_"):
+                # Convert SLURRY_BATCH_2025_001 to SB_2025_001
+                parts = slurry_batch.split("_")
+                if len(parts) >= 3:
+                    context_id = f"SB_{parts[2]}_{parts[3].zfill(3)}"
+
+            batch_doc = await self.process_context_collection.find_one({
+                "context_id": context_id
+            })
+
+            if batch_doc:
+                material_checks["slurry_batch"] = {
+                    "id": slurry_batch,
+                    "context_id": context_id,
+                    "is_problematic": batch_doc.get("is_problematic", False),
+                    "qc_status": batch_doc.get("slurry_details", {}).get("qc_status"),
+                    "large_particle_count": batch_doc.get("slurry_details", {}).get("large_particle_count")
+                }
+
+                if batch_doc.get("is_problematic"):
+                    problematic_materials.append({
+                        "type": "slurry_batch",
+                        "id": slurry_batch,
+                        "context_id": context_id,
+                        "issues": batch_doc.get("known_issues", []),
+                        "details": {
+                            "qc_status": batch_doc.get("slurry_details", {}).get("qc_status"),
+                            "large_particle_count": batch_doc.get("slurry_details", {}).get("large_particle_count"),
+                            "manufacturer": batch_doc.get("slurry_details", {}).get("manufacturer")
+                        }
+                    })
+
+        # Check recipe
+        if recipe_id := metadata.get("recipe_id"):
+            # Map recipe ID formats
+            context_id = recipe_id
+            if recipe_id.startswith("RECIPE_"):
+                # Convert RECIPE_CMP_01 to ETCH_RECIPE_01 or CMP_RECIPE_01
+                parts = recipe_id.split("_")
+                if len(parts) >= 3:
+                    context_id = f"{parts[1]}_RECIPE_{parts[2]}"
+
+            recipe_doc = await self.process_context_collection.find_one({
+                "$or": [
+                    {"context_id": recipe_id},
+                    {"context_id": context_id}
+                ]
+            })
+
+            if recipe_doc:
+                material_checks["recipe"] = {
+                    "id": recipe_id,
+                    "context_id": recipe_doc.get("context_id"),
+                    "is_problematic": recipe_doc.get("is_problematic", False),
+                    "validation_status": recipe_doc.get("validation_status")
+                }
+
+                if recipe_doc.get("is_problematic"):
+                    problematic_materials.append({
+                        "type": "recipe",
+                        "id": recipe_id,
+                        "context_id": recipe_doc.get("context_id"),
+                        "issues": recipe_doc.get("known_issues", []),
+                        "details": {
+                            "validation_status": recipe_doc.get("validation_status"),
+                            "process_type": recipe_doc.get("recipe_details", {}).get("process_type")
+                        }
+                    })
+
+        # Check reticle
+        if reticle_id := metadata.get("reticle_id"):
+            reticle_doc = await self.process_context_collection.find_one({
+                "context_id": reticle_id
+            })
+
+            if reticle_doc:
+                # Check for wear based on exposures
+                usage_stats = reticle_doc.get("usage_statistics", {})
+                total_exposures = usage_stats.get("total_exposures", 0)
+                is_worn = total_exposures > 2500  # Consider worn after 2500 exposures
+
+                material_checks["reticle"] = {
+                    "id": reticle_id,
+                    "is_problematic": reticle_doc.get("is_problematic", False) or is_worn,
+                    "total_exposures": total_exposures,
+                    "condition": reticle_doc.get("inspection_data", {}).get("condition")
+                }
+
+                if reticle_doc.get("is_problematic") or is_worn:
+                    problematic_materials.append({
+                        "type": "reticle",
+                        "id": reticle_id,
+                        "issues": reticle_doc.get("known_issues", []) +
+                                 ([{"description": f"High wear - {total_exposures} exposures", "severity": "medium"}] if is_worn else []),
+                        "details": {
+                            "total_exposures": total_exposures,
+                            "condition": reticle_doc.get("inspection_data", {}).get("condition"),
+                            "defect_count": reticle_doc.get("inspection_data", {}).get("defect_count")
+                        }
+                    })
+
+        # Calculate confidence based on problematic materials found
+        confidence = 0.0
+        if problematic_materials:
+            # Higher confidence if multiple problematic materials
+            confidence = min(0.95, 0.6 + (len(problematic_materials) * 0.2))
+
+            # Boost confidence for critical issues
+            for material in problematic_materials:
+                for issue in material.get("issues", []):
+                    if issue.get("severity") == "high":
+                        confidence = min(1.0, confidence + 0.15)
+
+        return {
+            "problematic_materials": problematic_materials,
+            "material_checks": material_checks,
+            "correlation_found": len(problematic_materials) > 0,
+            "confidence": round(confidence, 3)
+        }
+
     async def spatial_correlation(self, affected_wafers: Dict[str, List]) -> Dict[str, Any]:
         """Analyze spatial patterns in defects"""
-        
+
         all_wafers = affected_wafers['all']
         if not all_wafers:
             return {"dominant_patterns": [], "pattern_frequency": {}}
-        
+
         # Count defect patterns
         pattern_counts = Counter()
         pattern_yields = defaultdict(list)
@@ -422,23 +578,25 @@ class CorrelationEngine:
     
     def calculate_confidence(self, correlations: Dict[str, Any]) -> float:
         """Calculate overall confidence score for the correlation analysis"""
-        
+
         weights = {
-            "temporal": 0.35,
-            "batch": 0.25,
-            "spatial": 0.20,
+            "temporal": 0.30,
+            "batch": 0.20,
+            "spatial": 0.15,
             "recipe": 0.10,
-            "equipment": 0.10
+            "equipment": 0.10,
+            "process_context": 0.15  # New weight for process context
         }
-        
+
         scores = {
             "temporal": correlations["temporal"].get("correlation_strength", 0),
             "batch": min(1.0, len(correlations["batch"].get("suspect_batches", [])) / 3),
             "spatial": min(1.0, len(correlations["spatial"].get("dominant_patterns", [])) / 3),
             "recipe": 0.5 if correlations["recipe"].get("worst_recipe") else 0,
-            "equipment": min(1.0, correlations["equipment"].get("recent_anomalies", 0) / 10)
+            "equipment": min(1.0, correlations["equipment"].get("recent_anomalies", 0) / 10),
+            "process_context": correlations.get("process_context", {}).get("confidence", 0)  # Process context score
         }
-        
+
         confidence = sum(scores[key] * weights[key] for key in weights)
         return round(confidence, 3)
     
@@ -498,5 +656,33 @@ class CorrelationEngine:
                 f"Equipment has experienced {equipment['recent_anomalies']} "
                 f"anomalies in the past 24 hours"
             )
-        
+
+        # Process context insights
+        process_context = correlations.get("process_context", {})
+        if process_context.get("problematic_materials"):
+            for material in process_context["problematic_materials"]:
+                material_type = material["type"].replace("_", " ").title()
+                material_id = material["id"]
+                issues = material.get("issues", [])
+
+                if material["type"] == "slurry_batch":
+                    details = material.get("details", {})
+                    particle_count = details.get("large_particle_count", 0)
+                    insights.append(
+                        f"{material_type} {material_id} is known to be problematic "
+                        f"(particle count: {particle_count}, QC status: {details.get('qc_status', 'unknown')})"
+                    )
+                elif material["type"] == "recipe":
+                    insights.append(
+                        f"{material_type} {material_id} has validation issues "
+                        f"({material.get('details', {}).get('validation_status', 'unknown')} status)"
+                    )
+                elif material["type"] == "reticle":
+                    details = material.get("details", {})
+                    exposures = details.get("total_exposures", 0)
+                    insights.append(
+                        f"{material_type} {material_id} shows wear issues "
+                        f"({exposures} exposures, condition: {details.get('condition', 'unknown')})"
+                    )
+
         return insights

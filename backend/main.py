@@ -27,6 +27,7 @@ from services.correlation_engine import CorrelationEngine
 from services.rca_generator import RCAGenerator
 from services.alert_manager import AlertManager, AlertSeverity, AlertStatus, AlertType
 from services.websocket_manager import get_websocket_manager, ConnectionType
+from services.wafer_generator import WaferGenerator
 
 import os
 from dotenv import load_dotenv
@@ -80,6 +81,7 @@ rca_generator = None
 alert_manager = None
 monitoring_active = False
 monitoring_task = None
+wafer_monitoring_task = None
 
 # WebSocket Manager for real-time updates
 ws_manager = get_websocket_manager()
@@ -118,12 +120,17 @@ async def startup_event():
         # Initialize alert manager (sync setup)
         alert_manager.initialize()
 
-        # Set monitoring as active but don't start the loop yet
-        # The loop will be started when needed via the /monitoring/start endpoint
+        # Set monitoring as active and auto-start monitoring loops
         monitoring_active = True
+
+        # Auto-start monitoring loops on startup
+        global monitoring_task, wafer_monitoring_task
+        monitoring_task = asyncio.create_task(run_monitoring_loop())
+        wafer_monitoring_task = asyncio.create_task(run_wafer_monitoring_loop())
 
         logger.info("✅ Monitoring services initialized successfully on startup")
         logger.info("Services ready: ExcursionDetector, CorrelationEngine, RCAGenerator, AlertManager")
+        logger.info("✅ Monitoring loops auto-started (sensor + wafer defects)")
 
     except Exception as e:
         logger.error(f"❌ Failed to initialize monitoring services on startup: {e}")
@@ -330,7 +337,7 @@ async def start_monitoring(background_tasks: BackgroundTasks):
     """
     Start real-time monitoring loop (services already initialized on startup)
     """
-    global excursion_detector, correlation_engine, rca_generator, alert_manager, monitoring_active, monitoring_task
+    global excursion_detector, correlation_engine, rca_generator, alert_manager, monitoring_active, monitoring_task, wafer_monitoring_task
 
     try:
         # Check if services are already initialized (from startup)
@@ -361,32 +368,37 @@ async def start_monitoring(background_tasks: BackgroundTasks):
             # Initialize alert manager (sync setup)
             alert_manager.initialize()
 
-        # Check if monitoring loop is already running
-        if monitoring_task and not monitoring_task.done():
+        # Check if monitoring loops are already running
+        if (monitoring_task and not monitoring_task.done()) or (wafer_monitoring_task and not wafer_monitoring_task.done()):
             return {
                 "status": "already_running",
-                "message": "Monitoring loop is already active",
+                "message": "Monitoring loops are already active",
                 "services": {
                     "excursion_detector": "active",
                     "correlation_engine": "active",
                     "rca_generator": "active",
-                    "alert_manager": "active"
+                    "alert_manager": "active",
+                    "sensor_monitoring": "active" if monitoring_task and not monitoring_task.done() else "stopped",
+                    "wafer_monitoring": "active" if wafer_monitoring_task and not wafer_monitoring_task.done() else "stopped"
                 }
             }
 
-        # Start monitoring loop in background
+        # Start monitoring loops in background (parallel execution)
         monitoring_active = True
         monitoring_task = asyncio.create_task(run_monitoring_loop())
+        wafer_monitoring_task = asyncio.create_task(run_wafer_monitoring_loop())
 
-        logger.info("Real-time monitoring loop started")
+        logger.info("Real-time monitoring loops started (sensor + wafer)")
         return {
             "status": "started",
-            "message": "Real-time monitoring loop started (services initialized on startup)",
+            "message": "Real-time monitoring loops started (sensor + wafer defects)",
             "services": {
                 "excursion_detector": "active",
                 "correlation_engine": "active",
                 "rca_generator": "active",
-                "alert_manager": "active"
+                "alert_manager": "active",
+                "sensor_monitoring": "active",
+                "wafer_monitoring": "active"
             }
         }
 
@@ -897,6 +909,69 @@ async def get_kpi_statistics():
         }
 
 
+@app.post("/sensors/write")
+async def write_sensor_data(data: Dict[str, Any] = Body(...)):
+    """
+    Write sensor data to trigger monitoring and wafer generation
+
+    Example body:
+    {
+        "equipment_id": "CMP_TOOL_01",
+        "process_step": "CMP",
+        "timestamp": "2025-01-16T12:00:00Z",
+        "metrics": {
+            "particle_count": 1500,
+            "rf_power": 1200,
+            "chamber_pressure": 45,
+            "temperature": 65,
+            "flow_rate": 200
+        },
+        "metadata": {
+            "lot_id": "LOT_TEST_001",
+            "wafer_id": "W_TEST_001"
+        }
+    }
+    """
+    try:
+        # Ensure timestamp is datetime object
+        if "timestamp" not in data:
+            data["timestamp"] = datetime.now(timezone.utc)
+        elif isinstance(data["timestamp"], str):
+            data["timestamp"] = datetime.fromisoformat(data["timestamp"].replace('Z', '+00:00'))
+
+        # Validate required fields
+        if "equipment_id" not in data:
+            raise HTTPException(status_code=400, detail="equipment_id is required")
+        if "metrics" not in data:
+            raise HTTPException(status_code=400, detail="metrics are required")
+
+        # Add process step if not provided
+        if "process_step" not in data:
+            data["process_step"] = data["equipment_id"].split("_")[0]
+
+        # Write to sensor_events collection (monitored by change stream)
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            sensor_collection = mdb_connector.get_collection("sensor_events")
+            result = sensor_collection.insert_one(data)
+
+            logger.info(f"Sensor data written for {data['equipment_id']}: "
+                       f"particle_count={data['metrics'].get('particle_count', 0)}")
+
+            return {
+                "status": "success",
+                "message": f"Sensor data written for {data['equipment_id']}",
+                "document_id": str(result.inserted_id),
+                "metrics": data["metrics"],
+                "note": "If particle_count > 1000, alert will be created and wafer generated in 10 seconds"
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error writing sensor data: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/sensors/realtime")
 async def get_realtime_sensors(
     equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
@@ -1017,38 +1092,65 @@ async def get_sensor_stream(
 async def get_latest_wafers(
     limit: int = Query(10, description="Number of wafers to return"),
     pattern: Optional[str] = Query(None, description="Filter by defect pattern"),
-    min_yield: Optional[float] = Query(None, description="Minimum yield percentage")
+    min_yield: Optional[float] = Query(None, description="Minimum yield percentage"),
+    include_visualization: bool = Query(False, description="Include die_map and defects for visualization")
 ):
     """
-    Get latest wafer inspection results
+    Get latest wafer inspection results with optional visualization data
     """
     try:
         with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
             wafer_collection = mdb_connector.get_collection("wafer_defects")
-            
+
             # Build query
             query = {}
             if pattern:
                 query["defect_summary.defect_pattern"] = pattern
             if min_yield:
                 query["defect_summary.yield_percentage"] = {"$gte": min_yield}
-            
+
+            # Build projection based on include_visualization flag
+            projection = None
+            if not include_visualization:
+                # Exclude die_map and limit defects when not needed for visualization
+                projection = {"die_map": 0}  # Exclude die_map to reduce payload
+
             # Get latest wafers
-            wafers = list(wafer_collection.find(query).sort("inspection_timestamp", -1).limit(limit))
-            
-            # Remove large image data for API response
+            if projection:
+                wafers = list(wafer_collection.find(query, projection).sort("inspection_timestamp", -1).limit(limit))
+            else:
+                wafers = list(wafer_collection.find(query).sort("inspection_timestamp", -1).limit(limit))
+
+            # Process wafers based on visualization flag
             for wafer in wafers:
-                if "ink_map" in wafer and "thumbnail_base64" in wafer["ink_map"]:
-                    # Keep only first 100 chars of thumbnail for preview
-                    wafer["ink_map"]["has_thumbnail"] = True
-                    wafer["ink_map"]["thumbnail_preview"] = wafer["ink_map"]["thumbnail_base64"][:100] + "..."
-                    del wafer["ink_map"]["thumbnail_base64"]
-            
+                if not include_visualization:
+                    # Remove large image data for API response
+                    if "ink_map" in wafer and "thumbnail_base64" in wafer["ink_map"]:
+                        # Keep only first 100 chars of thumbnail for preview
+                        wafer["ink_map"]["has_thumbnail"] = True
+                        wafer["ink_map"]["thumbnail_preview"] = wafer["ink_map"]["thumbnail_base64"][:100] + "..."
+                        del wafer["ink_map"]["thumbnail_base64"]
+
+                    # Limit defects array to reduce payload
+                    if "defects" in wafer and len(wafer.get("defects", [])) > 5:
+                        wafer["defects"] = wafer["defects"][:5]
+                        wafer["defects_truncated"] = True
+                else:
+                    # When including visualization, still remove base64 images but keep die_map
+                    if "ink_map" in wafer:
+                        if "thumbnail_base64" in wafer["ink_map"]:
+                            wafer["ink_map"]["has_thumbnail"] = True
+                            del wafer["ink_map"]["thumbnail_base64"]  # Remove to reduce size
+                        if "full_image_base64" in wafer["ink_map"]:
+                            wafer["ink_map"]["has_full_image"] = True
+                            del wafer["ink_map"]["full_image_base64"]  # Remove to reduce size
+
             wafers = convert_objectids(wafers)
-            
+
             return {
                 "count": len(wafers),
-                "wafers": wafers
+                "wafers": wafers,
+                "visualization_included": include_visualization
             }
             
     except Exception as e:
@@ -1118,6 +1220,224 @@ async def get_wafer_batches(
             
     except Exception as e:
         logger.error(f"Error fetching wafer batches: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/wafers/inject")
+async def inject_test_wafer():
+    """
+    Inject a test wafer defect without excursion link for testing wafer monitoring
+    This simulates wafers from manual inspection or batch imports
+    """
+    try:
+        # Connect to MongoDB
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            wafer_collection = mdb_connector.get_collection("wafer_defects")
+
+            # Generate a unique wafer ID
+            wafer_count = wafer_collection.count_documents({})
+            wafer_id = f"W_TEST_{wafer_count + 1:04d}"
+
+            # Create test wafer with high severity but no excursion link
+            test_wafer = {
+                "wafer_id": wafer_id,
+                "lot_id": f"LOT_TEST_{datetime.now().strftime('%Y%m%d')}",
+                "inspection_timestamp": datetime.now(timezone.utc).isoformat() + "Z",
+                "ink_map": {
+                    "thumbnail_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+                    "thumbnail_size": [150, 150],
+                    "format": "PNG"
+                },
+                "defect_summary": {
+                    "total_dies": 625,
+                    "failed_dies": 200,  # High failure count
+                    "yield_percentage": 68.0,  # Low yield
+                    "defect_pattern": "clustered",  # Pattern that should trigger alert
+                    "severity": "high"  # High severity
+                },
+                "die_map": [[1 if (x*25 + y) < 425 else 0 for y in range(25)] for x in range(25)],
+                "defects": [
+                    {
+                        "type": "particle",
+                        "location": {"x": 10.5, "y": 8.3},
+                        "size_um": 1.5,
+                        "confidence": 0.95
+                    },
+                    {
+                        "type": "particle",
+                        "location": {"x": 11.2, "y": 8.8},
+                        "size_um": 1.2,
+                        "confidence": 0.93
+                    }
+                ],
+                "description": "Test wafer with high-severity clustered defects (manual inspection)",
+                "process_context": {
+                    "last_process_step": "MANUAL_INSPECTION",
+                    "equipment_used": ["INSPECTION_TOOL_01"],
+                    "slurry_batch": "SB_TEST_001",
+                    "clean_cycle": 150
+                    # Note: No excursion_alert_id field
+                }
+            }
+
+            # Insert the test wafer
+            result = wafer_collection.insert_one(test_wafer)
+
+            logger.info(f"Test wafer injected: {wafer_id} with {test_wafer['defect_summary']['yield_percentage']:.1f}% yield")
+
+            return {
+                "status": "success",
+                "message": f"Test wafer {wafer_id} injected successfully",
+                "wafer_id": wafer_id,
+                "severity": test_wafer["defect_summary"]["severity"],
+                "yield_percentage": test_wafer["defect_summary"]["yield_percentage"],
+                "defect_pattern": test_wafer["defect_summary"]["defect_pattern"],
+                "has_excursion_link": False,
+                "expected_alert": "Should trigger wafer defect alert due to high severity",
+                "document_id": str(result.inserted_id)
+            }
+
+    except Exception as e:
+        logger.error(f"Error injecting test wafer: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/wafers/{wafer_id}/visualization")
+async def get_wafer_visualization(wafer_id: str):
+    """
+    Get wafer data formatted for visualization in frontend.
+    Returns die_map and defect data for rendering wafer maps.
+
+    MongoDB Features: Document queries for complex nested data
+    """
+    try:
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            wafer_collection = mdb_connector.get_collection("wafer_defects")
+
+            # Query wafer from MongoDB
+            wafer = wafer_collection.find_one({"wafer_id": wafer_id})
+
+            if not wafer:
+                raise HTTPException(status_code=404, detail=f"Wafer {wafer_id} not found")
+
+            # Convert ObjectId to string if present
+            if "_id" in wafer:
+                wafer["_id"] = str(wafer["_id"])
+
+            # Return visualization-ready data
+            return {
+                "wafer_id": wafer_id,
+                "die_map": wafer.get("die_map", []),  # 25x25 array of 0s and 1s
+                "defects": wafer.get("defects", []),  # Array of defect locations with x,y coords
+                "defect_summary": wafer.get("defect_summary", {}),
+                "visualization_config": {
+                    "grid_size": 25,
+                    "die_size_pixels": 20,  # Suggested pixel size per die
+                    "wafer_diameter_pixels": 500,
+                    "colors": {
+                        "pass": "#90EE90",  # Light green for good dies
+                        "fail": "#FF6B6B",  # Light red for failed dies
+                        "border": "#333333",
+                        "background": "#F5F5F5",
+                        "wafer_edge": "#CCCCCC"
+                    },
+                    "pattern_colors": {
+                        "clustered": "#FF4444",  # Red for clustered defects
+                        "edge": "#FFA500",  # Orange for edge defects
+                        "systematic": "#9B59B6",  # Purple for systematic
+                        "random": "#3498DB"  # Blue for random
+                    }
+                },
+                "metadata": {
+                    "lot_id": wafer.get("lot_id"),
+                    "inspection_timestamp": wafer.get("inspection_timestamp"),
+                    "equipment": wafer.get("process_context", {}).get("equipment_used", []),
+                    "pattern_type": wafer.get("defect_summary", {}).get("defect_pattern"),
+                    "severity": wafer.get("defect_summary", {}).get("severity"),
+                    "yield_percentage": wafer.get("defect_summary", {}).get("yield_percentage")
+                },
+                "ink_map": {
+                    "has_thumbnail": bool(wafer.get("ink_map", {}).get("thumbnail_base64")),
+                    "has_full_image": bool(wafer.get("ink_map", {}).get("full_image_url") or
+                                          wafer.get("ink_map", {}).get("full_image_base64"))
+                }
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching wafer visualization: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/wafers/visualization/batch")
+async def get_batch_wafer_visualization(
+    request: Dict[str, List[str]]  # Expects {"wafer_ids": ["W_001", "W_002", ...]}
+):
+    """
+    Get visualization data for multiple wafers.
+    Useful for comparative analysis and batch visualization.
+
+    MongoDB Features: Bulk queries with $in operator
+    """
+    try:
+        wafer_ids = request.get("wafer_ids", [])
+
+        if not wafer_ids:
+            raise HTTPException(status_code=400, detail="No wafer IDs provided")
+
+        if len(wafer_ids) > 50:  # Limit batch size
+            raise HTTPException(status_code=400, detail="Maximum 50 wafers per batch request")
+
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            wafer_collection = mdb_connector.get_collection("wafer_defects")
+
+            # Query multiple wafers at once
+            wafers = wafer_collection.find(
+                {"wafer_id": {"$in": wafer_ids}},
+                {
+                    "wafer_id": 1,
+                    "die_map": 1,
+                    "defects": 1,
+                    "defect_summary": 1,
+                    "lot_id": 1,
+                    "inspection_timestamp": 1,
+                    "process_context.equipment_used": 1
+                }
+            )
+
+            results = []
+            found_ids = []
+
+            for wafer in wafers:
+                found_ids.append(wafer["wafer_id"])
+                results.append({
+                    "wafer_id": wafer["wafer_id"],
+                    "die_map": wafer.get("die_map", []),
+                    "defects": wafer.get("defects", [])[:10],  # Limit defects for batch response
+                    "yield_percentage": wafer.get("defect_summary", {}).get("yield_percentage", 0),
+                    "pattern": wafer.get("defect_summary", {}).get("defect_pattern", "unknown"),
+                    "severity": wafer.get("defect_summary", {}).get("severity", "unknown"),
+                    "total_dies": wafer.get("defect_summary", {}).get("total_dies", 625),
+                    "failed_dies": wafer.get("defect_summary", {}).get("failed_dies", 0),
+                    "lot_id": wafer.get("lot_id"),
+                    "timestamp": wafer.get("inspection_timestamp")
+                })
+
+            # Check for missing wafers
+            missing_ids = list(set(wafer_ids) - set(found_ids))
+
+            return {
+                "wafers": results,
+                "count": len(results),
+                "requested": len(wafer_ids),
+                "missing_wafers": missing_ids if missing_ids else None
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching batch wafer visualization: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1462,6 +1782,56 @@ async def run_alert_rca(alert_id: str, severity: AlertSeverity):
         logger.error(f"RCA failed for {alert_id}: {e}")
 
 
+async def generate_delayed_wafer_defect(excursion_data: Dict[str, Any], delay_seconds: int = 10):
+    """
+    Generate wafer defect after delay to simulate inspection time
+
+    Args:
+        excursion_data: Dictionary containing excursion details
+        delay_seconds: Delay in seconds (10 for demo, 7200 for realistic)
+    """
+    try:
+        # Wait to simulate inspection delay
+        logger.info(f"Scheduling wafer generation for alert {excursion_data.get('alert_id')} in {delay_seconds} seconds")
+        await asyncio.sleep(delay_seconds)
+
+        # Initialize wafer generator
+        s3_bucket_uri = os.getenv("S3_BUCKET_URI")
+        wafer_generator = WaferGenerator(
+            mongodb_uri=MDB_URI,
+            database=MDB_DATABASE_NAME,
+            s3_bucket_uri=s3_bucket_uri
+        )
+
+        # Generate wafer based on excursion type
+        wafer_record = await wafer_generator.generate_excursion_wafer(excursion_data)
+
+        # Save to MongoDB
+        wafer_id = wafer_generator.save_wafer(wafer_record)
+
+        logger.info(f"✅ Generated wafer {wafer_record['wafer_id']} with {wafer_record['defect_summary']['defect_pattern']} "
+                   f"pattern ({wafer_record['defect_summary']['yield_percentage']:.1f}% yield) for alert {excursion_data.get('alert_id')}")
+
+        # Notify WebSocket clients about new wafer
+        await notify_websocket_clients({
+            "type": "new_wafer_defect",
+            "wafer_id": wafer_record['wafer_id'],
+            "lot_id": wafer_record['lot_id'],
+            "pattern": wafer_record['defect_summary']['defect_pattern'],
+            "yield_percentage": wafer_record['defect_summary']['yield_percentage'],
+            "severity": wafer_record['defect_summary']['severity'],
+            "linked_alert_id": excursion_data.get('alert_id'),
+            "equipment_id": excursion_data.get('equipment_id'),
+            "timestamp": wafer_record['inspection_timestamp']
+        })
+
+        # Clean up
+        wafer_generator.cleanup()
+
+    except Exception as e:
+        logger.error(f"Error generating wafer defect for alert {excursion_data.get('alert_id')}: {e}")
+
+
 async def run_monitoring_loop():
     """
     Background task for continuous monitoring using MongoDB change streams
@@ -1583,6 +1953,16 @@ async def run_monitoring_loop():
                             # Trigger RCA for critical alerts only
                             asyncio.create_task(run_alert_rca(alert_id, severity))
 
+                            # Schedule wafer defect generation (with delay to simulate inspection)
+                            asyncio.create_task(generate_delayed_wafer_defect({
+                                'alert_id': alert_id,
+                                'equipment_id': equipment_id,
+                                'excursion_type': excursion_type,
+                                'severity': severity.value,
+                                'timestamp': sensor_data.get('timestamp'),
+                                'metrics': metrics
+                            }, delay_seconds=10))  # 10 seconds for demo, can be 7200 for realistic
+
                         # Also check if this is just a normal update to broadcast
                         elif not excursion_detected:
                             # Broadcast normal sensor update to WebSocket clients
@@ -1620,6 +2000,142 @@ async def run_monitoring_loop():
         if 'async_client' in locals():
             async_client.close()
         logger.info("Monitoring loop stopped")
+
+
+async def run_wafer_monitoring_loop():
+    """
+    Background task for monitoring new wafer defects and generating alerts
+    Watches for high-severity wafers that aren't already linked to excursion alerts
+    """
+    global monitoring_active
+
+    logger.info("Starting wafer defect monitoring loop with change streams")
+
+    try:
+        # Get async MongoDB connection
+        async_client = AsyncIOMotorClient(MDB_URI)
+        async_db = async_client[MDB_DATABASE_NAME]
+        wafer_defects_collection = async_db["wafer_defects"]
+
+        # Define change stream pipeline to watch for inserts
+        pipeline = [
+            {"$match": {"operationType": "insert"}}
+        ]
+
+        # Start watching the wafer_defects collection
+        async with wafer_defects_collection.watch(pipeline) as stream:
+            logger.info("✅ Change stream connected - monitoring wafer_defects collection")
+
+            while monitoring_active:
+                try:
+                    # Wait for the next change event
+                    async for change in stream:
+                        if not monitoring_active:
+                            break
+
+                        # Get the new wafer data
+                        wafer_data = change.get("fullDocument")
+                        if not wafer_data:
+                            continue
+
+                        wafer_id = wafer_data.get("wafer_id")
+                        logger.debug(f"New wafer detected: {wafer_id}")
+
+                        # Check if this wafer is already linked to an excursion alert
+                        process_context = wafer_data.get("process_context", {})
+                        if "excursion_alert_id" in process_context:
+                            logger.debug(f"Wafer {wafer_id} already linked to alert {process_context['excursion_alert_id']}, skipping")
+                            continue
+
+                        # Get defect summary
+                        defect_summary = wafer_data.get("defect_summary", {})
+                        severity = defect_summary.get("severity", "low")
+                        yield_pct = defect_summary.get("yield_percentage", 100)
+                        defect_pattern = defect_summary.get("defect_pattern", "random")
+
+                        # Only create alerts for high-severity wafers
+                        if severity != "high":
+                            logger.debug(f"Wafer {wafer_id} severity is {severity}, not creating alert")
+                            continue
+
+                        # Determine alert type based on defect characteristics
+                        if defect_pattern in ["clustered", "systematic"]:
+                            alert_type = AlertType.DEFECT_CLUSTER
+                            title = f"Defect Cluster Detected on {wafer_id}"
+                            description = f"{defect_pattern.title()} defect pattern detected with {yield_pct:.1f}% yield"
+                        elif yield_pct < 85:
+                            alert_type = AlertType.YIELD_DROP
+                            title = f"Severe Yield Drop on {wafer_id}"
+                            description = f"Yield dropped to {yield_pct:.1f}% on wafer {wafer_id}"
+                        else:
+                            alert_type = AlertType.DEFECT_CLUSTER
+                            title = f"High Severity Defects on {wafer_id}"
+                            description = wafer_data.get("description", f"High severity {defect_pattern} defects detected")
+
+                        # Determine alert severity based on yield
+                        if yield_pct < 70:
+                            alert_severity = AlertSeverity.CRITICAL
+                        elif yield_pct < 85:
+                            alert_severity = AlertSeverity.HIGH
+                        else:
+                            alert_severity = AlertSeverity.MEDIUM
+
+                        # Create alert using AlertManager
+                        if alert_manager:
+                            alert_id = alert_manager.create_alert(
+                                alert_type=alert_type,
+                                severity=alert_severity,
+                                title=title,
+                                description=description,
+                                source_data={
+                                    "wafer_id": wafer_id,
+                                    "lot_id": wafer_data.get("lot_id"),
+                                    "defect_summary": defect_summary,
+                                    "inspection_timestamp": wafer_data.get("inspection_timestamp"),
+                                    "process_context": process_context,
+                                    "defects": wafer_data.get("defects", [])[:5]  # Include first 5 defects
+                                },
+                                equipment_id=process_context.get("equipment_used", [None])[0] if process_context.get("equipment_used") else None,
+                                lot_id=wafer_data.get("lot_id"),
+                                wafer_id=wafer_id
+                            )
+
+                            logger.info(f"🚨 Wafer alert created: {alert_id} for {wafer_id} ({defect_pattern}, {yield_pct:.1f}% yield)")
+
+                            # Notify WebSocket clients
+                            await notify_websocket_clients({
+                                "type": "wafer_alert",
+                                "alert_id": alert_id,
+                                "wafer_id": wafer_id,
+                                "severity": alert_severity.value,
+                                "yield_percentage": yield_pct,
+                                "defect_pattern": defect_pattern,
+                                "timestamp": wafer_data.get("inspection_timestamp")
+                            })
+
+                            # Trigger correlation analysis for wafer alerts too
+                            asyncio.create_task(run_alert_correlation(alert_id))
+
+                            # Trigger RCA for critical wafer alerts
+                            if alert_severity in [AlertSeverity.CRITICAL, AlertSeverity.HIGH]:
+                                asyncio.create_task(run_alert_rca(alert_id, alert_severity))
+
+                except asyncio.CancelledError:
+                    logger.info("Wafer monitoring loop cancelled")
+                    break
+                except Exception as e:
+                    logger.error(f"Error processing wafer change stream event: {e}")
+                    # Continue monitoring despite errors
+                    continue
+
+    except Exception as e:
+        logger.error(f"Failed to establish wafer change stream: {e}")
+        logger.info("Wafer monitoring fallback not implemented - requires change streams")
+
+    finally:
+        if 'async_client' in locals():
+            async_client.close()
+        logger.info("Wafer monitoring loop stopped")
 
 
 def determine_severity(excursion: Dict[str, Any]) -> AlertSeverity:
