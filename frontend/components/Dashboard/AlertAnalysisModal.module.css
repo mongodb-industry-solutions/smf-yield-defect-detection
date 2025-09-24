@@ -1,0 +1,356 @@
+.modal {
+  max-width: 900px !important;
+}
+
+.header {
+  padding: 24px 24px 16px 24px;
+  border-bottom: 1px solid #e0e4e7;
+}
+
+.headerTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.headerTop h2 {
+  margin: 0;
+  color: #1e2d3d;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.alertId {
+  font-size: 12px;
+  color: #6b778c;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+  margin: 0;
+}
+
+.tabs {
+  padding: 0 24px;
+  min-height: 400px;
+}
+
+.tabContent {
+  padding: 24px 0;
+}
+
+.section {
+  margin-bottom: 32px;
+}
+
+.section:last-child {
+  margin-bottom: 0;
+}
+
+.section h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e2d3d;
+  margin: 0 0 16px 0;
+}
+
+.detailsGrid {
+  background: #f7f9fb;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detailRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e0e4e7;
+}
+
+.detailRow:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b778c;
+}
+
+.value {
+  font-size: 13px;
+  color: #1e2d3d;
+  text-align: right;
+  max-width: 60%;
+  word-break: break-word;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.metricCard {
+  background: white !important;
+  border: 1px solid #e0e4e7 !important;
+  border-radius: 8px !important;
+  padding: 12px !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.metricLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: #6b778c;
+  text-transform: capitalize;
+  margin-bottom: 8px;
+}
+
+.metricValue {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1e2d3d;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+}
+
+.impactGrid {
+  background: #fff8e1;
+  border: 1px solid #ffeb3b;
+  border-radius: 8px;
+  padding: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+}
+
+.impactItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.impactLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b778c;
+}
+
+.impactValue {
+  font-size: 18px;
+  font-weight: 600;
+  color: #1e2d3d;
+}
+
+.rcaList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rcaCard {
+  background: white !important;
+  border: 1px solid #e0e4e7 !important;
+  border-radius: 8px !important;
+  padding: 16px !important;
+}
+
+.rcaHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.rcaHeader h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1e2d3d;
+}
+
+.rcaDescription {
+  font-size: 13px;
+  color: #5e6c84;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.rcaSteps {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e0e4e7;
+}
+
+.rcaSteps h5 {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b778c;
+  margin: 0 0 8px 0;
+}
+
+.rcaSteps ol {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.rcaSteps li {
+  font-size: 12px;
+  color: #5e6c84;
+  margin-bottom: 6px;
+}
+
+.historyCard {
+  background: white !important;
+  border: 1px solid #e0e4e7 !important;
+  border-radius: 8px !important;
+  padding: 16px !important;
+}
+
+.historyCard p {
+  font-size: 13px;
+  color: #5e6c84;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.correlatedEvents {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.eventGroup {
+  background: #f7f9fb;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.eventGroup h4 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1e2d3d;
+  margin: 0 0 12px 0;
+  text-transform: capitalize;
+}
+
+.eventGroup ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.eventGroup li {
+  font-size: 12px;
+  color: #5e6c84;
+  margin-bottom: 4px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+  word-break: break-all;
+}
+
+.actionCard {
+  background: white !important;
+  border: 1px solid #e0e4e7 !important;
+  border-radius: 8px !important;
+  padding: 20px !important;
+  margin-bottom: 16px;
+}
+
+.actionCard h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e2d3d;
+}
+
+.actionDescription {
+  font-size: 13px;
+  color: #5e6c84;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.fixDetails {
+  background: #e8f5e9;
+  border: 1px solid #4caf50;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.fixDetails h5 {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2e7d32;
+  margin: 0 0 12px 0;
+}
+
+.fixDetails ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.fixDetails li {
+  font-size: 12px;
+  color: #2e7d32;
+  margin-bottom: 6px;
+}
+
+.fixStatus {
+  padding: 12px;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.fixStatus.success {
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #4caf50;
+}
+
+.fixStatus.error {
+  background: #ffebee;
+  color: #c62828;
+  border: 1px solid #ef5350;
+}
+
+.fixButton {
+  width: 100%;
+}
+
+.actionButtons {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.loading {
+  padding: 40px;
+  text-align: center;
+  color: #6b778c;
+  font-size: 14px;
+}
+
+.noData {
+  padding: 24px;
+  background: #f7f9fb;
+  border-radius: 8px;
+  text-align: center;
+  color: #6b778c;
+  font-size: 13px;
+}
+
+.footer {
+  padding: 16px 24px;
+  border-top: 1px solid #e0e4e7;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}

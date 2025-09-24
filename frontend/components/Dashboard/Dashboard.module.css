@@ -3,6 +3,9 @@
   flex-direction: column;
   min-height: 100vh;
   background: #f7f9fb;
+  padding: 0;
+  margin: 0;
+  position: relative;
 }
 
 .main {
@@ -10,6 +13,39 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+}
+
+/* Dashboard Body - Main Layout Container */
+.dashboardBody {
+  display: flex;
+  padding-top: 200px; /* Space for Global Header (60px) + FabPulseBar (~80px) + clearance (60px) */
+  height: 100vh;
+  background: #f7f9fb;
+  box-sizing: border-box;
+  overflow-y: auto; /* Enable scrolling for all panels together */
+}
+
+/* Left Panel - Equipment Health Matrix */
+.leftPanel {
+  width: 400px;
+  flex-shrink: 0;
+  padding: 20px 0 20px 20px;
+  border-right: 1px solid #e0e4e7;
+}
+
+/* Center Panel - Main Monitoring Area */
+.centerPanel {
+  flex: 1;
+  padding: 20px;
+  min-width: 0; /* Prevent flex child from growing beyond parent */
+}
+
+/* Right Panel - Alerts Panel */
+.rightPanel {
+  width: 480px;
+  flex-shrink: 0;
+  padding: 20px 20px 20px 0;
+  border-left: 1px solid #e0e4e7;
 }
 
 /* New Monitoring Dashboard Layout */
@@ -85,6 +121,7 @@
 .fleetContent {
   flex: 1;
   overflow-y: auto;
+  padding-bottom: 20px;
 }
 
 /* Legacy monitoring layout for compatibility */
@@ -99,16 +136,13 @@
 }
 
 .mainContent {
-  display: grid;
-  grid-template-columns: 65% 35%;
-  gap: 20px;
-  padding: 20px;
-  overflow: hidden;
+  display: flex;
   flex: 1;
-  min-height: 500px;
-  width: 100%;
-  max-width: 1600px;
-  margin: 0 auto;
+  padding: 20px;
+  padding-right: 500px; /* Space for alerts panel */
+  gap: 20px;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .equipmentFleet {
@@ -167,6 +201,19 @@
   margin: 0 auto;
 }
 
+.titleCard {
+  background: white !important;
+  padding: 30px !important;
+  border-radius: 8px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+  text-align: center;
+}
+
+.titleCard h2 {
+  color: #00684a;
+  margin: 0;
+}
+
 .placeholderCard {
   padding: 32px;
 }
@@ -178,15 +225,30 @@
 }
 
 .placeholder {
-  margin-top: 24px;
-  padding: 48px;
-  background: #f7f9fb;
-  border: 2px dashed #c1c7cd;
-  border-radius: 8px;
-  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: calc(100vh - 200px);
+  min-height: 400px;
+  background: white;
+  border-radius: 12px;
+  border: 2px dashed #e0e4e7;
   color: #6b778c;
-  font-size: 14px;
-  font-weight: 500;
+  text-align: center;
+}
+
+.placeholder h3 {
+  margin: 0 0 12px 0;
+  font-size: 24px;
+  font-weight: 600;
+  color: #1e2d3d;
+}
+
+.placeholder p {
+  margin: 0;
+  font-size: 16px;
+  color: #6b778c;
 }
 
 /* Responsive - Large Desktop (>1400px) */
@@ -247,62 +309,72 @@
   }
 }
 
+/* Responsive - Tablet (<1024px) */
+@media (max-width: 1024px) {
+  .dashboardBody {
+    flex-direction: column;
+  }
+
+  .leftPanel {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #e0e4e7;
+    max-height: 400px;
+    padding: 20px;
+  }
+
+  .centerPanel {
+    padding: 20px;
+  }
+
+  .rightPanel {
+    width: 100%;
+    border-left: none;
+    border-top: 1px solid #e0e4e7;
+    padding: 20px;
+  }
+}
+
 /* Responsive - Mobile (<768px) */
 @media (max-width: 767px) {
-  .monitoringLayout {
-    grid-template-rows: auto 1fr;
+  .dashboardBody {
+    padding-top: 100px;
   }
-  
-  .monitoringDashboard {
+
+  .leftPanel {
+    max-height: 350px;
     padding: 12px;
   }
-  
-  .dashboardLayout {
-    flex-direction: column;
-    height: auto;
-    gap: 12px;
-  }
-  
-  .metricsSection,
-  .fleetSection {
-    flex: 1 1 auto;
-    width: 100%;
-    padding-right: 0;
-  }
-  
-  .metricCard {
-    min-height: 300px;
-  }
-  
-  .mainContent {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto;
-    gap: 12px;
+
+  .centerPanel {
     padding: 12px;
-    overflow-y: auto;
   }
-  
+
+  .rightPanel {
+    padding: 12px;
+  }
+
   .equipmentFleet,
   .criticalMetrics {
     min-height: auto;
     margin-bottom: 12px;
   }
-  
+
   .intelligentAlerts {
     position: sticky;
     bottom: 0;
     max-height: 150px;
     z-index: 10;
   }
-  
+
   .sectionTitle {
     font-size: 11px;
   }
-  
+
   .contentArea {
     padding: 16px;
   }
-  
+
   .placeholderCard {
     padding: 20px;
   }

@@ -1,8 +1,14 @@
 .header {
   background: linear-gradient(135deg, #001e2b 0%, #00684a 100%);
   color: white;
-  padding: 28px 32px;
+  padding: 20px 32px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1001; /* Above the alerts panel */
+  min-height: 100px;
 }
 
 .topSection {
@@ -42,9 +48,9 @@
 /* Responsive design */
 @media (max-width: 1024px) {
   .header {
-    padding: 24px;
+    padding: 18px 24px;
   }
-  
+
   .title {
     font-size: 28px;
   }
@@ -52,13 +58,13 @@
 
 @media (max-width: 768px) {
   .header {
-    padding: 20px 16px;
+    padding: 16px;
   }
-  
+
   .title {
     font-size: 24px;
   }
-  
+
   .subtitle {
     font-size: 13px;
   }

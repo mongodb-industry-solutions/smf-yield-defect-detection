@@ -379,6 +379,7 @@ class CorrelationEngine:
                         "type": "slurry_batch",
                         "id": slurry_batch,
                         "context_id": context_id,
+                        "is_problematic": True,  # Include this field!
                         "issues": batch_doc.get("known_issues", []),
                         "details": {
                             "qc_status": batch_doc.get("slurry_details", {}).get("qc_status"),
@@ -417,6 +418,7 @@ class CorrelationEngine:
                         "type": "recipe",
                         "id": recipe_id,
                         "context_id": recipe_doc.get("context_id"),
+                        "is_problematic": True,  # Include this field!
                         "issues": recipe_doc.get("known_issues", []),
                         "details": {
                             "validation_status": recipe_doc.get("validation_status"),

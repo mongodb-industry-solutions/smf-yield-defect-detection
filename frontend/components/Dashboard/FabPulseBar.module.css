@@ -1,33 +1,96 @@
-.fabPulseBar {
-  background: linear-gradient(135deg, #ffffff 0%, #f7f9fb 100%);
-  border-bottom: 2px solid #e0e4e7;
-  padding: 10px 20px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  width: 100%;
+.container {
+  position: fixed;
+  top: 60px; /* Position below global header */
+  left: 0;
+  right: 0; /* Expand to full width */
+  width: 100%; /* Ensure full width */
+  z-index: 1001; /* Above global header (1000) but below modals */
+  padding: 20px;
+  box-sizing: border-box;
+  background: transparent; /* Ensure it's above other content */
 }
 
-.pulseContainer {
-  max-width: 1600px;
-  margin: 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 32px;
+.card {
+  background: white !important;
+  border-radius: 12px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+  padding: 20px 30px !important;
+  position: relative;
+  overflow: visible !important;
 }
 
-.statusIndicator {
-  display: flex;
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 40px;
   align-items: center;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
-  padding-right: 24px;
-  border-right: 1px solid #e0e4e7;
 }
 
-.statusDot {
+.metricLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b778c;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.metricValue {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.value {
+  font-size: 32px;
+  font-weight: 700;
+  color: #1e2d3d;
+  line-height: 1;
+  transition: color 0.3s ease;
+}
+
+.trend {
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.trendUp {
+  color: #00684a;
+  background: rgba(0, 104, 74, 0.1);
+}
+
+.trendDown {
+  color: #DC382D;
+  background: rgba(220, 56, 45, 0.1);
+}
+
+.pulseIndicator {
+  position: absolute;
+  top: 20px;
+  right: 30px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(0, 237, 100, 0.1);
+  border-radius: 12px;
+}
+
+.pulseDot {
   width: 8px;
   height: 8px;
-  border-radius: 50%;
   background: #00ed64;
+  border-radius: 50%;
   animation: pulse 2s infinite;
 }
 
@@ -36,127 +99,56 @@
     box-shadow: 0 0 0 0 rgba(0, 237, 100, 0.7);
   }
   70% {
-    box-shadow: 0 0 0 8px rgba(0, 237, 100, 0);
+    box-shadow: 0 0 0 6px rgba(0, 237, 100, 0);
   }
   100% {
     box-shadow: 0 0 0 0 rgba(0, 237, 100, 0);
   }
 }
 
-.statusText {
-  color: #00684a;
-  font-weight: 600;
-  letter-spacing: 1px;
-}
-
-.pulseMetric {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-  min-width: 0;
-}
-
-.metricLabel {
-  color: #5e6c84;
+.pulseText {
   font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.metricValue {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.value {
-  font-size: 24px;
-  color: #1e2d3d;
-  line-height: 1;
-}
-
-.trendIcon {
-  transition: all 0.2s ease;
-}
-
-.positive {
-  color: #00ed64;
-}
-
-.negative {
-  color: #e11900;
-}
-
-.neutral {
-  color: #6b778c;
-}
-
-/* Severity states */
-.critical .value {
-  color: #e11900;
-}
-
-.warning .value {
-  color: #fbb13c;
-}
-
-.good .value {
+  font-weight: 700;
   color: #00684a;
+  letter-spacing: 0.5px;
 }
 
-/* Responsive */
+.loading {
+  text-align: center;
+  color: #6b778c;
+  padding: 20px;
+  font-size: 14px;
+}
+
+/* Responsive design */
 @media (max-width: 1400px) {
-  .pulseContainer {
+  .metricsGrid {
+    grid-template-columns: repeat(2, 1fr);
     gap: 24px;
   }
-  
-  .value {
-    font-size: 20px;
-  }
-}
 
-@media (max-width: 1024px) {
-  .pulseContainer {
-    gap: 16px;
-  }
-  
-  .metricLabel {
-    font-size: 10px;
-  }
-  
   .value {
-    font-size: 18px;
+    font-size: 28px;
   }
 }
 
 @media (max-width: 768px) {
-  .fabPulseBar {
-    padding: 8px 16px;
+  .container {
+    right: 0;
+    position: relative;
+    padding: 12px;
   }
-  
-  .pulseContainer {
-    flex-wrap: wrap;
-    gap: 12px;
+
+  .metricsGrid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
   }
-  
-  .statusIndicator {
-    width: 100%;
-    padding-right: 0;
-    border-right: none;
-    border-bottom: 1px solid #e0e4e7;
-    padding-bottom: 8px;
-    margin-bottom: 4px;
-  }
-  
-  .pulseMetric {
-    flex: 0 0 calc(50% - 6px);
-  }
-  
+
   .value {
-    font-size: 16px;
+    font-size: 24px;
+  }
+
+  .card {
+    padding: 16px !important;
   }
 }

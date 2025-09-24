@@ -1,13 +1,7 @@
 "use client";
 
-import Dashboard from "@/components/Dashboard/Dashboard";
-import { DashboardDataProvider } from "@/contexts/DashboardDataProvider";
+import HomepageClient from "@/components/Homepage/HomepageClient";
 
 export default function HomePage() {
-  // Phase 1: Display the new dashboard with optimized data loading
-  return (
-    <DashboardDataProvider>
-      <Dashboard />
-    </DashboardDataProvider>
-  );
+  return <HomepageClient />;
 }

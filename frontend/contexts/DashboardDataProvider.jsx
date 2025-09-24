@@ -1,11 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { 
-  alertAPI, 
-  kpiAPI, 
-  equipmentAPI, 
-  sensorAPI, 
-  waferAPI 
-} from '../lib/api';
+import { alertAPI, equipmentAPI } from '../lib/api';
 
 // Create context
 const DashboardDataContext = createContext();
@@ -20,57 +14,54 @@ export const useDashboardData = () => {
 };
 
 export const DashboardDataProvider = ({ children }) => {
-  // State for all dashboard data
+  // State for alerts only
   const [data, setData] = useState({
-    kpi: null,
     alerts: [],
-    equipment: null,
-    sensors: [],
-    wafers: [],
+    equipmentStatus: [],
     isLoading: true,
     lastFetch: null
   });
 
-  // Fetch all data in parallel
+  // Fetch all dashboard data
   const fetchAllData = async () => {
-    console.log('Fetching all dashboard data in parallel...');
+    console.log('Fetching dashboard data...');
     const startTime = Date.now();
-    
+
     try {
-      // Start all requests in parallel
-      const [kpiData, alertsData, equipmentData, sensorsData, wafersData] = await Promise.all([
-        kpiAPI.getKPIStatistics().catch(err => {
-          console.error('KPI fetch failed:', err);
-          return null;
-        }),
-        alertAPI.getAlerts(null, 10).catch(err => {
-          console.error('Alerts fetch failed:', err);
-          return { alerts: [] };
-        }),
-        equipmentAPI.getEquipmentStatus().catch(err => {
-          console.error('Equipment fetch failed:', err);
-          return null;
-        }),
-        sensorAPI.getSensorStream('CMP_TOOL_01', 5, 1).catch(err => {
-          console.error('Sensors fetch failed:', err);
-          return { data: [] };
-        }),
-        waferAPI.getLatestWafers(5).catch(err => {
-          console.error('Wafers fetch failed:', err);
-          return { wafers: [] };
-        })
+      // Fetch both alerts and equipment status in parallel
+      const [alertsData, equipmentData] = await Promise.all([
+        alertAPI.getAlerts(null, 20),
+        equipmentAPI.getEquipmentStatus()
       ]);
 
       const fetchTime = Date.now() - startTime;
-      console.log(`All data fetched in ${fetchTime}ms`);
+      console.log(`Data fetched in ${fetchTime}ms`);
+      console.log('DashboardDataProvider: Alerts fetched:', alertsData?.alerts);
+      console.log('DashboardDataProvider: Equipment status fetched:', equipmentData);
 
-      // Update state with all data at once
+      // Process equipment data - flatten the matrix structure
+      let equipmentList = [];
+      if (equipmentData?.matrix) {
+        // Flatten all equipment from the matrix into a single array
+        Object.values(equipmentData.matrix).forEach(equipmentGroup => {
+          if (Array.isArray(equipmentGroup)) {
+            equipmentGroup.forEach(eq => {
+              equipmentList.push({
+                equipment_id: eq.equipment_id,
+                status: eq.status,
+                latest_metrics: eq.metrics,
+                latest_timestamp: eq.last_update,
+                process_step: eq.process_step || 'UNKNOWN'
+              });
+            });
+          }
+        });
+      }
+
+      // Update state with all data
       setData({
-        kpi: kpiData,
         alerts: alertsData?.alerts || [],
-        equipment: equipmentData,
-        sensors: sensorsData?.data || [],
-        wafers: wafersData?.wafers || [],
+        equipmentStatus: equipmentList,
         isLoading: false,
         lastFetch: Date.now()
       });
@@ -83,10 +74,10 @@ export const DashboardDataProvider = ({ children }) => {
   // Initial fetch on mount
   useEffect(() => {
     fetchAllData();
-    
+
     // Refresh data every 30 seconds
     const interval = setInterval(fetchAllData, 30000);
-    
+
     return () => clearInterval(interval);
   }, []);
 

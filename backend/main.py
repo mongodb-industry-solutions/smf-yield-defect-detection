@@ -28,10 +28,12 @@ from services.rca_generator import RCAGenerator
 from services.alert_manager import AlertManager, AlertSeverity, AlertStatus, AlertType
 from services.websocket_manager import get_websocket_manager, ConnectionType
 from services.wafer_generator import WaferGenerator
+from services.sensor_data_writer import SensorDataWriter
 
 import os
 from dotenv import load_dotenv
 import asyncio
+import random
 
 load_dotenv()
 
@@ -55,12 +57,168 @@ AGENT_PROFILE_CHOSEN_ID = config.get("AGENT_PROFILE_CHOSEN_ID")
 MDB_CHECKPOINTER_COLLECTION = config.get("MDB_CHECKPOINTER_COLLECTION")
 MDB_CHECKPOINTER_WRITES = MDB_CHECKPOINTER_COLLECTION + "_writes"
 
+# Demo Mode Configuration
+DEMO_MODE_ENABLED = os.getenv("DEMO_MODE_ENABLED", "false").lower() == "true"
+DEMO_INTERVAL_SECONDS = int(os.getenv("DEMO_INTERVAL_SECONDS", "30"))
+DEMO_EXCURSION_PROBABILITY = float(os.getenv("DEMO_EXCURSION_PROBABILITY", "0.30"))  # Increased to 30% for more frequent excursions
+
+# Demo Mode Global State
+demo_mode_active = False
+demo_task = None
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# Demo Mode Functions
+# ============================================================================
+
+def generate_demo_metrics(equipment_id: str, is_excursion: bool = False) -> dict:
+    """Generate realistic sensor metrics for demo mode"""
+    base_metrics = {
+        "CMP_TOOL": {
+            "particle_count": 450 + random.randint(-50, 50),  # [400-500] - realistic clean room range
+            "rf_power": 1450 + random.uniform(-20, 20),
+            "chamber_pressure": 45 + random.uniform(-2, 2),
+            "temperature": 65 + random.uniform(-1, 1),
+            "flow_rate": 200 + random.uniform(-10, 10)
+        },
+        "ETCH": {
+            "particle_count": 400 + random.randint(-40, 40),  # [360-440] - realistic clean room range
+            "rf_power": 1200 + random.uniform(-15, 15),
+            "chamber_pressure": 35 + random.uniform(-1.5, 1.5),
+            "temperature": 70 + random.uniform(-1.5, 1.5),
+            "flow_rate": 150 + random.uniform(-8, 8)
+        },
+        "LITHO": {
+            "particle_count": 350 + random.randint(-30, 30),  # [320-380] - realistic clean room range
+            "rf_power": 800 + random.uniform(-10, 10),
+            "chamber_pressure": 25 + random.uniform(-1, 1),
+            "temperature": 22 + random.uniform(-0.5, 0.5),
+            "flow_rate": 100 + random.uniform(-5, 5)
+        }
+    }
+
+    # Determine equipment type (CMP_TOOL_01 -> CMP)
+    equipment_type = equipment_id.split("_")[0]
+    # Map CMP to CMP_TOOL in base_metrics
+    if equipment_type == "CMP":
+        equipment_type = "CMP_TOOL"
+    metrics = base_metrics.get(equipment_type, base_metrics["CMP_TOOL"]).copy()
+
+    # Apply excursion if needed
+    if is_excursion:
+        excursion_type = random.choice(["particle", "rf_power", "temperature"])
+
+        if excursion_type == "particle":
+            metrics["particle_count"] = random.randint(1100, 4000)  # Full range from just above threshold to severe
+        elif excursion_type == "rf_power":
+            metrics["rf_power"] = metrics["rf_power"] + random.uniform(200, 400)  # Much larger drift for clear excursion
+        elif excursion_type == "temperature":
+            metrics["temperature"] = metrics["temperature"] + random.uniform(5, 10)  # Larger temp drift
+
+    # Round values to reasonable precision
+    metrics["particle_count"] = int(metrics["particle_count"])
+    metrics["rf_power"] = round(metrics["rf_power"], 1)
+    metrics["chamber_pressure"] = round(metrics["chamber_pressure"], 1)
+    metrics["temperature"] = round(metrics["temperature"], 1)
+    metrics["flow_rate"] = round(metrics["flow_rate"], 1)
+
+    # Add temp_drift for monitoring (temperature change from normal baseline)
+    normal_temps = {"CMP_TOOL": 65, "ETCH": 70, "LITHO": 22}
+    normal_temp = normal_temps.get(equipment_type, 65)
+    metrics["temp_drift"] = round(metrics["temperature"] - normal_temp, 1)
+
+    return metrics
+
+def generate_demo_metadata(is_excursion: bool = False) -> dict:
+    """Generate realistic metadata for demo mode"""
+    lot_number = random.randint(1, 50)
+    wafer_number = random.randint(1, 25)
+    recipe_number = random.randint(1, 10)
+
+    # Use actual batch IDs that exist in database
+    # Problematic batches for excursions: SB_2025_021, SB_2025_043, SB_2025_045, SB_2025_047, SB_2025_048
+    # Normal batches: SB_2025_003, SB_2025_005, SB_2025_010, SB_2025_011, SB_2025_012, etc.
+
+    if is_excursion and random.random() < 0.7:  # 70% chance to use problematic batch during excursion
+        # Use problematic batches for excursions
+        problematic_batches = ["SB_2025_021", "SB_2025_043", "SB_2025_045", "SB_2025_047", "SB_2025_048"]
+        slurry_batch = random.choice(problematic_batches)
+    else:
+        # Use normal batches
+        normal_batches = ["SB_2025_003", "SB_2025_005", "SB_2025_010", "SB_2025_011", "SB_2025_012",
+                         "SB_2025_019", "SB_2025_024", "SB_2025_026", "SB_2025_027"]
+        slurry_batch = random.choice(normal_batches)
+
+    return {
+        "lot_id": f"LOT_2025_{lot_number:03d}",
+        "wafer_id": f"W_{lot_number:03d}_{wafer_number:02d}",
+        "recipe_id": f"RECIPE_{recipe_number:02d}",
+        "slurry_batch": slurry_batch,
+        "operator_id": f"OP_{random.randint(100, 200)}"
+    }
+
+async def demo_data_generator():
+    """Generate normal sensor data with occasional anomalies"""
+    global demo_mode_active
+
+    equipment_ids = ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01"]
+    equipment_index = 0
+
+    logger.info(f"Demo data generator started - Interval: {DEMO_INTERVAL_SECONDS}s, Excursion probability: {DEMO_EXCURSION_PROBABILITY}")
+
+    while demo_mode_active:
+        try:
+            # Rotate through equipment
+            equipment_id = equipment_ids[equipment_index]
+            equipment_index = (equipment_index + 1) % len(equipment_ids)
+
+            # Determine if this should be an excursion
+            is_excursion = random.random() < DEMO_EXCURSION_PROBABILITY
+
+            # Generate sensor data
+            data = {
+                "equipment_id": equipment_id,
+                "process_step": equipment_id.split("_")[0],
+                "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+                "metrics": generate_demo_metrics(equipment_id, is_excursion),
+                "metadata": generate_demo_metadata(is_excursion)  # Pass excursion flag for problematic batch selection
+            }
+
+            # Use SensorDataWriter for dual writes
+            writer = SensorDataWriter(mongodb_uri=MDB_URI, database=MDB_DATABASE_NAME)
+            result = writer.write_sensor_data(data)
+            writer.close()
+
+            if result["success"]:
+                excursion_msg = " (EXCURSION)" if is_excursion else ""
+                logger.info(f"Demo data generated for {equipment_id}: particle_count={data['metrics']['particle_count']}{excursion_msg}")
+
+                # Log if excursion will trigger alert
+                if data['metrics']['particle_count'] > 1000:
+                    logger.warning(f"Particle excursion on {equipment_id}: {data['metrics']['particle_count']} - Alert will be created")
+            else:
+                logger.error(f"Failed to write demo data: {result.get('errors', [])}")
+
+            # Wait for next interval
+            await asyncio.sleep(DEMO_INTERVAL_SECONDS)
+
+        except asyncio.CancelledError:
+            logger.info("Demo data generator cancelled")
+            break
+        except Exception as e:
+            logger.error(f"Error in demo data generator: {e}")
+            # Continue running even if one iteration fails
+            await asyncio.sleep(DEMO_INTERVAL_SECONDS)
+
+    logger.info("Demo data generator stopped")
+
+# ============================================================================
 
 app = FastAPI()
 
@@ -83,6 +241,9 @@ monitoring_active = False
 monitoring_task = None
 wafer_monitoring_task = None
 
+# Global MongoDB async client
+mongodb_client = None
+
 # WebSocket Manager for real-time updates
 ws_manager = get_websocket_manager()
 
@@ -91,11 +252,14 @@ async def startup_event():
     """
     Initialize monitoring services on application startup
     """
-    global excursion_detector, correlation_engine, rca_generator, alert_manager, monitoring_active
+    global excursion_detector, correlation_engine, rca_generator, alert_manager, monitoring_active, mongodb_client
 
     logger.info("Initializing monitoring services on startup...")
 
     try:
+        # Initialize async MongoDB client
+        mongodb_client = AsyncIOMotorClient(MDB_URI)
+        
         # Initialize services
         excursion_detector = ExcursionDetector(
             mongodb_uri=MDB_URI,
@@ -131,6 +295,9 @@ async def startup_event():
         logger.info("✅ Monitoring services initialized successfully on startup")
         logger.info("Services ready: ExcursionDetector, CorrelationEngine, RCAGenerator, AlertManager")
         logger.info("✅ Monitoring loops auto-started (sensor + wafer defects)")
+
+        # Initialize Phase 3 services
+        await initialize_phase3_services()
 
     except Exception as e:
         logger.error(f"❌ Failed to initialize monitoring services on startup: {e}")
@@ -482,10 +649,29 @@ async def get_alerts(
             equipment_id=equipment_id,
             limit=limit
         )
-        
+
         # Convert ObjectIds for JSON serialization
         alerts = convert_objectids(alerts)
-        
+
+        # Add backward compatibility mapping for frontend
+        for alert in alerts:
+            # Map new field names to old ones for frontend compatibility
+            if 'correlation_analysis' in alert:
+                alert['correlation_data'] = alert['correlation_analysis']  # Frontend expects this
+
+            # Handle RCA fields - could be either rca_analysis (new) or rca_hints (old)
+            rca_data = None
+            if 'rca_analysis' in alert:
+                rca_data = alert['rca_analysis']
+                alert['rca_hints'] = rca_data  # Add old name for compatibility
+            elif 'rca_hints' in alert:
+                rca_data = alert['rca_hints']
+                alert['rca_analysis'] = rca_data  # Add new name for consistency
+
+            # Extract recommendations for backward compatibility
+            if rca_data and 'recommendations' in rca_data:
+                alert['rca_recommendations'] = rca_data['recommendations']
+
         return {
             "count": len(alerts),
             "alerts": alerts
@@ -514,11 +700,30 @@ async def get_alert_details(alert_id: str):
         
         # Get alert history
         history = alert_manager.get_alert_history(alert_id)
-        
+
         # Convert ObjectIds
         alert = convert_objectids(alert)
         history = convert_objectids(history)
-        
+
+        # Add backward compatibility mapping for frontend
+        if alert:
+            # Map new field names to old ones for frontend compatibility
+            if 'correlation_analysis' in alert:
+                alert['correlation_data'] = alert['correlation_analysis']
+
+            # Handle RCA fields - could be either rca_analysis (new) or rca_hints (old)
+            rca_data = None
+            if 'rca_analysis' in alert:
+                rca_data = alert['rca_analysis']
+                alert['rca_hints'] = rca_data  # Add old name for compatibility
+            elif 'rca_hints' in alert:
+                rca_data = alert['rca_hints']
+                alert['rca_analysis'] = rca_data  # Add new name for consistency
+
+            # Extract recommendations for backward compatibility
+            if rca_data and 'recommendations' in rca_data:
+                alert['rca_recommendations'] = rca_data['recommendations']
+
         return {
             "alert": alert,
             "history": history
@@ -546,51 +751,42 @@ async def get_alert_correlation(alert_id: str):
             raise HTTPException(status_code=404, detail="Alert not found")
         
         # Perform correlation analysis if not already done
-        if not alert.get("correlation_data"):
-            source_data = alert.get("source_data", {})
-            
-            # Run correlation analysis (simplified for now as analyze_alert is async)
-            # In production, this would be run asynchronously
-            correlations = {
-                "temporal_correlation": {
-                    "wafer_defects_found": 2,
-                    "yield_impact": 0.92
-                },
-                "batch_correlation": {
-                    "batch_id": "BATCH-001",
-                    "is_problematic": False
-                },
-                "spatial_correlation": {
-                    "pattern_detected": "clustered",
-                    "confidence": 0.85
-                },
-                "alert_analyzed": True,
-                "analysis_timestamp": datetime.now().isoformat()
+        if not alert.get("correlation_analysis"):
+            # Trigger async correlation analysis
+            asyncio.create_task(run_alert_correlation(alert_id))
+
+            # Trigger RCA for critical alerts
+            if alert.get("severity") == "critical":
+                asyncio.create_task(run_alert_rca(alert_id, AlertSeverity.CRITICAL))
+
+            return {
+                "alert_id": alert_id,
+                "message": "Analysis triggered. Check back in a few seconds.",
+                "status": "processing"
             }
-            
-            # Update alert with correlation data
-            alert_manager.add_correlation_data(alert_id, correlations)
-            
-            # Generate RCA recommendations
-            rca_recommendations = rca_generator.generate_rca_hints(
-                alert_id=alert_id,
-                correlation_results=correlations,
-                alert_data=source_data
-            )
-            
-            alert_manager.add_rca_recommendations(alert_id, rca_recommendations)
-            
-            # Retrieve updated alert
-            alert = alert_manager.get_alert_by_id(alert_id)
-        
+
         # Convert ObjectIds
         alert = convert_objectids(alert)
-        
-        return {
+
+        # Prepare response with backward compatibility
+        response = {
             "alert_id": alert_id,
-            "correlation_data": alert.get("correlation_data", {}),
-            "rca_recommendations": alert.get("rca_recommendations", [])
+            "correlation_analysis": alert.get("correlation_analysis", {}),
+            "correlation_data": alert.get("correlation_analysis", {}),  # Backward compatibility
         }
+
+        # Handle RCA fields (could be rca_analysis or rca_hints due to migration)
+        rca_data = alert.get("rca_analysis", alert.get("rca_hints", {}))
+        response["rca_analysis"] = rca_data
+        response["rca_hints"] = rca_data  # Backward compatibility
+
+        # Extract recommendations for backward compatibility
+        if rca_data and "recommendations" in rca_data:
+            response["rca_recommendations"] = rca_data["recommendations"]
+        else:
+            response["rca_recommendations"] = []
+
+        return response
         
     except HTTPException:
         raise
@@ -683,6 +879,91 @@ async def get_alert_statistics(
         logger.error(f"Error retrieving alert statistics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/alerts/{alert_id}/fix")
+async def fix_equipment_issue(alert_id: str):
+    """
+    Fix equipment issue by injecting healthy sensor data and resolving the alert
+    This simulates a maintenance action that fixes the equipment
+    """
+    try:
+        if not alert_manager:
+            raise HTTPException(status_code=503, detail="Alert manager not initialized")
+        
+        # Get the alert details
+        alert = alert_manager.get_alert_by_id(alert_id)
+        if not alert:
+            raise HTTPException(status_code=404, detail=f"Alert {alert_id} not found")
+        
+        equipment_id = alert.get("equipment_id")
+        if not equipment_id:
+            raise HTTPException(status_code=400, detail="Alert has no associated equipment")
+        
+        # Use async MongoDB client
+        db = mongodb_client[MDB_DATABASE_NAME]
+        sensor_collection = db[MDB_TIMESERIES_COLLECTION]
+        
+        # Get the process step for this equipment
+        last_reading = await sensor_collection.find_one(
+            {"equipment_id": equipment_id},
+            sort=[("timestamp", -1)]
+        )
+        
+        process_step = last_reading.get("process_step", "UNKNOWN") if last_reading else "UNKNOWN"
+        
+        # Create healthy sensor reading
+        healthy_reading = {
+            "timestamp": datetime.utcnow(),
+            "equipment_id": equipment_id,
+            "process_step": process_step,
+            "metrics": {
+                "particle_count": 450,  # Healthy level (< 800)
+                "rf_power": 1200.0,     # Normal RF power
+                "chamber_pressure": 45.5,  # Normal pressure
+                "temperature": 65.0,    # Normal temperature
+                "flow_rate": 200.0      # Normal flow rate
+            },
+            "metadata": {
+                "source": "maintenance_fix",
+                "alert_id": alert_id,
+                "action": "equipment_fixed"
+            }
+        }
+        
+        # Insert healthy reading into time series
+        result = await sensor_collection.insert_one(healthy_reading)
+        
+        if not result.inserted_id:
+            raise HTTPException(status_code=500, detail="Failed to insert healthy sensor data")
+        
+        # Now resolve the alert
+        resolution_notes = f"Equipment fixed - Healthy sensor data injected. Particle count reduced to {healthy_reading['metrics']['particle_count']}"
+        success = alert_manager.update_alert_status(
+            alert_id=alert_id,
+            status=AlertStatus.RESOLVED,
+            updated_by="system",
+            notes=resolution_notes
+        )
+        
+        if not success:
+            logger.warning(f"Alert {alert_id} could not be resolved after fix")
+        
+        # Log the fix action
+        logger.info(f"Fixed equipment {equipment_id} for alert {alert_id}")
+        
+        return {
+            "status": "success",
+            "message": f"Equipment {equipment_id} fixed successfully",
+            "alert_id": alert_id,
+            "new_metrics": healthy_reading["metrics"],
+            "alert_resolved": success
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fixing equipment for alert {alert_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # ====================== Real-time Monitoring Dashboard APIs ======================
 
@@ -690,108 +971,116 @@ async def get_alert_statistics(
 async def get_kpi_statistics():
     """
     Get comprehensive KPI statistics for dashboard
+    Optimized to run all aggregations in parallel
     """
     try:
-        # Use synchronous MongoDB connection
-        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
-            # 1. Calculate current yield from latest wafers
-            wafer_pipeline = [
-                {"$sort": {"inspection_timestamp": -1}},
-                {"$limit": 10},
-                {"$group": {
-                    "_id": None,
-                    "avg_yield": {"$avg": "$defect_summary.yield_percentage"},
-                    "latest_yield": {"$first": "$defect_summary.yield_percentage"},
-                    "total_wafers": {"$sum": 1}
-                }}
-            ]
+        # Use async MongoDB client from app startup
+        db = mongodb_client[MDB_DATABASE_NAME]
         
-            wafer_collection = mdb_connector.get_collection("wafer_defects")
-            wafer_stats = list(wafer_collection.aggregate(wafer_pipeline))
+        # Define all aggregation pipelines
+        wafer_pipeline = [
+            {"$sort": {"inspection_timestamp": -1}},
+            {"$limit": 10},
+            {"$group": {
+                "_id": None,
+                "avg_yield": {"$avg": "$defect_summary.yield_percentage"},
+                "latest_yield": {"$first": "$defect_summary.yield_percentage"},
+                "total_wafers": {"$sum": 1}
+            }}
+        ]
         
-            current_yield = wafer_stats[0]["latest_yield"] if wafer_stats else 94.2
-            avg_yield = wafer_stats[0]["avg_yield"] if wafer_stats else 94.2
-            
-            # 2. Get active alerts count
-            alert_pipeline = [
-                {"$match": {"status": {"$in": ["open", "acknowledged"]}}},
-                {"$group": {
-                    "_id": "$severity",
-                    "count": {"$sum": 1}
-                }}
-            ]
+        alert_pipeline = [
+            {"$match": {"status": {"$in": ["open", "acknowledged"]}}},
+            {"$group": {
+                "_id": "$severity",
+                "count": {"$sum": 1}
+            }}
+        ]
         
-            alert_collection = mdb_connector.get_collection("alerts")
-            alert_results = list(alert_collection.aggregate(alert_pipeline))
+        resolution_pipeline = [
+            {"$match": {
+                "status": "resolved",
+                "resolved_at": {"$exists": True},
+                "timestamp": {"$exists": True}
+            }},
+            {"$limit": 50},
+            {"$project": {
+                "resolution_time_ms": {
+                    "$subtract": ["$resolved_at", "$timestamp"]
+                }
+            }},
+            {"$group": {
+                "_id": None,
+                "avg_resolution_ms": {"$avg": "$resolution_time_ms"},
+                "count": {"$sum": 1}
+            }}
+        ]
         
-            alert_counts = {item["_id"]: item["count"] for item in alert_results}
-            total_alerts = sum(alert_counts.values())
-            critical_alerts = alert_counts.get("critical", 0) + alert_counts.get("high", 0)
-            
-            # 3. Calculate average resolution time
-            resolution_pipeline = [
-                {"$match": {
-                    "status": "resolved",
-                    "resolved_at": {"$exists": True},
-                    "timestamp": {"$exists": True}
-                }},
-                {"$limit": 50},
-                {"$project": {
-                    "resolution_time_ms": {
-                        "$subtract": ["$resolved_at", "$timestamp"]
-                    }
-                }},
-                {"$group": {
-                    "_id": None,
-                    "avg_resolution_ms": {"$avg": "$resolution_time_ms"},
-                    "count": {"$sum": 1}
-                }}
-            ]
+        equipment_pipeline = [
+            {"$sort": {"timestamp": -1}},
+            {"$group": {
+                "_id": "$equipment_id",
+                "latest": {"$first": "$$ROOT"}
+            }},
+            {"$project": {
+                "rf_power": "$latest.metrics.rf_power",
+                "particle_count": "$latest.metrics.particle_count"
+            }}
+        ]
         
-            resolution_stats = list(alert_collection.aggregate(resolution_pipeline))
+        # Execute all aggregations in parallel using asyncio.gather
+        import asyncio
         
-            avg_resolution_minutes = 12  # Default
-            if resolution_stats and resolution_stats[0].get("avg_resolution_ms"):
-                avg_resolution_minutes = resolution_stats[0]["avg_resolution_ms"] / 60000
-            
-            # 4. Calculate cost savings (mock calculation based on yield improvement)
-            baseline_yield = 92.0
-            yield_improvement = max(0, current_yield - baseline_yield)
-            wafers_per_month = 10000
-            revenue_per_wafer = 5000  # $5000 per wafer
-            cost_savings = (yield_improvement / 100) * wafers_per_month * revenue_per_wafer
-            
-            # 5. Get equipment utilization
-            equipment_pipeline = [
-                {"$sort": {"timestamp": -1}},
-                {"$group": {
-                    "_id": "$equipment_id",
-                    "latest": {"$first": "$$ROOT"}
-                }},
-                {"$project": {
-                    "rf_power": "$latest.metrics.rf_power",
-                    "particle_count": "$latest.metrics.particle_count"
-                }}
-            ]
+        # Create async tasks for each aggregation
+        wafer_task = db.wafer_defects.aggregate(wafer_pipeline).to_list(length=None)
+        alert_task = db.alerts.aggregate(alert_pipeline).to_list(length=None)
+        resolution_task = db.alerts.aggregate(resolution_pipeline).to_list(length=None)
+        equipment_task = db.process_sensor_ts.aggregate(equipment_pipeline).to_list(length=None)
         
-            sensor_collection = mdb_connector.get_collection("process_sensor_ts")
-            equipment_results = list(sensor_collection.aggregate(equipment_pipeline))
+        # Run all tasks in parallel
+        wafer_stats, alert_results, resolution_stats, equipment_results = await asyncio.gather(
+            wafer_task,
+            alert_task,
+            resolution_task,
+            equipment_task
+        )
         
-            # Calculate average utilization
-            total_utilization = 0
-            equipment_count = 0
-            for eq in equipment_results:
-                if eq.get("rf_power"):
-                    utilization = min(100, (eq["rf_power"] / 1500) * 100)
-                    total_utilization += utilization
-                    equipment_count += 1
-            
-            avg_utilization = total_utilization / equipment_count if equipment_count > 0 else 75
-            
-            # 6. Get defect trends
-            trend_value = round(current_yield - avg_yield, 1) if avg_yield else 0
-            
-            return {
+        # Process results (same logic as before, but now with parallel data)
+        current_yield = wafer_stats[0]["latest_yield"] if wafer_stats else 94.2
+        avg_yield = wafer_stats[0]["avg_yield"] if wafer_stats else 94.2
+        
+        # Process alert counts
+        alert_counts = {item["_id"]: item["count"] for item in alert_results}
+        total_alerts = sum(alert_counts.values())
+        critical_alerts = alert_counts.get("critical", 0) + alert_counts.get("high", 0)
+        
+        # Calculate average resolution time
+        avg_resolution_minutes = 12  # Default
+        if resolution_stats and resolution_stats[0].get("avg_resolution_ms"):
+            avg_resolution_minutes = resolution_stats[0]["avg_resolution_ms"] / 60000
+        
+        # Calculate cost savings
+        baseline_yield = 92.0
+        yield_improvement = max(0, current_yield - baseline_yield)
+        wafers_per_month = 10000
+        revenue_per_wafer = 5000  # $5000 per wafer
+        cost_savings = (yield_improvement / 100) * wafers_per_month * revenue_per_wafer
+        
+        # Calculate equipment utilization
+        total_utilization = 0
+        equipment_count = 0
+        for eq in equipment_results:
+            if eq.get("rf_power"):
+                utilization = min(100, (eq["rf_power"] / 1500) * 100)
+                total_utilization += utilization
+                equipment_count += 1
+        
+        avg_utilization = total_utilization / equipment_count if equipment_count > 0 else 75
+        
+        # Calculate trend value
+        trend_value = round(current_yield - avg_yield, 1) if avg_yield else 0
+        
+        return {
             "kpi": {
                 "yield": {
                     "label": "Current Yield",
@@ -838,15 +1127,15 @@ async def get_kpi_statistics():
                     "trendValue": abs(avg_utilization - 70),
                     "thresholds": {"critical": 50, "warning": 70, "good": 85}
                 }
-                },
-                "summary": {
-                    "total_wafers_processed": wafer_stats[0]["total_wafers"] if wafer_stats else 100,
-                    "total_equipment": equipment_count,
-                    "alerts_by_severity": alert_counts,
-                    "avg_yield_10_wafers": round(avg_yield, 1) if avg_yield else 94.2
-                },
-                "timestamp": datetime.utcnow().isoformat()
-            }
+            },
+            "summary": {
+                "total_wafers_processed": wafer_stats[0]["total_wafers"] if wafer_stats else 100,
+                "total_equipment": equipment_count,
+                "alerts_by_severity": alert_counts,
+                "avg_yield_10_wafers": round(avg_yield, 1) if avg_yield else 94.2
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
         
     except Exception as e:
         logger.error(f"Error calculating KPI statistics: {e}")
@@ -914,6 +1203,9 @@ async def write_sensor_data(data: Dict[str, Any] = Body(...)):
     """
     Write sensor data to trigger monitoring and wafer generation
 
+    Note: Uses synchronous MongoDB operations for consistency with other endpoints.
+    FastAPI handles thread pool execution automatically.
+
     Example body:
     {
         "equipment_id": "CMP_TOOL_01",
@@ -949,26 +1241,45 @@ async def write_sensor_data(data: Dict[str, Any] = Body(...)):
         if "process_step" not in data:
             data["process_step"] = data["equipment_id"].split("_")[0]
 
-        # Write to sensor_events collection (monitored by change stream)
-        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
-            sensor_collection = mdb_connector.get_collection("sensor_events")
-            result = sensor_collection.insert_one(data)
+        # Use SensorDataWriter for dual writes to both collections
+        writer = SensorDataWriter(mongodb_uri=MDB_URI, database=MDB_DATABASE_NAME)
+        result = writer.write_sensor_data(data)
+        writer.close()
 
+        # Log the results
+        if result["success"]:
             logger.info(f"Sensor data written for {data['equipment_id']}: "
-                       f"particle_count={data['metrics'].get('particle_count', 0)}")
+                       f"particle_count={data['metrics'].get('particle_count', 0)}, "
+                       f"sensor_events_id={result.get('sensor_events')}, "
+                       f"process_sensor_ts_id={result.get('process_sensor_ts')}")
+        else:
+            logger.warning(f"Partial write for {data['equipment_id']}: {result.get('errors', [])}")
 
+        # Return success if at least one write succeeded
+        if result["success"]:
             return {
                 "status": "success",
                 "message": f"Sensor data written for {data['equipment_id']}",
-                "document_id": str(result.inserted_id),
+                "details": {
+                    "sensor_events_id": result.get("sensor_events"),
+                    "process_sensor_ts_id": result.get("process_sensor_ts"),
+                    "dual_write": True
+                },
+                "document_id": result.get("sensor_events") or result.get("process_sensor_ts"),
                 "metrics": data["metrics"],
                 "note": "If particle_count > 1000, alert will be created and wafer generated in 10 seconds"
             }
+        else:
+            # If both writes failed, raise an error
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to write sensor data: {result.get('errors', [])}"
+            )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error writing sensor data: {e}")
+        logger.error(f"Error accepting sensor data: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1444,66 +1755,111 @@ async def get_batch_wafer_visualization(
 @app.get("/equipment/status")
 async def get_equipment_status():
     """
-    Get equipment fleet status matrix
+    Get equipment fleet status matrix - OPTIMIZED
+    Uses alerts collection as single source of truth for excursions
     """
     try:
-        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
-            sensor_collection = mdb_connector.get_collection(MDB_TIMESERIES_COLLECTION)
-            
-            # Get latest status for each equipment
-            pipeline = [
-                {"$sort": {"timestamp": -1}},
-                {"$group": {
-                    "_id": "$equipment_id",
-                    "latest_reading": {"$first": "$$ROOT"},
-                    "avg_metrics": {"$avg": "$metrics"}
-                }},
-                {"$project": {
-                    "equipment_id": "$_id",
-                    "process_step": "$latest_reading.process_step",
-                    "last_update": "$latest_reading.timestamp",
-                    "current_metrics": "$latest_reading.metrics",
-                    "status": {
-                        "$cond": {
-                            "if": {"$gt": ["$latest_reading.metrics.particle_count", 1000]},
-                            "then": "critical",
-                            "else": {
-                                "$cond": {
-                                    "if": {"$gt": ["$latest_reading.metrics.particle_count", 800]},
-                                    "then": "warning",
-                                    "else": "good"
-                                }
-                            }
-                        }
-                    }
-                }}
-            ]
-            
-            equipment_list = list(sensor_collection.aggregate(pipeline))
-            
-            # Group by process type
-            equipment_matrix = {}
-            for eq in equipment_list:
-                process = eq.get("process_step", "UNKNOWN")
-                if process not in equipment_matrix:
-                    equipment_matrix[process] = []
-                
-                equipment_matrix[process].append({
-                    "equipment_id": eq["equipment_id"],
-                    "status": eq["status"],
-                    "metrics": eq["current_metrics"],
-                    "last_update": eq["last_update"]
-                })
-            
-            return {
-                "matrix": equipment_matrix,
-                "total_equipment": len(equipment_list),
-                "timestamp": datetime.now().isoformat()
-            }
-            
+        # Use async MongoDB client
+        db = mongodb_client[MDB_DATABASE_NAME]
+        sensor_collection = db[MDB_TIMESERIES_COLLECTION]
+        alerts_collection = db["alerts"]
+
+        # Get latest reading per equipment (without status calculation)
+        pipeline = [
+            # Sort by timestamp descending (uses index now)
+            {"$sort": {"timestamp": -1}},
+
+            # Group by equipment to get latest reading (stops at first match per equipment)
+            {"$group": {
+                "_id": "$equipment_id",
+                "latest_reading": {"$first": "$$ROOT"}
+            }},
+
+            # Project the needed fields
+            {"$project": {
+                "equipment_id": "$_id",
+                "process_step": "$latest_reading.process_step",
+                "last_update": "$latest_reading.timestamp",
+                "current_metrics": "$latest_reading.metrics"
+            }}
+        ]
+
+        # Execute aggregation asynchronously with allowDiskUse for large datasets
+        cursor = sensor_collection.aggregate(pipeline, allowDiskUse=True)
+        equipment_list = await cursor.to_list(length=None)
+
+        # Get all open alerts for equipment
+        open_alerts = await alerts_collection.find({
+            "status": {"$in": ["open", "acknowledged"]},
+            "equipment_id": {"$exists": True}
+        }).to_list(length=None)
+
+        # Create a map of equipment_id to highest severity alert
+        equipment_alerts = {}
+        for alert in open_alerts:
+            eq_id = alert.get("equipment_id")
+            severity = alert.get("severity", "medium")
+
+            # Keep highest severity alert for each equipment
+            if eq_id:
+                if eq_id not in equipment_alerts:
+                    equipment_alerts[eq_id] = severity
+                else:
+                    # Priority: critical > high > medium > low
+                    severity_priority = {"critical": 4, "high": 3, "medium": 2, "low": 1}
+                    current_priority = severity_priority.get(equipment_alerts[eq_id], 0)
+                    new_priority = severity_priority.get(severity, 0)
+                    if new_priority > current_priority:
+                        equipment_alerts[eq_id] = severity
+
+        # Add status based on alerts
+        for eq in equipment_list:
+            eq_id = eq.get("equipment_id")
+            if eq_id in equipment_alerts:
+                # Map alert severity to equipment status
+                alert_severity = equipment_alerts[eq_id]
+                if alert_severity == "critical":
+                    eq["status"] = "critical"
+                elif alert_severity == "high":
+                    eq["status"] = "warning"
+                else:
+                    eq["status"] = "warning"  # medium/low alerts show as warning
+            else:
+                eq["status"] = "good"  # No open alerts
+
+        # Group by process type
+        equipment_matrix = {}
+        for eq in equipment_list:
+            process = eq.get("process_step", "UNKNOWN")
+            if process not in equipment_matrix:
+                equipment_matrix[process] = []
+
+            equipment_matrix[process].append({
+                "equipment_id": eq["equipment_id"],
+                "status": eq["status"],
+                "metrics": eq["current_metrics"],
+                "last_update": eq["last_update"]
+            })
+
+        # Sort equipment within each process group
+        for process in equipment_matrix:
+            equipment_matrix[process].sort(key=lambda x: x["equipment_id"])
+
+        return {
+            "matrix": equipment_matrix,
+            "total_equipment": len(equipment_list),
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
     except Exception as e:
         logger.error(f"Error fetching equipment status: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Return cached/default data on error for better UX
+        return {
+            "matrix": {},
+            "total_equipment": 0,
+            "timestamp": datetime.utcnow().isoformat(),
+            "error": str(e)
+        }
 
 
 @app.get("/equipment/{equipment_id}/metrics")
@@ -1611,55 +1967,63 @@ async def websocket_sensors(websocket: WebSocket):
     )
 
     try:
-        # Background task to send sensor updates
-        async def send_sensor_updates():
-            with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
-                sensor_collection = mdb_connector.get_collection("sensor_events")  # Use real-time collection
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            sensor_collection = mdb_connector.get_collection("sensor_events")  # Use real-time collection
+            last_update_time = datetime.utcnow()
 
-                while True:
-                    try:
-                        # Get latest sensor data
-                        pipeline = [
-                            {"$sort": {"timestamp": -1}},
-                            {"$group": {
-                                "_id": "$equipment_id",
-                                "latest": {"$first": "$$ROOT"}
-                            }},
-                            {"$replaceRoot": {"newRoot": "$latest"}},
-                            {"$limit": 10}
-                        ]
-
-                        sensors = list(sensor_collection.aggregate(pipeline))
-                        sensors = convert_objectids(sensors)
-
-                        # Send to this specific client
-                        await ws_manager.send_json_to_client(client_id, {
-                            "type": "sensor_update",
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "data": sensors
-                        })
-
-                        # Wait before next update
-                        await asyncio.sleep(2)  # Update every 2 seconds
-
-                    except Exception as e:
-                        logger.error(f"Error sending sensor updates to {client_id}: {e}")
-                        break
-
-        # Start background task
-        update_task = asyncio.create_task(send_sensor_updates())
-
-        try:
             while True:
-                # Keep connection alive and wait for messages
-                data = await websocket.receive_text()
+                # Use wait_for to handle both incoming messages and periodic updates
+                try:
+                    # Try to receive a message with a 2-second timeout
+                    data = await asyncio.wait_for(
+                        websocket.receive_text(),
+                        timeout=2.0
+                    )
 
-                # Handle client messages (subscriptions, filters, etc.)
-                await ws_manager.handle_client_message(client_id, data)
+                    # Handle client messages (subscriptions, filters, etc.)
+                    await ws_manager.handle_client_message(client_id, data)
 
-        finally:
-            # Cancel background task
-            update_task.cancel()
+                except asyncio.TimeoutError:
+                    # No message received, check if it's time to send sensor update
+                    current_time = datetime.utcnow()
+                    time_since_update = (current_time - last_update_time).total_seconds()
+
+                    if time_since_update >= 2.0:  # Send update every 2 seconds
+                        try:
+                            # Get latest sensor data
+                            pipeline = [
+                                {"$sort": {"timestamp": -1}},
+                                {"$group": {
+                                    "_id": "$equipment_id",
+                                    "latest": {"$first": "$$ROOT"}
+                                }},
+                                {"$replaceRoot": {"newRoot": "$latest"}},
+                                {"$limit": 10}
+                            ]
+
+                            sensors = list(sensor_collection.aggregate(pipeline))
+                            sensors = convert_objectids(sensors)
+
+                            if sensors:
+                                # Send update to client
+                                success = await ws_manager.send_json_to_client(
+                                    client_id,
+                                    {
+                                        "type": "sensor_update",
+                                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                                        "data": sensors
+                                    }
+                                )
+
+                                # If send failed, connection is likely dead
+                                if not success:
+                                    logger.warning(f"Failed to send sensor update to {client_id}")
+                                    break
+
+                            last_update_time = current_time
+
+                        except Exception as e:
+                            logger.error(f"Error sending sensor update: {e}")
 
     except WebSocketDisconnect:
         await ws_manager.disconnect(client_id)
@@ -1676,39 +2040,65 @@ async def websocket_wafers(websocket: WebSocket):
     """
     manager = get_websocket_manager()
     client_id = await manager.connect(
-        websocket, 
+        websocket,
         connection_type=ConnectionType.WAFERS
     )
-    
+
     try:
         with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
             wafer_collection = mdb_connector.get_collection("wafer_defects")
-            
+            last_update_time = datetime.utcnow()
+
             while True:
-                # Get latest wafer inspection
-                latest_wafer = wafer_collection.find_one(
-                    {},
-                    sort=[("inspection_timestamp", -1)]
-                )
-                
-                if latest_wafer:
-                    # Remove large image data
-                    if "ink_map" in latest_wafer and "thumbnail_base64" in latest_wafer["ink_map"]:
-                        latest_wafer["ink_map"]["has_thumbnail"] = True
-                        del latest_wafer["ink_map"]["thumbnail_base64"]
-                    
-                    latest_wafer = convert_objectids(latest_wafer)
-                    
-                    # Send to client using manager
-                    await manager.send_to_client(client_id, {
-                        "type": "wafer_update",
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "wafer": latest_wafer
-                    })
-                
-                # Wait before next update
-                await asyncio.sleep(5)  # Update every 5 seconds
-                
+                # Use wait_for to handle both incoming messages and periodic updates
+                try:
+                    # Try to receive a message with a 5-second timeout
+                    data = await asyncio.wait_for(
+                        websocket.receive_text(),
+                        timeout=5.0
+                    )
+
+                    # Handle client messages (subscriptions, filters, etc.)
+                    await manager.handle_client_message(client_id, data)
+
+                except asyncio.TimeoutError:
+                    # No message received, check if it's time to send wafer update
+                    current_time = datetime.utcnow()
+                    time_since_update = (current_time - last_update_time).total_seconds()
+
+                    if time_since_update >= 5.0:  # Send update every 5 seconds
+                        try:
+                            # Get latest wafer inspection
+                            latest_wafer = wafer_collection.find_one(
+                                {},
+                                sort=[("inspection_timestamp", -1)]
+                            )
+
+                            if latest_wafer:
+                                # Remove large image data
+                                if "ink_map" in latest_wafer and "thumbnail_base64" in latest_wafer["ink_map"]:
+                                    latest_wafer["ink_map"]["has_thumbnail"] = True
+                                    del latest_wafer["ink_map"]["thumbnail_base64"]
+
+                                latest_wafer = convert_objectids(latest_wafer)
+
+                                # Send to client using manager
+                                success = await manager.send_to_client(client_id, {
+                                    "type": "wafer_update",
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "wafer": latest_wafer
+                                })
+
+                                # If send failed, connection is likely dead
+                                if not success:
+                                    logger.warning(f"Failed to send wafer update to {client_id}")
+                                    break
+
+                            last_update_time = current_time
+
+                        except Exception as e:
+                            logger.error(f"Error sending wafer update: {e}")
+
     except WebSocketDisconnect:
         logger.info(f"Wafer WebSocket client {client_id} disconnected")
         await manager.disconnect(client_id)
@@ -1730,8 +2120,8 @@ async def run_alert_correlation(alert_id: str):
         mongo_id = str(alert["_id"]) if "_id" in alert else alert_id
         correlations = await correlation_engine.analyze_alert(mongo_id)
 
-        # Update alert with results
-        alert_manager.add_correlation_data(alert_id, correlations)
+        # NOTE: CorrelationEngine already stores results in 'correlation_analysis' field
+        # No need to duplicate in 'correlation_data' field
 
         # Notify via WebSocket
         await notify_websocket_clients({
@@ -1761,14 +2151,8 @@ async def run_alert_rca(alert_id: str, severity: AlertSeverity):
         mongo_id = str(alert["_id"]) if "_id" in alert else alert_id
         rca_results = await rca_gen.generate_rca_hints(mongo_id)
 
-        # Update alert with RCA (convert to recommendations format if needed)
-        if isinstance(rca_results, dict) and "recommendations" in rca_results:
-            alert_manager.add_rca_recommendations(alert_id, rca_results["recommendations"])
-        elif isinstance(rca_results, list):
-            alert_manager.add_rca_recommendations(alert_id, rca_results)
-        else:
-            # Store as recommendations with the full RCA results
-            alert_manager.add_rca_recommendations(alert_id, [rca_results])
+        # NOTE: RCAGenerator already stores results in 'rca_hints' field
+        # No need to duplicate in 'rca_recommendations' field
 
         # Notify via WebSocket
         await notify_websocket_clients({
@@ -1887,12 +2271,17 @@ async def run_monitoring_loop():
                         # Check RF power drift
                         rf_power = metrics.get("rf_power", 0)
                         equipment_id = sensor_data.get("equipment_id", "")
-                        if "CMP" in equipment_id and abs(rf_power - 1200) > 150:
+                        if "CMP" in equipment_id and abs(rf_power - 1450) > 100:  # CMP baseline is 1450W, threshold >100W
                             excursion_detected = True
                             excursion_type = "rf_power_drift"
                             excursion_value = rf_power
                             logger.warning(f"⚠️ RF power drift detected: {rf_power}W on {equipment_id}")
-                        elif "ETCH" in equipment_id and abs(rf_power - 1500) > 150:
+                        elif "ETCH" in equipment_id and abs(rf_power - 1200) > 100:  # ETCH baseline is 1200W, threshold >100W
+                            excursion_detected = True
+                            excursion_type = "rf_power_drift"
+                            excursion_value = rf_power
+                            logger.warning(f"⚠️ RF power drift detected: {rf_power}W on {equipment_id}")
+                        elif "LITHO" in equipment_id and abs(rf_power - 800) > 100:  # LITHO baseline is 800W, threshold >100W
                             excursion_detected = True
                             excursion_type = "rf_power_drift"
                             excursion_value = rf_power
@@ -2207,9 +2596,8 @@ from services.embedding_service import EmbeddingService
 semantic_search_service = None
 embedding_service = None
 
-@app.on_event("startup")
 async def initialize_phase3_services():
-    """Initialize Phase 3 services on startup"""
+    """Initialize Phase 3 services"""
     global semantic_search_service, embedding_service
     
     try:
@@ -2644,3 +3032,239 @@ async def list_agent_sessions(
     except Exception as e:
         logger.error(f"Error listing sessions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# Demo Mode Endpoints
+# ============================================================================
+
+@app.post("/demo/start")
+async def start_demo_mode():
+    """Start demo mode data generation"""
+    global demo_mode_active, demo_task
+
+    if demo_mode_active:
+        return {
+            "status": "already_running",
+            "message": "Demo mode is already active",
+            "interval_seconds": DEMO_INTERVAL_SECONDS,
+            "excursion_probability": DEMO_EXCURSION_PROBABILITY
+        }
+
+    try:
+        # Set demo mode active flag
+        demo_mode_active = True
+
+        # Create and start the demo task
+        demo_task = asyncio.create_task(demo_data_generator())
+
+        logger.info("Demo mode started successfully")
+
+        return {
+            "status": "started",
+            "message": "Demo mode started successfully",
+            "interval_seconds": DEMO_INTERVAL_SECONDS,
+            "excursion_probability": DEMO_EXCURSION_PROBABILITY,
+            "equipment_ids": ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01"]
+        }
+
+    except Exception as e:
+        demo_mode_active = False
+        logger.error(f"Failed to start demo mode: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start demo mode: {str(e)}")
+
+
+@app.post("/demo/stop")
+async def stop_demo_mode():
+    """Stop demo mode data generation and cleanup recent alerts"""
+    global demo_mode_active, demo_task
+
+    if not demo_mode_active:
+        return {
+            "status": "not_running",
+            "message": "Demo mode is not active"
+        }
+
+    try:
+        # Set flag to stop the generator
+        demo_mode_active = False
+
+        # Cancel the task if it exists (don't wait for it)
+        if demo_task and not demo_task.done():
+            demo_task.cancel()
+            # Don't await - just let it cancel in background
+
+        demo_task = None
+
+        # Clean up alerts created in last 2 hours (demo session)
+        alerts_deleted = 0
+        try:
+            if alert_manager:
+                cutoff_time = datetime.now() - timedelta(hours=2)
+                result = alert_manager.alerts_collection.delete_many({
+                    "created_at": {"$gte": cutoff_time}
+                })
+                alerts_deleted = result.deleted_count
+                logger.info(f"Cleaned up {alerts_deleted} recent demo alerts")
+        except Exception as e:
+            logger.error(f"Error cleaning up alerts: {e}")
+
+        logger.info("Demo mode stopped successfully")
+
+        return {
+            "status": "stopped",
+            "message": "Demo mode stopped successfully",
+            "alerts_cleaned": alerts_deleted
+        }
+
+    except Exception as e:
+        logger.error(f"Error stopping demo mode: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to stop demo mode: {str(e)}")
+
+
+@app.post("/alerts/resolve-all")
+async def resolve_all_alerts():
+    """Resolve all unresolved alerts in the collection"""
+    try:
+        if not alert_manager:
+            raise HTTPException(status_code=500, detail="Alert manager not initialized")
+
+        # Update all alerts that are not resolved
+        result = alert_manager.alerts_collection.update_many(
+            {
+                "status": {"$ne": "resolved"}
+            },
+            {
+                "$set": {
+                    "status": "resolved",
+                    "resolved_at": datetime.now(),
+                    "resolution": "Bulk resolved via API",
+                    "updated_by": "system"
+                }
+            }
+        )
+
+        logger.info(f"Bulk resolved {result.modified_count} alerts")
+
+        return {
+            "success": True,
+            "message": f"Successfully resolved {result.modified_count} alerts",
+            "alerts_resolved": result.modified_count,
+            "alerts_matched": result.matched_count
+        }
+    except Exception as e:
+        logger.error(f"Error resolving all alerts: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/demo/inject-excursion")
+async def inject_excursion(request: Dict[str, Any] = Body(...)):
+    """
+    Manually inject an excursion into the sensor data
+
+    Expected payload:
+    {
+        "equipment_id": "CMP_TOOL_01",  # Required
+        "excursion_type": "particle",   # Optional: "particle", "rf_power", "temperature"
+        "particle_count": 2500,          # Optional: Override specific metric
+        "metadata": {...}                # Optional: Override metadata
+    }
+    """
+    try:
+        # Get equipment ID (required)
+        equipment_id = request.get("equipment_id")
+        if not equipment_id:
+            raise HTTPException(status_code=400, detail="equipment_id is required")
+
+        # Generate base metrics with excursion
+        metrics = generate_demo_metrics(equipment_id, is_excursion=True)
+
+        # Apply specific excursion type if requested
+        excursion_type = request.get("excursion_type", "particle")
+        if excursion_type == "particle":
+            metrics["particle_count"] = request.get("particle_count", random.randint(1500, 3000))
+        elif excursion_type == "rf_power":
+            metrics["rf_power"] = request.get("rf_power", metrics["rf_power"] + random.uniform(100, 200))
+        elif excursion_type == "temperature":
+            metrics["temperature"] = request.get("temperature", metrics["temperature"] + random.uniform(3, 5))
+
+        # Override any specific metrics provided
+        for key in ["particle_count", "rf_power", "temperature", "chamber_pressure", "flow_rate"]:
+            if key in request and key not in ["excursion_type", "equipment_id", "metadata"]:
+                metrics[key] = request[key]
+
+        # Generate or use provided metadata (use problematic batch for excursions)
+        metadata = request.get("metadata", generate_demo_metadata(is_excursion=True))
+
+        # If slurry_batch is provided specifically, use it
+        if "slurry_batch" in request:
+            metadata["slurry_batch"] = request["slurry_batch"]
+
+        # Create the sensor data
+        data = {
+            "equipment_id": equipment_id,
+            "process_step": equipment_id.split("_")[0],
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+            "metrics": metrics,
+            "metadata": metadata
+        }
+
+        # Write to both collections using SensorDataWriter
+        writer = SensorDataWriter(mongodb_uri=MDB_URI, database=MDB_DATABASE_NAME)
+        result = writer.write_sensor_data(data)
+        writer.close()
+
+        if result["success"]:
+            logger.warning(f"Manual excursion injected for {equipment_id}: particle_count={metrics['particle_count']}")
+
+            excursion_details = []
+            if metrics["particle_count"] > 1000:
+                excursion_details.append(f"Particle: {metrics['particle_count']}")
+            if abs(metrics["rf_power"] - 1450) > 100:
+                excursion_details.append(f"RF Power: {metrics['rf_power']}")
+            if abs(metrics["temperature"] - 65) > 2:
+                excursion_details.append(f"Temperature: {metrics['temperature']}")
+
+            return {
+                "status": "excursion_injected",
+                "message": f"Excursion injected for {equipment_id}",
+                "equipment_id": equipment_id,
+                "excursion_type": excursion_type,
+                "excursions_triggered": excursion_details,
+                "metrics": metrics,
+                "metadata": metadata,
+                "sensor_events_id": result.get("sensor_events"),
+                "process_sensor_ts_id": result.get("process_sensor_ts"),
+                "note": "Alert will be created within 3 seconds, wafer will be generated after 10 seconds"
+            }
+        else:
+            raise HTTPException(status_code=500, detail=f"Failed to write excursion data: {result.get('errors', [])}")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error injecting excursion: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to inject excursion: {str(e)}")
+
+
+@app.get("/demo/status")
+async def get_demo_status():
+    """Get demo mode status"""
+    global demo_mode_active, demo_task
+
+    # Simple status without database queries to avoid blocking
+    task_running = demo_task is not None
+
+    return {
+        "active": demo_mode_active,
+        "task_running": task_running,
+        "interval_seconds": DEMO_INTERVAL_SECONDS,
+        "excursion_probability": DEMO_EXCURSION_PROBABILITY,
+        "equipment_ids": ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01"],
+        "expected_rate": {
+            "per_minute": f"{4 * (60 / DEMO_INTERVAL_SECONDS):.1f} readings",
+            "per_hour": f"{4 * (3600 / DEMO_INTERVAL_SECONDS):.0f} readings",
+            "excursions_per_hour": f"{4 * (3600 / DEMO_INTERVAL_SECONDS) * DEMO_EXCURSION_PROBABILITY:.1f}"
+        },
+        "note": "Check /sensors/latest for recent data"
+    }

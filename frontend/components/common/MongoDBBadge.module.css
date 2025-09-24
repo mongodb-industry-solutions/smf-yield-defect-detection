@@ -1,0 +1,156 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  position: relative;
+  transition: all 0.2s ease;
+  font-weight: 500;
+}
+
+.badgeButton {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.badgeButton:focus-visible {
+  outline: 2px solid #00684A;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.iconWrapper {
+  display: inline-flex;
+  align-items: center;
+}
+
+.label {
+  font-size: 13px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.count {
+  background: rgba(0, 0, 0, 0.15);
+  color: white;
+  padding: 0 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  min-width: 20px;
+  text-align: center;
+  margin-left: 4px;
+}
+
+/* Active state with pulse animation */
+.active {
+  position: relative;
+  animation: subtle-glow 2s ease-in-out infinite;
+}
+
+.pulse {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 8px;
+  height: 8px;
+  background: #00ED64;
+  border-radius: 50%;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.idle {
+  opacity: 0.8;
+}
+
+.idle:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+}
+
+.clickable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.clickable:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.clickable:active {
+  transform: translateY(0);
+}
+
+/* Badge group container */
+.badgeGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Animations */
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 237, 100, 0.7);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgba(0, 237, 100, 0);
+    transform: scale(1.1);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 237, 100, 0);
+    transform: scale(1);
+  }
+}
+
+@keyframes subtle-glow {
+  0%, 100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.1);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .badge {
+    font-size: 12px;
+  }
+
+  .label {
+    font-size: 12px;
+  }
+
+  .count {
+    font-size: 10px;
+    padding: 0 4px;
+  }
+
+  .badgeGroup {
+    gap: 6px;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .count {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .active {
+    filter: brightness(1.2);
+  }
+
+  .idle {
+    opacity: 0.7;
+  }
+}

@@ -1,0 +1,280 @@
+/* Inline variant - default horizontal bar */
+.performanceBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #F7F9FB;
+  border-radius: 6px;
+  border: 1px solid #E0E4E7;
+  margin: 8px 0;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.metrics {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.metric {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.metricValue {
+  color: #5E6C84;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.poweredBy {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 16px;
+  border-left: 1px solid #E0E4E7;
+}
+
+.poweredByText {
+  color: #00684A;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.warning {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(251, 177, 60, 0.1);
+  border: 1px solid rgba(251, 177, 60, 0.3);
+  border-radius: 4px;
+  margin-top: 8px;
+  width: 100%;
+}
+
+.warningText {
+  color: #856404;
+  font-size: 12px;
+}
+
+/* Expanded variant - card with grid layout */
+.expanded {
+  padding: 16px;
+  background: white;
+  border: 1px solid #E0E4E7;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  margin: 16px 0;
+}
+
+.expandedHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #E0E4E7;
+}
+
+.expandedTitle {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #5E6C84;
+}
+
+.metricsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.gridMetric {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  background: #F7F9FB;
+  border-radius: 6px;
+  transition: background 0.2s ease;
+}
+
+.gridMetric:hover {
+  background: #E8ECEF;
+}
+
+.gridIcon {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.gridContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.gridLabel {
+  display: block;
+  font-size: 10px;
+  color: #95A5A6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.gridValue {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1A1A1A;
+}
+
+.indexInfo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: rgba(0, 104, 74, 0.05);
+  border-radius: 4px;
+  margin-top: 12px;
+}
+
+.indexInfo Caption {
+  color: #00684A;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+/* Minimal variant - compact inline display */
+.minimal {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 8px;
+  background: rgba(247, 249, 251, 0.8);
+  border-radius: 4px;
+  font-size: 11px;
+}
+
+.minimalMetric {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #5E6C84;
+  font-weight: 500;
+}
+
+/* Animations */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+.performanceBar.loading .metric {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Status colors */
+.performanceBar[data-status="good"] {
+  border-left: 3px solid #00ED64;
+}
+
+.performanceBar[data-status="warning"] {
+  border-left: 3px solid #FBB13C;
+}
+
+.performanceBar[data-status="critical"] {
+  border-left: 3px solid #E11900;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .performanceBar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .metrics {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .poweredBy {
+    margin-top: 12px;
+    padding-left: 0;
+    padding-top: 12px;
+    border-left: none;
+    border-top: 1px solid #E0E4E7;
+    justify-content: center;
+  }
+
+  .metricsGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .performanceBar {
+    background: rgba(0, 0, 0, 0.3);
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .metricValue {
+    color: #B0B0B0;
+  }
+
+  .poweredBy {
+    border-left-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .expanded {
+    background: #1E1E1E;
+    border-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .gridMetric {
+    background: rgba(0, 0, 0, 0.3);
+  }
+
+  .gridMetric:hover {
+    background: rgba(0, 0, 0, 0.5);
+  }
+
+  .gridIcon {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .gridValue {
+    color: #FFFFFF;
+  }
+
+  .minimal {
+    background: rgba(0, 0, 0, 0.3);
+  }
+
+  .minimalMetric {
+    color: #B0B0B0;
+  }
+}

@@ -1,0 +1,206 @@
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 24px;
+  min-height: calc(100vh - 60px);
+}
+
+/* Hero Section */
+.hero {
+  text-align: center;
+  padding: 60px 20px;
+  background: linear-gradient(135deg, rgba(0, 104, 74, 0.05) 0%, rgba(0, 104, 74, 0.02) 100%);
+  border-radius: 24px;
+  margin-bottom: 60px;
+}
+
+.heroTitle {
+  margin: 0 0 16px 0;
+  font-size: 48px;
+  font-weight: 700;
+  color: #1e2d3d;
+  letter-spacing: -0.02em;
+}
+
+.heroSubtitle {
+  font-size: 20px;
+  color: #00684a;
+  margin-bottom: 12px;
+  font-weight: 500;
+}
+
+.heroDescription {
+  font-size: 16px;
+  color: #6b778c;
+  margin-bottom: 32px;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.ctaButton {
+  background: #00684a !important;
+  border-color: #00684a !important;
+  padding: 12px 32px !important;
+  font-size: 16px !important;
+  font-weight: 600 !important;
+  transition: all 0.2s ease !important;
+}
+
+.ctaButton:hover {
+  background: #00563d !important;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 104, 74, 0.3) !important;
+}
+
+/* Sections */
+.section {
+  margin-bottom: 60px;
+}
+
+.sectionTitle {
+  text-align: center;
+  margin-bottom: 32px;
+  font-size: 32px;
+  color: #1e2d3d;
+}
+
+/* Feature Cards Grid */
+.cardGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 24px;
+  margin-bottom: 40px;
+}
+
+.featureCard {
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(224, 228, 231, 0.6) !important;
+  border-radius: 12px !important;
+  padding: 0 !important;
+  transition: all 0.2s ease !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06) !important;
+}
+
+.featureCard:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+  border-color: rgba(0, 104, 74, 0.3) !important;
+}
+
+.cardContent {
+  padding: 24px;
+}
+
+.cardIcon {
+  font-size: 32px;
+  margin-bottom: 16px;
+}
+
+.cardTitle {
+  font-size: 18px !important;
+  margin: 0 0 12px 0 !important;
+  color: #1e2d3d;
+  font-weight: 600 !important;
+}
+
+.cardDescription {
+  color: #6b778c !important;
+  font-size: 14px !important;
+  line-height: 1.6 !important;
+}
+
+/* MongoDB Section */
+.mongoSection {
+  background: rgba(0, 104, 74, 0.03);
+  border-radius: 24px;
+  padding: 40px 20px;
+  margin-bottom: 60px;
+}
+
+.mongoCard {
+  background: white !important;
+  border: 2px solid rgba(0, 104, 74, 0.2) !important;
+  border-radius: 16px !important;
+  padding: 32px !important;
+}
+
+.mongoFeatures {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+  gap: 24px;
+}
+
+.mongoFeature {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.mongoIcon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.mongoFeature strong {
+  display: block;
+  color: #00684a;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+
+.mongoFeature Description {
+  color: #6b778c !important;
+  font-size: 14px !important;
+}
+
+/* Story Card */
+.storyCard {
+  background: linear-gradient(135deg, #f7f9fb 0%, #ffffff 100%) !important;
+  border: 1px solid rgba(224, 228, 231, 0.8) !important;
+  border-radius: 16px !important;
+  padding: 32px !important;
+}
+
+.storyText {
+  color: #3d4f5c !important;
+  font-size: 16px !important;
+  line-height: 1.8 !important;
+  text-align: center;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .container {
+    padding: 20px 16px;
+  }
+
+  .heroTitle {
+    font-size: 32px;
+  }
+
+  .heroSubtitle {
+    font-size: 18px;
+  }
+
+  .heroDescription {
+    font-size: 14px;
+  }
+
+  .sectionTitle {
+    font-size: 24px;
+  }
+
+  .cardGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .mongoFeatures {
+    grid-template-columns: 1fr;
+  }
+
+  .ctaButton {
+    width: 100%;
+  }
+}

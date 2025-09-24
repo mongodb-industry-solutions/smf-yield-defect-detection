@@ -144,13 +144,9 @@ class WebSocketManager:
                 f"(type: {connection_type.value}, total: {len(self._connections)})"
             )
 
-        # Send welcome message
-        await self.send_to_client(client_id, {
-            "type": "connection",
-            "status": "connected",
-            "client_id": client_id,
-            "timestamp": datetime.utcnow().isoformat()
-        })
+        # Don't send welcome message immediately - let the client stabilize
+        # The welcome message was causing disconnections
+        logger.debug(f"WebSocket {client_id} ready for messages")
 
         return client_id
 
@@ -201,6 +197,12 @@ class WebSocketManager:
             connection = self._connections[client_id]
 
         try:
+            # Check if WebSocket is still open before sending
+            if connection.websocket.client_state.name != "CONNECTED":
+                logger.warning(f"WebSocket {client_id} is not in CONNECTED state: {connection.websocket.client_state.name}")
+                await self.disconnect(client_id)
+                return False
+
             # Convert message to JSON
             if isinstance(message, dict):
                 message_str = json.dumps(message)
@@ -214,8 +216,16 @@ class WebSocketManager:
             logger.debug(f"Sent message to {client_id}: {message.get('type', 'unknown')}")
             return True
 
+        except WebSocketDisconnect as e:
+            logger.info(f"WebSocket {client_id} disconnected while sending")
+            self._error_count += 1
+
+            # Remove dead connection
+            await self.disconnect(client_id)
+            return False
+
         except Exception as e:
-            logger.error(f"Error sending to {client_id}: {e}")
+            logger.error(f"Error sending to {client_id}: {type(e).__name__}: {str(e)}")
             self._error_count += 1
 
             # Remove dead connection
@@ -245,6 +255,12 @@ class WebSocketManager:
             connection = self._connections[client_id]
 
         try:
+            # Check if WebSocket is still open before sending
+            if connection.websocket.client_state.name != "CONNECTED":
+                logger.warning(f"WebSocket {client_id} is not in CONNECTED state: {connection.websocket.client_state.name}")
+                await self.disconnect(client_id)
+                return False
+
             # Send JSON message
             await connection.websocket.send_json(message)
             self._message_count += 1
@@ -252,8 +268,16 @@ class WebSocketManager:
             logger.debug(f"Sent JSON to {client_id}: {message.get('type', 'unknown')}")
             return True
 
+        except WebSocketDisconnect as e:
+            logger.info(f"WebSocket {client_id} disconnected while sending")
+            self._error_count += 1
+
+            # Remove dead connection
+            await self.disconnect(client_id)
+            return False
+
         except Exception as e:
-            logger.error(f"Error sending JSON to {client_id}: {e}")
+            logger.error(f"Error sending JSON to {client_id}: {type(e).__name__}: {str(e)}")
             self._error_count += 1
 
             # Remove dead connection

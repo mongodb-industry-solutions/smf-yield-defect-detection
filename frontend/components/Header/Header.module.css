@@ -1,0 +1,117 @@
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(224, 228, 231, 0.6);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  z-index: 1000;
+}
+
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 100%;
+  max-width: 1920px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.logo {
+  flex-shrink: 0;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #1e2d3d;
+  letter-spacing: -0.02em;
+}
+
+.nav {
+  display: flex;
+  gap: 8px;
+  flex: 1;
+  justify-content: center;
+}
+
+.navLink {
+  padding: 8px 20px;
+  text-decoration: none;
+  color: #6b778c;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.navLink:hover {
+  background: rgba(0, 104, 74, 0.08);
+  color: #00684a;
+}
+
+.navLink.active {
+  background: rgba(0, 104, 74, 0.12);
+  color: #00684a;
+  font-weight: 600;
+}
+
+.navLink.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 20px;
+  right: 20px;
+  height: 2px;
+  background: #00684a;
+  border-radius: 2px;
+}
+
+.mongodbBadge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(0, 104, 74, 0.08);
+  border-radius: 20px;
+  flex-shrink: 0;
+}
+
+.poweredBy {
+  font-size: 11px;
+  color: #6b778c;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.mongodb {
+  font-size: 14px;
+  font-weight: 600;
+  color: #00684a;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .container {
+    padding: 0 16px;
+  }
+
+  .title {
+    font-size: 14px;
+  }
+
+  .navLink {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .mongodbBadge {
+    display: none;
+  }
+}

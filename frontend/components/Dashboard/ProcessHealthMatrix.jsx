@@ -1,285 +1,271 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-// import Card from '@leafygreen-ui/card'; // Removed to prevent white background
-import { Body, Description, H3, Label } from '@leafygreen-ui/typography';
-import Icon from '@leafygreen-ui/icon';
+import Card from '@leafygreen-ui/card';
 import styles from './ProcessHealthMatrix.module.css';
-import { equipmentAPI } from '@/lib/api';
 
 const ProcessHealthMatrix = () => {
-  const [processData, setProcessData] = useState([]);
-  const [lastUpdate, setLastUpdate] = useState(null);
-  const [mounted, setMounted] = useState(false);
+  const [equipmentData, setEquipmentData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [equipmentStatus, setEquipmentStatus] = useState({});
-  
-  // Process types and equipment mapping
-  const processes = [
-    { name: 'CMP', equipment: ['CMP-001', 'CMP-002', 'CMP-003'] },
-    { name: 'ETCH', equipment: ['ETCH-001', 'ETCH-002', 'ETCH-003'] },
-    { name: 'LITHO', equipment: ['LITHO-001', 'LITHO-002'] },
-    { name: 'DEP', equipment: ['DEP-001', 'DEP-002'] },
-    { name: 'CLEAN', equipment: ['CLEAN-001', 'CLEAN-002'] },
-  ];
-  
-  // Metrics to track
-  const metrics = ['Particle', 'Temp', 'Pressure', 'Flow', 'Power'];
-  
-  // Map backend status to frontend status
-  const mapStatus = (metrics) => {
-    // Check for critical conditions
-    if (metrics?.particle_count > 1200 || metrics?.temperature > 102) return 'critical';
-    if (metrics?.particle_count > 1000 || metrics?.temperature > 100) return 'warning';
-    if (metrics?.rf_power < 10) return 'idle';
-    return 'good';
-  };
-  
-  // Fetch equipment status from backend
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+
   const fetchEquipmentStatus = async () => {
     try {
-      const response = await equipmentAPI.getEquipmentStatus();
-      
-      if (response && response.matrix) {
-        setEquipmentStatus(response.matrix);
-        
-        // Transform backend data to frontend format
-        const transformed = processes.map(process => {
-          // Get equipment data from matrix based on process name
-          const processKey = process.name; // CMP, ETCH, LITHO, etc.
-          const backendEquipment = response.matrix[processKey] || [];
-          
-          // Map frontend equipment names to backend data
-          const processEquipment = process.equipment.map(eq => {
-            // Find matching equipment in backend data
-            const backendEq = backendEquipment.find(be => 
-              be.equipment_id && be.equipment_id.includes(eq.split('-')[1])
-            );
-            
-            const metrics = backendEq?.metrics || {};
-            
-            // Map individual metric statuses with proper thresholds
-            const metricStatuses = {};
-            metricStatuses['Particle'] = metrics.particle_count > 1200 ? 'critical' : 
-                                        metrics.particle_count > 1000 ? 'warning' : 'good';
-            metricStatuses['Temp'] = metrics.temperature > 102 ? 'critical' : 
-                                     metrics.temperature > 100 ? 'warning' : 'good';
-            metricStatuses['Pressure'] = metrics.chamber_pressure > 50 ? 'warning' : 'good';
-            metricStatuses['Flow'] = metrics.flow_rate < 5 ? 'warning' : 'good';
-            metricStatuses['Power'] = metrics.rf_power < 10 ? 'idle' : 
-                                      metrics.rf_power > 1500 ? 'warning' : 'good';
-            
-            // Calculate utilization based on rf_power (simplified)
-            const utilization = metrics.rf_power ? 
-              Math.min(100, Math.round((metrics.rf_power / 1500) * 100)) : 
-              Math.round(Math.random() * 100);
-            
-            return {
-              name: eq,
-              metrics: metricStatuses,
-              status: backendEq ? mapStatus(metrics) : 'idle',
-              utilization: utilization
-            };
-          });
-          
-          return {
-            name: process.name,
-            equipment: processEquipment
-          };
-        });
-        
-        setProcessData(transformed);
-        setLastUpdate(new Date());
-      } else {
-        // Fallback if no data
-        generateSimulatedData();
-      }
+      const response = await fetch('http://localhost:8000/equipment/status');
+      const data = await response.json();
+      setEquipmentData(data);
+      setIsLoading(false);
+      setLastRefresh(new Date());
     } catch (error) {
       console.error('Error fetching equipment status:', error);
-      // Fallback to simulated data
-      generateSimulatedData();
-    } finally {
       setIsLoading(false);
     }
   };
-  
-  // Generate simulated data as fallback
-  const generateSimulatedData = () => {
-    const generateHealthStatus = () => {
-      const rand = Math.random();
-      if (rand < 0.05) return 'critical';
-      if (rand < 0.15) return 'warning';
-      if (rand < 0.25) return 'idle';
-      return 'good';
-    };
-    
-    const data = processes.map(process => ({
-      name: process.name,
-      equipment: process.equipment.map(eq => ({
-        name: eq,
-        metrics: metrics.reduce((acc, metric) => {
-          acc[metric] = generateHealthStatus();
-          return acc;
-        }, {}),
-        status: generateHealthStatus(),
-        utilization: Math.round(Math.random() * 100),
-      })),
-    }));
-    
-    setProcessData(data);
-    setLastUpdate(new Date());
-  };
-  
-  // Initialize and poll equipment status
+
   useEffect(() => {
-    setMounted(true);
-    
     // Initial fetch
     fetchEquipmentStatus();
-    
-    // Poll for updates every 5 seconds
-    const interval = setInterval(() => {
-      fetchEquipmentStatus();
-    }, 5000);
-    
+
+    // Set up auto-refresh every 10 seconds
+    const interval = setInterval(fetchEquipmentStatus, 10000);
+
     return () => clearInterval(interval);
   }, []);
-  
+
+  const calculateStatus = (metrics) => {
+    if (!metrics) return 'unknown';
+    const { particle_count, rf_power, temperature } = metrics;
+
+    // Critical thresholds
+    if (particle_count > 1000 || rf_power > 1400 || temperature > 75) {
+      return 'critical';
+    }
+    // Warning thresholds
+    if (particle_count > 800 || rf_power > 1350 || temperature > 70) {
+      return 'warning';
+    }
+    // Caution thresholds
+    if (particle_count > 600 || rf_power > 1300 || temperature > 68) {
+      return 'warning';
+    }
+    return 'good';
+  };
+
   const getStatusColor = (status) => {
-    switch(status) {
-      case 'critical': return '#e11900';
-      case 'warning': return '#fbb13c';
-      case 'good': return '#00ed64';
-      case 'idle': return '#c1c7c6';
-      default: return '#6b778c';
+    switch (status) {
+      case 'critical':
+        return '#DC382D';
+      case 'warning':
+        return '#FDB813';
+      case 'good':
+        return '#00684A';
+      default:
+        return '#6b778c';
     }
   };
-  
+
   const getStatusIcon = (status) => {
-    switch(status) {
-      case 'critical': return { glyph: 'X', color: '#e11900' };
-      case 'warning': return { glyph: 'Warning', color: '#fbb13c' };
-      case 'good': return { glyph: 'Checkmark', color: '#00684a' };
-      case 'idle': return { glyph: 'Pause', color: '#6b778c' };
-      default: return { glyph: 'QuestionMarkWithCircle', color: '#6b778c' };
+    switch (status) {
+      case 'critical':
+        return '⚠️';
+      case 'warning':
+        return '⚡';
+      case 'good':
+        return '✓';
+      default:
+        return '•';
     }
   };
-  
-  const formatTime = (date) => {
-    if (!date) return '--:--:--';
-    return date.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit', 
-      second: '2-digit' 
-    });
+
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return 'N/A';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    return `${Math.floor(diffMins / 1440)}d ago`;
   };
-  
+
+  const processTypes = ['CMP', 'ETCH', 'LITHO'];
+
+  if (isLoading && !equipmentData) {
+    return (
+      <div className={styles.container}>
+        <Card className={styles.card}>
+          <div className={styles.header}>
+            <h3>Equipment Health Matrix</h3>
+            <div className={styles.headerRight}>
+              <span className={styles.liveIndicator}>
+                <span className={styles.liveDot}></span>
+                LIVE
+              </span>
+            </div>
+          </div>
+          <div className={styles.loadingGrid}>
+            {[1, 2, 3].map(i => (
+              <div key={i} className={styles.loadingColumn}>
+                <div className={styles.skeleton}></div>
+                <div className={styles.skeleton}></div>
+                <div className={styles.skeleton}></div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
-    <div className={styles.matrixCard}>
-      <div className={styles.header}>
-        <H3>Process Health Matrix</H3>
-        <div className={styles.lastUpdate}>
-          <Icon glyph="Refresh" size="small" />
-          <Description>{formatTime(lastUpdate)}</Description>
+    <div className={styles.container}>
+      <Card className={styles.card}>
+        <div className={styles.header}>
+          <div className={styles.headerLeft}>
+            <h3>Equipment Health Matrix</h3>
+            <p className={styles.subtitle}>
+              {equipmentData?.total_equipment || 0} tools monitored • Last update: {formatTimestamp(lastRefresh)}
+            </p>
+          </div>
+          <div className={styles.headerRight}>
+            <span className={styles.liveIndicator}>
+              <span className={styles.liveDot}></span>
+              LIVE
+            </span>
+          </div>
         </div>
-      </div>
-      
-      <div className={styles.matrixContainer}>
-        <div className={styles.matrixHeader}>
-          <div className={styles.processLabel}>Process</div>
-          <div className={styles.equipmentLabel}>Equipment</div>
-          {metrics.map(metric => (
-            <div key={metric} className={styles.metricLabel}>
-              {metric}
-            </div>
-          ))}
-          <div className={styles.utilizationLabel}>Util%</div>
-        </div>
-        
-        <div className={styles.matrixBody}>
-          {processData.map(process => (
-            <div key={process.name} className={styles.processGroup}>
-              <div className={styles.processName}>
-                <Body weight="medium">{process.name}</Body>
-              </div>
-              <div className={styles.equipmentRows}>
-                {process.equipment.map(eq => (
-                  <div key={eq.name} className={styles.equipmentRow}>
-                    <div className={styles.equipmentName}>
-                      <Description>{eq.name}</Description>
-                    </div>
-                    {metrics.map(metric => (
-                      <div 
-                        key={metric} 
-                        className={`${styles.metricCell} ${styles[eq.metrics[metric]]}`}
-                        title={`${metric}: ${eq.metrics[metric]}`}
-                      >
-                        <Icon 
-                          glyph={getStatusIcon(eq.metrics[metric]).glyph} 
-                          size="small" 
-                          fill={getStatusIcon(eq.metrics[metric]).color}
-                        />
-                      </div>
-                    ))}
-                    <div className={styles.utilizationCell}>
-                      <div className={styles.utilizationBar}>
-                        <div 
-                          className={`${styles.utilizationFill} ${eq.utilization > 90 ? styles.high : eq.utilization > 50 ? styles.medium : styles.low}`}
-                          style={{ width: `${eq.utilization}%` }}
-                        />
-                      </div>
-                      <span className={styles.utilizationText}>
-                        {eq.utilization}%
-                      </span>
-                    </div>
+
+        <div className={styles.matrixGrid}>
+          {processTypes.map(processType => {
+            const equipment = equipmentData?.matrix?.[processType] || [];
+            const criticalCount = equipment.filter(e => e.status === 'critical').length;
+            const warningCount = equipment.filter(e => e.status === 'warning').length;
+
+            return (
+              <div key={processType} className={styles.processColumn}>
+                <div className={styles.processHeader}>
+                  <h4>{processType}</h4>
+                  <div className={styles.statusSummary}>
+                    {criticalCount > 0 && (
+                      <span className={styles.criticalBadge}>{criticalCount}</span>
+                    )}
+                    {warningCount > 0 && (
+                      <span className={styles.warningBadge}>{warningCount}</span>
+                    )}
+                    <span className={styles.totalBadge}>{equipment.length}</span>
                   </div>
-                ))}
+                </div>
+
+                <div className={styles.equipmentList}>
+                  {equipment.length === 0 ? (
+                    <div className={styles.noEquipment}>No equipment</div>
+                  ) : (
+                    equipment.map((eq, index) => (
+                      <div
+                        key={eq.equipment_id}
+                        className={`${styles.equipmentCard} ${styles[eq.status]}`}
+                        style={{ animationDelay: `${index * 0.05}s` }}
+                      >
+                        <div className={styles.equipmentHeader}>
+                          <span
+                            className={styles.statusDot}
+                            style={{ backgroundColor: getStatusColor(eq.status) }}
+                          ></span>
+                          <span className={styles.equipmentId}>{eq.equipment_id}</span>
+                        </div>
+
+                        <div className={styles.equipmentMetrics}>
+                          <div className={styles.metricRow}>
+                            <span className={styles.metricLabel}>Particles:</span>
+                            <span
+                              className={styles.metricValue}
+                              style={{
+                                color: eq.metrics?.particle_count > 1000 ? '#DC382D' :
+                                       eq.metrics?.particle_count > 800 ? '#FDB813' : 'inherit'
+                              }}
+                            >
+                              {eq.metrics?.particle_count || 'N/A'}
+                            </span>
+                          </div>
+
+                          <div className={styles.metricRow}>
+                            <span className={styles.metricLabel}>RF Power:</span>
+                            <span
+                              className={styles.metricValue}
+                              style={{
+                                color: eq.metrics?.rf_power > 1400 ? '#DC382D' :
+                                       eq.metrics?.rf_power > 1350 ? '#FDB813' : 'inherit'
+                              }}
+                            >
+                              {eq.metrics?.rf_power ? `${eq.metrics.rf_power.toFixed(0)}W` : 'N/A'}
+                            </span>
+                          </div>
+
+                          <div className={styles.metricRow}>
+                            <span className={styles.metricLabel}>Temp:</span>
+                            <span
+                              className={styles.metricValue}
+                              style={{
+                                color: eq.metrics?.temperature > 75 ? '#DC382D' :
+                                       eq.metrics?.temperature > 70 ? '#FDB813' : 'inherit'
+                              }}
+                            >
+                              {eq.metrics?.temperature ? `${eq.metrics.temperature.toFixed(1)}°C` : 'N/A'}
+                            </span>
+                          </div>
+
+                          {eq.status === 'critical' && (
+                            <div className={styles.alertIndicator}>
+                              {getStatusIcon(eq.status)} Excursion Detected
+                            </div>
+                          )}
+
+                          <div className={styles.equipmentFooter}>
+                            <span className={styles.lastUpdate}>
+                              {formatTimestamp(eq.last_update)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Hover tooltip with all metrics */}
+                        <div className={styles.tooltip}>
+                          <div className={styles.tooltipHeader}>
+                            {eq.equipment_id}
+                          </div>
+                          <div className={styles.tooltipMetrics}>
+                            <div>Particles: {eq.metrics?.particle_count}</div>
+                            <div>RF Power: {eq.metrics?.rf_power?.toFixed(1)} W</div>
+                            <div>Pressure: {eq.metrics?.chamber_pressure?.toFixed(1)} Torr</div>
+                            <div>Temp: {eq.metrics?.temperature?.toFixed(1)} °C</div>
+                            <div>Flow: {eq.metrics?.flow_rate?.toFixed(1)} sccm</div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-      </div>
-      
-      <div className={styles.summary}>
-        <div className={styles.summaryItem}>
-          <span className={styles.summaryDot} style={{ backgroundColor: '#e11900' }} />
-          <Description>
-            {processData.reduce((count, p) => 
-              count + p.equipment.filter(e => 
-                Object.values(e.metrics).includes('critical')
-              ).length, 0
-            )} Critical
-          </Description>
+
+        <div className={styles.legend}>
+          <div className={styles.legendItem}>
+            <span className={styles.legendDot} style={{ backgroundColor: '#00684A' }}></span>
+            <span>Normal Operation</span>
+          </div>
+          <div className={styles.legendItem}>
+            <span className={styles.legendDot} style={{ backgroundColor: '#FDB813' }}></span>
+            <span>Warning</span>
+          </div>
+          <div className={styles.legendItem}>
+            <span className={styles.legendDot} style={{ backgroundColor: '#DC382D' }}></span>
+            <span>Critical/Excursion</span>
+          </div>
         </div>
-        <div className={styles.summaryItem}>
-          <span className={styles.summaryDot} style={{ backgroundColor: '#fbb13c' }} />
-          <Description>
-            {processData.reduce((count, p) => 
-              count + p.equipment.filter(e => 
-                Object.values(e.metrics).includes('warning')
-              ).length, 0
-            )} Warning
-          </Description>
-        </div>
-        <div className={styles.summaryItem}>
-          <span className={styles.summaryDot} style={{ backgroundColor: '#00ed64' }} />
-          <Description>
-            {processData.reduce((count, p) => 
-              count + p.equipment.filter(e => 
-                Object.values(e.metrics).every(m => m === 'good')
-              ).length, 0
-            )} Healthy
-          </Description>
-        </div>
-        <div className={styles.summaryItem}>
-          <span className={styles.summaryDot} style={{ backgroundColor: '#c1c7c6' }} />
-          <Description>
-            {processData.reduce((count, p) => 
-              count + p.equipment.filter(e => e.status === 'idle').length, 0
-            )} Idle
-          </Description>
-        </div>
-      </div>
+      </Card>
     </div>
   );
 };

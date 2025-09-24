@@ -1,125 +1,118 @@
 "use client";
 
-import React from 'react';
-import { Body, Description } from '@leafygreen-ui/typography';
-import Icon from '@leafygreen-ui/icon';
-import { useDashboardData } from '@/contexts/DashboardDataProvider';
+import React, { useState, useEffect } from 'react';
+import Card from '@leafygreen-ui/card';
 import styles from './FabPulseBar.module.css';
 
-const PulseMetric = ({ label, value, unit, trend, severity, prefix = '', suffix = '' }) => {
-  const getTrendIcon = () => {
-    if (!trend) return null;
-    return trend === 'up' ? 'ArrowUp' : 'ArrowDown';
+const FabPulseBar = () => {
+  const [kpiData, setKpiData] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Add default/skeleton data for immediate display
+  const defaultKPI = {
+    yield: { label: 'Current Yield', value: '--', unit: '%', trend: 'up', trendValue: 0 },
+    alerts: { label: 'Active Alerts', value: '--', unit: '', trend: 'up', trendValue: 0 },
+    mttr: { label: 'Avg Resolution Time', value: '--', unit: 'min', trend: 'down', trendValue: 0 },
+    savings: { label: 'Cost Savings', value: '--', unit: 'M', trend: 'up', trendValue: 0 }
   };
 
-  const getTrendColor = () => {
-    if (!trend) return styles.neutral;
-    if (label === 'Active Excursions') {
-      return trend === 'down' ? styles.positive : styles.negative;
+  const fetchKPIData = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/kpi/statistics');
+      const data = await response.json();
+      setKpiData(data.kpi);
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Error fetching KPI data:', error);
+      setIsLoading(false);
     }
-    return trend === 'up' ? styles.positive : styles.negative;
   };
 
-  const getSeverityClass = () => {
-    if (!severity) return '';
-    switch(severity) {
-      case 'critical': return styles.critical;
-      case 'warning': return styles.warning;
-      case 'good': return styles.good;
-      default: return '';
-    }
+  useEffect(() => {
+    // Initial fetch
+    fetchKPIData();
+
+    // Set up auto-refresh every 8 seconds
+    const interval = setInterval(fetchKPIData, 8000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const getMetricColor = (metric, value) => {
+    if (!metric.thresholds) return '#00684a';
+
+    if (value >= metric.thresholds.good) return '#00684a'; // Green
+    if (value >= metric.thresholds.warning) return '#FDB813'; // Yellow
+    return '#DC382D'; // Red
   };
+
+  const getTrendIcon = (trend) => {
+    if (trend === 'up') return '↑';
+    if (trend === 'down') return '↓';
+    return '−';
+  };
+
+  // Use default data while loading to prevent layout shift
+  const displayData = kpiData || defaultKPI;
+
+  const metrics = [
+    {
+      key: 'yield',
+      data: displayData.yield,
+      format: (val) => val === '--' ? val : `${val}%`,
+      highlight: true
+    },
+    {
+      key: 'alerts',
+      data: displayData.alerts,
+      format: (val) => val,
+      highlight: displayData.alerts.value > 10
+    },
+    {
+      key: 'mttr',
+      data: displayData.mttr,
+      format: (val) => val === '--' ? val : `${val} ${displayData.mttr.unit}`,
+      highlight: false
+    },
+    {
+      key: 'savings',
+      data: displayData.savings,
+      format: (val) => val === '--' ? val : `$${val}${displayData.savings.unit}`,
+      highlight: false
+    }
+  ];
 
   return (
-    <div className={`${styles.pulseMetric} ${getSeverityClass()}`}>
-      <Description className={styles.metricLabel}>{label}</Description>
-      <div className={styles.metricValue}>
-        <Body weight="bold" className={styles.value}>
-          {prefix}{value}{unit}{suffix}
-        </Body>
-        {trend && (
-          <Icon 
-            glyph={getTrendIcon()} 
-            size="small" 
-            className={`${styles.trendIcon} ${getTrendColor()}`}
-          />
-        )}
-      </div>
-    </div>
-  );
-};
-
-const FabPulseBar = ({ fabMetrics }) => {
-  const { kpi: kpiData, isLoading } = useDashboardData();
-  
-  // Use real data if available, otherwise fall back to defaults
-  const oee = kpiData ? {
-    value: kpiData.equipment_utilization || 87.3,
-    unit: '%',
-    trend: kpiData.equipment_utilization > 85 ? 'up' : 'down'
-  } : { value: 87.3, unit: '%', trend: 'up' };
-  
-  const excursions = kpiData ? {
-    value: kpiData.active_alerts || 0,
-    severity: kpiData.active_alerts > 5 ? 'critical' : kpiData.active_alerts > 2 ? 'warning' : 'good',
-    trend: kpiData.active_alerts < 3 ? 'down' : 'up'
-  } : { value: 2, severity: 'warning', trend: 'down' };
-  
-  const toolsOnline = kpiData && kpiData.equipment_status ? {
-    value: `${kpiData.equipment_status.online}/${kpiData.equipment_status.total}`,
-    trend: kpiData.equipment_status.online >= kpiData.equipment_status.total * 0.8 ? 'stable' : 'down'
-  } : { value: '12/15', trend: 'stable' };
-  
-  const currentYield = kpiData ? {
-    value: kpiData.current_yield ? parseFloat(kpiData.current_yield).toFixed(1) : 94.2,
-    unit: '%',
-    trend: kpiData.current_yield > 92 ? 'up' : 'down'
-  } : { value: 94.2, unit: '%', trend: 'up' };
-  
-  const wip = { value: 423, unit: ' wafers', trend: 'up' }; // WIP not in current backend
-
-  return (
-    <div className={styles.fabPulseBar}>
-      <div className={styles.pulseContainer}>
-        <div className={styles.statusIndicator}>
-          <div className={styles.statusDot} />
-          <Description className={styles.statusText}>LIVE</Description>
+    <div className={styles.container}>
+      <Card className={styles.card}>
+        <div className={styles.metricsGrid}>
+          {metrics.map(metric => (
+            <div key={metric.key} className={styles.metric}>
+              <div className={styles.metricLabel}>{metric.data.label}</div>
+              <div className={styles.metricValue}>
+                <span
+                  className={styles.value}
+                  style={{
+                    color: metric.highlight ? getMetricColor(metric.data, metric.data.value) : '#1e2d3d'
+                  }}
+                >
+                  {metric.format(metric.data.value)}
+                </span>
+                <span
+                  className={`${styles.trend} ${metric.data.trend === 'up' ? styles.trendUp : styles.trendDown}`}
+                >
+                  {getTrendIcon(metric.data.trend)}
+                  {Math.abs(metric.data.trendValue)}%
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
-        
-        <PulseMetric 
-          label="Overall Equipment Effectiveness"
-          value={oee.value}
-          unit={oee.unit}
-          trend={oee.trend}
-        />
-        
-        <PulseMetric 
-          label="Active Excursions"
-          value={excursions.value}
-          severity={excursions.severity}
-          trend={excursions.trend}
-        />
-        
-        <PulseMetric 
-          label="Tools Online"
-          value={toolsOnline.value}
-          trend={toolsOnline.trend}
-        />
-        
-        <PulseMetric 
-          label="Current Yield"
-          value={currentYield.value}
-          unit={currentYield.unit}
-          trend={currentYield.trend}
-        />
-        
-        <PulseMetric 
-          label="Work in Progress"
-          value={wip.value}
-          unit={wip.unit}
-          trend={wip.trend}
-        />
-      </div>
+        <div className={styles.pulseIndicator}>
+          <span className={styles.pulseDot}></span>
+          <span className={styles.pulseText}>LIVE</span>
+        </div>
+      </Card>
     </div>
   );
 };

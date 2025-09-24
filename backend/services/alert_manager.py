@@ -117,12 +117,11 @@ class AlertManager:
         source_data: Dict[str, Any],
         equipment_id: Optional[str] = None,
         lot_id: Optional[str] = None,
-        wafer_id: Optional[str] = None,
-        correlation_data: Optional[Dict[str, Any]] = None
+        wafer_id: Optional[str] = None
     ) -> str:
         """
         Create a new alert
-        
+
         Args:
             alert_type: Type of alert
             severity: Alert severity level
@@ -132,7 +131,6 @@ class AlertManager:
             equipment_id: Equipment identifier
             lot_id: Lot identifier
             wafer_id: Wafer identifier
-            correlation_data: Any correlation analysis results
             
         Returns:
             Alert ID
@@ -155,10 +153,10 @@ class AlertManager:
                 "lot_id": lot_id,
                 "wafer_id": wafer_id,
                 "source_data": source_data,
-                "correlation_data": correlation_data or {},
+                # NOTE: Removed correlation_data and rca_recommendations fields
+                # These are now set directly by CorrelationEngine and RCAGenerator
                 "assigned_to": None,
                 "resolution_notes": None,
-                "rca_recommendations": [],
                 "estimated_impact": self._calculate_impact(severity, alert_type),
                 "auto_generated": True,
                 "notifications_sent": [],
@@ -374,7 +372,7 @@ class AlertManager:
             if equipment_id:
                 query["equipment_id"] = equipment_id
             
-            cursor = self.alerts_collection.find(query).sort([("severity", 1), ("timestamp", -1)])
+            cursor = self.alerts_collection.find(query).sort([("timestamp", -1)])
             alerts = list(cursor.limit(limit))
             
             return alerts

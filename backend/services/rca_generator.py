@@ -207,8 +207,9 @@ class RCAGenerator:
         }
     
     async def generate_rca_hints(self, alert_id: str) -> Dict[str, Any]:
-        """Generate RCA hints for a given alert"""
-        self.logger.info(f"Generating RCA hints for alert {alert_id}")
+        """Generate RCA analysis for a given alert
+        Note: Method name kept as generate_rca_hints for backward compatibility"""
+        self.logger.info(f"Generating RCA analysis for alert {alert_id}")
         
         # Get alert and correlation analysis
         alert = await self.alerts_collection.find_one({"_id": ObjectId(alert_id)})
@@ -232,9 +233,9 @@ class RCAGenerator:
         
         # Calculate confidence scores
         overall_confidence = self._calculate_overall_confidence(recommendations)
-        
-        # Prepare RCA hints
-        rca_hints = {
+
+        # Prepare RCA analysis
+        rca_analysis = {
             "alert_id": alert_id,
             "generated_at": datetime.utcnow(),
             "identified_patterns": applicable_patterns,
@@ -243,57 +244,69 @@ class RCAGenerator:
             "confidence_score": overall_confidence,
             "suggested_priority": self._determine_priority(alert, recommendations)
         }
-        
-        # Store RCA hints in alert
+
+        # Store RCA analysis in alert
         await self.alerts_collection.update_one(
             {"_id": ObjectId(alert_id)},
-            {"$set": {"rca_hints": rca_hints}}
+            {"$set": {"rca_analysis": rca_analysis}}
         )
-        
-        self.logger.info(f"RCA hints generated for alert {alert_id}")
-        return rca_hints
+
+        self.logger.info(f"RCA analysis generated for alert {alert_id}")
+        return rca_analysis
     
-    async def _identify_patterns(self, alert: dict, 
+    async def _identify_patterns(self, alert: dict,
                                  correlation_analysis: dict) -> List[Dict[str, Any]]:
         """Identify applicable RCA patterns based on alert and correlations"""
-        
+
         identified_patterns = []
-        violations = alert.get("violations", [])
-        
-        # Check metric-based patterns
-        for violation in violations:
-            metric = violation.get("metric")
-            
-            # Check particle excursion
-            if metric == "particle_count" and violation.get("current_value", 0) > 1000:
+
+        # Get excursion data from source_data (actual alert structure)
+        source_data = alert.get("source_data", {})
+        excursion_type = source_data.get("excursion_type", "")
+        excursion_value = source_data.get("value", 0)
+        metrics = source_data.get("metrics", {})
+
+        # Check for particle excursion
+        if excursion_type == "particle_excursion" or metrics.get("particle_count", 0) > 1000:
+            if "particle_excursion" in self.rca_patterns:
                 pattern = self.rca_patterns["particle_excursion"]
                 identified_patterns.append({
                     "pattern_type": "particle_excursion",
-                    "trigger": f"Particle count: {violation['current_value']}",
+                    "trigger": f"Particle count: {metrics.get('particle_count', excursion_value)}",
                     "probable_causes": self._filter_causes(
                         pattern["probable_causes"],
                         correlation_analysis
                     )
                 })
-            
-            # Check RF power drift
-            elif metric == "rf_power" and violation.get("type") == "drift":
+
+        # Check for RF power drift
+        elif excursion_type == "rf_power_drift":
+            if "rf_power_drift" in self.rca_patterns:
                 pattern = self.rca_patterns["rf_power_drift"]
+                rf_power = metrics.get("rf_power", excursion_value)
+                # Calculate deviation from baseline (CMP: 1450W, ETCH: 1200W, LITHO: 800W)
+                equipment_id = source_data.get("equipment_id", "")
+                baseline = 1450 if "CMP" in equipment_id else 1200 if "ETCH" in equipment_id else 800
+                deviation = abs(rf_power - baseline)
                 identified_patterns.append({
                     "pattern_type": "rf_power_drift",
-                    "trigger": f"RF power drift: {violation['deviation']}W",
+                    "trigger": f"RF power drift: {deviation:.0f}W (current: {rf_power}W)",
                     "probable_causes": self._filter_causes(
                         pattern["probable_causes"],
                         correlation_analysis
                     )
                 })
-            
-            # Check temperature drift
-            elif metric == "temperature" and violation.get("type") == "drift":
+
+        # Check for temperature drift
+        elif excursion_type == "temperature_drift":
+            if "temperature_drift" in self.rca_patterns:
                 pattern = self.rca_patterns["temperature_drift"]
+                temperature = metrics.get("temperature", excursion_value)
+                # CMP baseline is 65°C
+                deviation = abs(temperature - 65)
                 identified_patterns.append({
                     "pattern_type": "temperature_drift",
-                    "trigger": f"Temperature drift: {violation['deviation']}°C",
+                    "trigger": f"Temperature drift: {deviation:.1f}°C (current: {temperature}°C)",
                     "probable_causes": self._filter_causes(
                         pattern["probable_causes"],
                         correlation_analysis
@@ -370,8 +383,18 @@ class RCAGenerator:
         
         # Check various indicators
         if indicator == "slurry_batch_correlation":
+            # Check both batch correlation and process_context for problematic materials
             batch_data = correlations.get("batch", {})
-            return len(batch_data.get("suspect_batches", [])) > 0
+            if len(batch_data.get("suspect_batches", [])) > 0:
+                return True
+
+            # Also check process_context for problematic slurry batches
+            process_ctx = correlations.get("process_context", {})
+            problematic_materials = process_ctx.get("problematic_materials", [])
+            for mat in problematic_materials:
+                if mat.get("type") == "slurry_batch" and mat.get("is_problematic", False):
+                    return True
+            return False
         
         elif indicator == "clustered_defects":
             spatial = correlations.get("spatial", {})
