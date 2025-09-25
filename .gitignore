@@ -199,3 +199,23 @@ backend/backend-integration-analysis.md
 backend-issues.md
 helm
 frontend/LIVE_MONITORING_ENHANCEMENT_PLAN.md
+
+# Demo mode planning documents
+DEMO_CONTROL_PANEL_PLAN.md
+DEMO_MODE_*.md
+**/demo_planning/
+ATLAS_CHARTS_SETUP.md
+.gitignore
+test-inject.html
+backend/analyze_excursion_rate.py
+backend/cleanup_incorrect_equipment_ids.py
+backend/DATA_MODEL_ANALYSIS.md
+backend/FEATURES.md
+backend/FEATURES.md
+backend/FEATURES.md
+backend/PARTICLE_THRESHOLD_ISSUE.md
+backend/migrate_alert_fields.py
+backend/monitor_demo.py
+backend/show_demo_data.py
+frontend/FRONTEND_RESTRUCTURE_PLAN.md
+frontend/IMPLEMENTATION_TRACKER.md

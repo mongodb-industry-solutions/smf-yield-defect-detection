@@ -171,11 +171,34 @@ curl http://localhost:8000/alerts/statistics/summary
 curl http://localhost:8000/kpi/statistics
 ```
 
-### Sensor Data
+### Sensor Data & Streaming API
 
+#### Data Flow Architecture
+The sensor data API implements a sophisticated streaming architecture with automatic spike detection and cascading alert generation:
+
+1. **Dual-Write Pattern**: Data is written simultaneously to:
+   - `sensor_events`: Regular collection with MongoDB Change Streams for real-time monitoring
+   - `process_sensor_ts`: Time-series collection (30-min granularity, 90-day retention) for historical analysis
+
+2. **Excursion Detection Thresholds**:
+   - **CMP Tools**: particle_count > 1000, rf_power drift > 100W, temperature drift > 2°C
+   - **ETCH Equipment**: particle_count > 800, rf_power drift > 150W, pressure drift > 5 torr
+   - **LITHO Steppers**: overlay_error > 5nm, focus_drift > 2nm
+
+3. **Cascade Timeline** (from excursion detection):
+   - **0s**: Alert created with severity based on deviation magnitude
+   - **5s**: Correlation analysis links to problematic materials/batches
+   - **10s**: RCA generation with pattern matching against 72 historical cases
+   - **10s**: Synthetic wafer generation with correlated defect patterns
+   - **Real-time**: WebSocket broadcast to all connected clients
+
+#### Data Insertion Triggers
+
+##### 1. Manual API Call
 #### `POST /sensors/write`
-**Purpose**: Inject sensor data (triggers excursion detection)
-**MongoDB Features**: Time-series collection insert
+**Purpose**: Inject sensor data (triggers excursion detection if thresholds exceeded)
+**MongoDB Features**: Dual-write to time-series and change stream collections
+**Cascade Effect**: Automatic alert → correlation → RCA → wafer generation if particle_count > 1000
 ```bash
 curl -X POST http://localhost:8000/sensors/write \
   -H "Content-Type: application/json" \
@@ -184,7 +207,7 @@ curl -X POST http://localhost:8000/sensors/write \
     "process_step": "CMP",
     "timestamp": "2025-01-16T10:30:00Z",
     "metrics": {
-      "particle_count": 1500,
+      "particle_count": 1500,  # Triggers excursion (>1000)
       "rf_power": 1200,
       "chamber_pressure": 45,
       "temperature": 65,
@@ -193,17 +216,100 @@ curl -X POST http://localhost:8000/sensors/write \
     "metadata": {
       "lot_id": "LOT_2025_001",
       "wafer_id": "W_TEST_001",
-      "slurry_batch": "SB_2025_021",
+      "slurry_batch": "SB_2025_021",  # Links to problematic batch
       "recipe_id": "RECIPE_CMP_01"
     }
   }'
 ```
 
-#### `GET /sensors/stream/{equipment_id}`
-**Purpose**: Stream historical sensor data
-**MongoDB Features**: Time-series queries with windowing
+##### 2. Demo Mode Auto-Generation
+#### `POST /demo/start`
+**Purpose**: Start automatic data generation with configurable excursion probability
+**Features**:
+- Generates data every 30 seconds (configurable)
+- Rotates through 4 equipment IDs
+- 30% probability of generating excursions
+- Normal baseline: particle_count 400-500
+- Excursion spike: particle_count 1200-2500
 ```bash
-curl "http://localhost:8000/sensors/stream/CMP_TOOL_01?hours=24"
+# Start demo mode
+curl -X POST http://localhost:8000/demo/start
+
+# Check status
+curl http://localhost:8000/demo/status
+
+# Stop demo mode
+curl -X POST http://localhost:8000/demo/stop
+```
+
+**Environment Configuration**:
+```env
+DEMO_MODE_ENABLED=true
+DEMO_INTERVAL_SECONDS=30
+DEMO_EXCURSION_PROBABILITY=0.30
+```
+
+##### 3. Manual Excursion Injection
+#### `POST /demo/inject_excursion`
+**Purpose**: Explicitly inject anomalous data for testing
+**Excursion Types**: particle, temperature, rf_power, all
+```bash
+# Inject particle excursion with known problematic batch
+curl -X POST http://localhost:8000/demo/inject_excursion \
+  -H "Content-Type: application/json" \
+  -d '{
+    "equipment_id": "CMP_TOOL_02",
+    "excursion_type": "particle",
+    "slurry_batch": "SB_2025_021"  # Known problematic batch
+  }'
+```
+
+##### 4. Equipment Fix Simulation
+#### `POST /alerts/{alert_id}/fix`
+**Purpose**: Simulate equipment repair by injecting healthy data
+**Actions**:
+- Injects normal sensor readings
+- Automatically resolves associated alert
+- Resets equipment to baseline parameters
+```bash
+curl -X POST http://localhost:8000/alerts/ALT-20250116120000-abc123/fix
+```
+
+#### Real-time Data Streaming
+
+#### `GET /sensors/stream/{equipment_id}`
+**Purpose**: Stream historical sensor data with time bucketing
+**MongoDB Features**: Time-series aggregation with $dateTrunc
+```bash
+# Get 60-minute window with 1-minute intervals
+curl "http://localhost:8000/sensors/stream/CMP_TOOL_01?window_minutes=60&interval=1"
+```
+
+#### `GET /sensors/realtime`
+**Purpose**: Get latest sensor readings from all equipment
+**MongoDB Features**: Aggregation pipeline with $group and $first
+```bash
+# Latest from each equipment
+curl http://localhost:8000/sensors/realtime?limit=50
+
+# Filter by specific equipment
+curl "http://localhost:8000/sensors/realtime?equipment_id=CMP_TOOL_01&limit=10"
+```
+
+#### WebSocket Streaming
+#### `ws://localhost:8000/ws/sensors`
+**Purpose**: Real-time sensor data push
+**Features**:
+- Updates every 2 seconds
+- Broadcasts excursions immediately
+- Auto-reconnect with exponential backoff
+- Supports filtering by equipment_id
+```javascript
+const ws = new WebSocket('ws://localhost:8000/ws/sensors');
+ws.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Sensor update:', data);
+};
 ```
 
 ### Wafer Management

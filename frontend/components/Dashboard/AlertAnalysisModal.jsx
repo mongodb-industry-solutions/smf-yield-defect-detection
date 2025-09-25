@@ -44,15 +44,22 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
     setFixStatus(null);
 
     try {
+      // Add timeout for the fix request (10 seconds)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+
       const response = await fetch(`http://localhost:8000/alerts/${alert.alert_id}/fix`, {
-        method: 'POST'
+        method: 'POST',
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (response.ok) {
         const data = await response.json();
         setFixStatus({
           type: 'success',
-          message: data.message
+          message: data.message || 'Equipment fixed successfully'
         });
 
         if (onAlertFixed) {
@@ -70,10 +77,19 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
       }
     } catch (error) {
       console.error('Error fixing equipment:', error);
-      setFixStatus({
-        type: 'error',
-        message: 'Error connecting to server'
-      });
+
+      // Check if it was a timeout
+      if (error.name === 'AbortError') {
+        setFixStatus({
+          type: 'warning',
+          message: 'Fix request timed out - the fix may still be processing. Please refresh to check status.'
+        });
+      } else {
+        setFixStatus({
+          type: 'error',
+          message: 'Error connecting to server'
+        });
+      }
     } finally {
       setIsFixing(false);
     }

@@ -59,7 +59,7 @@ MDB_CHECKPOINTER_WRITES = MDB_CHECKPOINTER_COLLECTION + "_writes"
 
 # Demo Mode Configuration
 DEMO_MODE_ENABLED = os.getenv("DEMO_MODE_ENABLED", "false").lower() == "true"
-DEMO_INTERVAL_SECONDS = int(os.getenv("DEMO_INTERVAL_SECONDS", "30"))
+DEMO_INTERVAL_SECONDS = int(os.getenv("DEMO_INTERVAL_SECONDS", "8"))  # 8 seconds for 60 data points in 2 minutes (15 intervals × 4 equipment)
 DEMO_EXCURSION_PROBABILITY = float(os.getenv("DEMO_EXCURSION_PROBABILITY", "0.30"))  # Increased to 30% for more frequent excursions
 
 # Demo Mode Global State
@@ -164,46 +164,60 @@ def generate_demo_metadata(is_excursion: bool = False) -> dict:
     }
 
 async def demo_data_generator():
-    """Generate normal sensor data with occasional anomalies"""
+    """Generate normal sensor data with occasional anomalies - parallel for all equipment"""
     global demo_mode_active
 
     equipment_ids = ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01"]
-    equipment_index = 0
 
     logger.info(f"Demo data generator started - Interval: {DEMO_INTERVAL_SECONDS}s, Excursion probability: {DEMO_EXCURSION_PROBABILITY}")
+    logger.info(f"Generating parallel data for {len(equipment_ids)} equipment - {60 // (120 // DEMO_INTERVAL_SECONDS)} data points per 2 minutes")
 
     while demo_mode_active:
         try:
-            # Rotate through equipment
-            equipment_id = equipment_ids[equipment_index]
-            equipment_index = (equipment_index + 1) % len(equipment_ids)
+            # Generate timestamp once for all equipment in this batch
+            timestamp = datetime.now(timezone.utc)
 
-            # Determine if this should be an excursion
-            is_excursion = random.random() < DEMO_EXCURSION_PROBABILITY
+            # Collect data for all equipment
+            bulk_data = []
+            excursion_count = 0
+            particle_excursion_count = 0
 
-            # Generate sensor data
-            data = {
-                "equipment_id": equipment_id,
-                "process_step": equipment_id.split("_")[0],
-                "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
-                "metrics": generate_demo_metrics(equipment_id, is_excursion),
-                "metadata": generate_demo_metadata(is_excursion)  # Pass excursion flag for problematic batch selection
-            }
+            for equipment_id in equipment_ids:
+                # Determine if this equipment should have an excursion
+                is_excursion = random.random() < DEMO_EXCURSION_PROBABILITY
+                if is_excursion:
+                    excursion_count += 1
 
-            # Use SensorDataWriter for dual writes
+                # Generate sensor data for this equipment
+                data = {
+                    "equipment_id": equipment_id,
+                    "process_step": equipment_id.split("_")[0],
+                    "timestamp": timestamp,  # Use same timestamp for batch consistency
+                    "metrics": generate_demo_metrics(equipment_id, is_excursion),
+                    "metadata": generate_demo_metadata(is_excursion)
+                }
+
+                bulk_data.append(data)
+
+                # Track particle excursions for logging
+                if data['metrics']['particle_count'] > 1000:
+                    particle_excursion_count += 1
+
+            # Use bulk write for all equipment data
             writer = SensorDataWriter(mongodb_uri=MDB_URI, database=MDB_DATABASE_NAME)
-            result = writer.write_sensor_data(data)
+            result = writer.bulk_write_sensor_data(bulk_data)
             writer.close()
 
-            if result["success"]:
-                excursion_msg = " (EXCURSION)" if is_excursion else ""
-                logger.info(f"Demo data generated for {equipment_id}: particle_count={data['metrics']['particle_count']}{excursion_msg}")
+            if result["sensor_events"]["inserted"] > 0 or result["process_sensor_ts"]["inserted"] > 0:
+                logger.info(f"Demo batch generated: {len(bulk_data)} equipment readings, "
+                           f"{excursion_count} excursions, {particle_excursion_count} particle alerts expected")
 
-                # Log if excursion will trigger alert
-                if data['metrics']['particle_count'] > 1000:
-                    logger.warning(f"Particle excursion on {equipment_id}: {data['metrics']['particle_count']} - Alert will be created")
+                # Log details if there were excursions
+                if particle_excursion_count > 0:
+                    excursion_equipment = [d["equipment_id"] for d in bulk_data if d["metrics"]["particle_count"] > 1000]
+                    logger.warning(f"Particle excursions on: {', '.join(excursion_equipment)} - Alerts will be created")
             else:
-                logger.error(f"Failed to write demo data: {result.get('errors', [])}")
+                logger.error(f"Failed to write demo batch: {result.get('errors', [])}")
 
             # Wait for next interval
             await asyncio.sleep(DEMO_INTERVAL_SECONDS)
@@ -3249,11 +3263,21 @@ async def inject_excursion(request: Dict[str, Any] = Body(...)):
 
 @app.get("/demo/status")
 async def get_demo_status():
-    """Get demo mode status"""
+    """Get demo mode status with parallel equipment updates"""
     global demo_mode_active, demo_task
 
     # Simple status without database queries to avoid blocking
     task_running = demo_task is not None
+
+    # Calculate rates for parallel equipment updates
+    intervals_per_minute = 60 / DEMO_INTERVAL_SECONDS
+    intervals_per_hour = 3600 / DEMO_INTERVAL_SECONDS
+    equipment_count = 4
+
+    # Total data points (all equipment report each interval)
+    total_per_minute = equipment_count * intervals_per_minute
+    total_per_hour = equipment_count * intervals_per_hour
+    total_per_2min = equipment_count * (120 / DEMO_INTERVAL_SECONDS)
 
     return {
         "active": demo_mode_active,
@@ -3261,10 +3285,14 @@ async def get_demo_status():
         "interval_seconds": DEMO_INTERVAL_SECONDS,
         "excursion_probability": DEMO_EXCURSION_PROBABILITY,
         "equipment_ids": ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01"],
+        "parallel_mode": True,
         "expected_rate": {
-            "per_minute": f"{4 * (60 / DEMO_INTERVAL_SECONDS):.1f} readings",
-            "per_hour": f"{4 * (3600 / DEMO_INTERVAL_SECONDS):.0f} readings",
-            "excursions_per_hour": f"{4 * (3600 / DEMO_INTERVAL_SECONDS) * DEMO_EXCURSION_PROBABILITY:.1f}"
+            "per_interval": f"{equipment_count} readings (all equipment)",
+            "per_minute": f"{total_per_minute:.0f} readings",
+            "per_2_minutes": f"{total_per_2min:.0f} readings",
+            "per_hour": f"{total_per_hour:.0f} readings",
+            "excursions_per_hour": f"{total_per_hour * DEMO_EXCURSION_PROBABILITY:.0f}",
+            "particle_alerts_per_hour": f"{total_per_hour * DEMO_EXCURSION_PROBABILITY * 0.7:.0f}"  # ~70% of excursions are particle
         },
-        "note": "Check /sensors/latest for recent data"
+        "note": "Parallel mode: All equipment report simultaneously each interval"
     }

@@ -38,6 +38,24 @@
   flex: 1;
   padding: 20px;
   min-width: 0; /* Prevent flex child from growing beyond parent */
+  overflow-y: auto;
+  max-height: calc(100vh - 200px);
+}
+
+/* Charts Container */
+.chartsContainer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+/* Bottom Visualizations Container */
+.bottomVisualizationsContainer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin-top: 20px;
 }
 
 /* Right Panel - Alerts Panel */
