@@ -10,6 +10,8 @@ import logging
 from pymongo import MongoClient, DESCENDING
 from pymongo.errors import DuplicateKeyError
 from bson import ObjectId
+import asyncio
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -56,7 +58,13 @@ class AlertManager:
         self.db = self.client[database_name]
         self.alerts_collection = self.db["alerts"]
         self.alert_history_collection = self.db["alert_history"]
-        
+        self.historical_knowledge_collection = self.db["historical_knowledge"]
+
+        # Initialize semantic search service (lazy loading)
+        self._semantic_search = None
+        self._mongodb_uri = mongodb_uri
+        self._database_name = database_name
+
         # Note: Call alert_manager.initialize() after creation to set up indexes
         
         # Alert thresholds and rules
@@ -107,7 +115,28 @@ class AlertManager:
             logger.info("Alert collections initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing collections: {e}")
-    
+
+    def _get_semantic_search(self):
+        """
+        Lazy load semantic search service
+
+        Returns:
+            SemanticSearchService instance or None if unavailable
+        """
+        if self._semantic_search is None:
+            try:
+                from services.semantic_search import SemanticSearchService
+                self._semantic_search = SemanticSearchService(
+                    mongodb_uri=self._mongodb_uri,
+                    database_name=self._database_name
+                )
+                logger.info("Semantic search service initialized for AlertManager")
+            except Exception as e:
+                logger.warning(f"Could not initialize semantic search: {e}")
+                self._semantic_search = False  # Mark as unavailable
+
+        return self._semantic_search if self._semantic_search is not False else None
+
     def create_alert(
         self,
         alert_type: AlertType,
@@ -164,13 +193,20 @@ class AlertManager:
             }
             
             self.alerts_collection.insert_one(alert_doc)
-            
+
             # Add to history
             self._add_to_history(alert_id, "created", f"Alert created: {title}")
-            
+
             # Send notifications based on severity
             self._send_notifications(alert_id, severity)
-            
+
+            # Trigger async historical context search
+            try:
+                asyncio.create_task(self._add_historical_context_async(alert_id, alert_doc))
+            except RuntimeError:
+                # No event loop running (e.g., in tests)
+                logger.debug("Could not create async task for historical context (no event loop)")
+
             logger.info(f"Alert created: {alert_id} - {title} [{severity.value}]")
             return alert_id
             
@@ -180,7 +216,164 @@ class AlertManager:
         except Exception as e:
             logger.error(f"Error creating alert: {e}")
             raise
-    
+
+    def _build_historical_search_query(self, alert_doc: Dict[str, Any]) -> str:
+        """
+        Build semantic search query from alert document
+
+        Args:
+            alert_doc: Alert document
+
+        Returns:
+            Search query string
+        """
+        query_parts = []
+
+        # Add alert type and description
+        if alert_doc.get("alert_type"):
+            query_parts.append(alert_doc["alert_type"])
+        if alert_doc.get("description"):
+            query_parts.append(alert_doc["description"])
+
+        # Extract excursion context from source_data
+        source_data = alert_doc.get("source_data", {})
+        excursion_type = source_data.get("excursion_type", "")
+
+        if excursion_type:
+            # Convert particle_excursion -> "particle excursion"
+            readable_type = excursion_type.replace("_", " ")
+            query_parts.append(f"{readable_type} detected")
+
+            # Add domain-specific keywords
+            if "particle" in excursion_type:
+                query_parts.append("particle contamination CMP slurry filter")
+            elif "temperature" in excursion_type:
+                query_parts.append("temperature drift thermal control cooling")
+            elif "rf_power" in excursion_type:
+                query_parts.append("RF power drift chamber condition recipe")
+
+        # Add equipment context
+        equipment_id = alert_doc.get("equipment_id", "")
+        if equipment_id:
+            query_parts.append(f"equipment {equipment_id}")
+
+            # Add process-specific keywords based on equipment
+            if "CMP" in equipment_id.upper():
+                query_parts.append("chemical mechanical polishing slurry pad")
+            elif "ETCH" in equipment_id.upper():
+                query_parts.append("etching chamber plasma")
+            elif "LITHO" in equipment_id.upper():
+                query_parts.append("lithography reticle overlay")
+
+        # Filter out empty strings and join
+        query = " ".join(filter(None, query_parts))
+
+        logger.debug(f"Built historical search query: {query[:100]}...")
+        return query
+
+    async def _find_similar_cases(self, alert_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Find similar historical cases for an alert using semantic search
+
+        Args:
+            alert_doc: Alert document
+
+        Returns:
+            List of similar historical cases
+        """
+        try:
+            # Get semantic search service
+            semantic_search = self._get_semantic_search()
+            if not semantic_search:
+                logger.debug("Semantic search not available, skipping historical context")
+                return []
+
+            # Build query
+            query = self._build_historical_search_query(alert_doc)
+            if not query:
+                logger.debug("Could not build search query, skipping historical context")
+                return []
+
+            # Initialize semantic search if needed
+            if not hasattr(semantic_search, '_initialized'):
+                await semantic_search.initialize()
+                semantic_search._initialized = True
+
+            # Search for similar RCA reports
+            results = await semantic_search.search_knowledge_base(
+                query=query,
+                document_types=["rca_report"],
+                limit=3,  # Top 3 most relevant
+                min_score=0.6  # Minimum relevance threshold
+            )
+
+            # Format results
+            formatted_cases = []
+            for result in results:
+                # Extract root cause (same logic as RCA generator - Fix #3)
+                root_cause = (
+                    result.get("findings", {}).get("root_cause") or
+                    result.get("metadata", {}).get("root_cause") or
+                    ""
+                )
+
+                case = {
+                    "title": result.get("title", ""),
+                    "root_cause": root_cause,
+                    "resolution_time": result.get("metadata", {}).get("resolution_time_hours", 0),
+                    "defect_type": result.get("metadata", {}).get("defect_type", ""),
+                    "relevance_score": round(result.get("score", 0), 2)
+                }
+                formatted_cases.append(case)
+
+            logger.info(f"Found {len(formatted_cases)} similar historical cases for alert")
+            return formatted_cases
+
+        except Exception as e:
+            logger.error(f"Error finding similar historical cases: {e}")
+            return []
+
+    async def _add_historical_context_async(self, alert_id: str, alert_doc: Dict[str, Any]):
+        """
+        Add historical context to an alert asynchronously
+
+        Args:
+            alert_id: Alert identifier
+            alert_doc: Alert document
+        """
+        try:
+            # Search for similar cases with timeout
+            historical_cases = await asyncio.wait_for(
+                self._find_similar_cases(alert_doc),
+                timeout=15.0  # 15 second timeout (increased for semantic search)
+            )
+
+            if not historical_cases:
+                logger.debug(f"No historical cases found for alert {alert_id}")
+                return
+
+            # Update alert document with historical context in rca_analysis field
+            # This ensures consistency with RCA-generated historical cases
+            result = self.alerts_collection.update_one(
+                {"alert_id": alert_id},
+                {
+                    "$set": {
+                        "rca_analysis.similar_historical_cases": historical_cases,
+                        "rca_analysis.historical_context_retrieved_at": datetime.now()
+                    }
+                }
+            )
+
+            if result.modified_count > 0:
+                logger.info(f"✓ Added {len(historical_cases)} historical cases to alert {alert_id} (rca_analysis)")
+            else:
+                logger.warning(f"Could not update alert {alert_id} with historical context")
+
+        except asyncio.TimeoutError:
+            logger.warning(f"Historical search timeout for alert {alert_id} (>15s)")
+        except Exception as e:
+            logger.error(f"Error adding historical context to alert {alert_id}: {e}")
+
     def acknowledge_alert(self, alert_id: str, acknowledged_by: str, notes: Optional[str] = None) -> bool:
         """
         Acknowledge an alert

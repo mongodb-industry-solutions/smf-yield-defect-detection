@@ -128,7 +128,10 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
   const metadata = alert.source_data?.metadata || {};
   const correlationData = alert.correlation_data || alert.correlation_analysis || {};
   const rcaData = alert.rca_recommendations || [];
-  const rcaHints = alert.rca_hints || {};
+  const rcaHints = alert.rca_hints || alert.rca_analysis || {};
+
+  // Get historical cases from rca_analysis/rca_hints
+  // This field is populated immediately by AlertManager and later enhanced by RCA analysis
   const historicalCases = rcaHints.similar_historical_cases || [];
 
   return (
@@ -137,8 +140,9 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
       setOpen={onClose}
       size="large"
     >
-      <div style={{ padding: '20px', maxHeight: '80vh', overflowY: 'auto' }}>
-        <div style={{ marginBottom: '20px', borderBottom: '1px solid #e0e4e7', paddingBottom: '15px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', height: '85vh', maxHeight: '85vh' }}>
+        {/* Fixed Header */}
+        <div style={{ padding: '20px', borderBottom: '1px solid #e0e4e7', flexShrink: 0 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
             <h2 style={{ margin: 0, fontSize: '24px', color: '#1e2d3d' }}>Alert Analysis</h2>
             <div style={{ display: 'flex', gap: '8px' }}>
@@ -154,11 +158,13 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
           <p style={{ margin: 0, fontSize: '12px', color: '#6b778c', fontFamily: 'monospace' }}>{alert.alert_id}</p>
         </div>
 
-        <Tabs
-          aria-label="Alert Analysis Tabs"
-          selected={activeTab}
-          setSelected={setActiveTab}
-        >
+        {/* Scrollable Content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 20px 20px' }}>
+          <Tabs
+            aria-label="Alert Analysis Tabs"
+            selected={activeTab}
+            setSelected={setActiveTab}
+          >
           <Tab name="Overview">
             <div style={{ padding: '20px' }}>
               {/* Basic Alert Information */}
@@ -316,7 +322,9 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
               {/* Historical Similar Cases */}
               {historicalCases.length > 0 && (
                 <div style={{ marginTop: '30px' }}>
-                  <h3 style={{ marginBottom: '20px', color: '#1e2d3d' }}>Similar Historical Cases</h3>
+                  <h3 style={{ marginBottom: '20px', color: '#1e2d3d' }}>
+                    Similar Historical Cases
+                  </h3>
                   <div style={{ display: 'grid', gap: '15px' }}>
                     {historicalCases.map((case_, index) => (
                       <Card key={index} style={{ padding: '15px' }}>
@@ -567,8 +575,10 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
             </div>
           </Tab>
         </Tabs>
+        </div>
 
-        <div style={{ marginTop: '20px', paddingTop: '20px', borderTop: '1px solid #e0e4e7', textAlign: 'right' }}>
+        {/* Fixed Footer */}
+        <div style={{ padding: '20px', borderTop: '1px solid #e0e4e7', textAlign: 'right', flexShrink: 0 }}>
           <Button variant="default" onClick={onClose}>
             Close
           </Button>

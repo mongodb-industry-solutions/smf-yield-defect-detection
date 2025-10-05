@@ -36,8 +36,6 @@ export const DashboardDataProvider = ({ children }) => {
 
       const fetchTime = Date.now() - startTime;
       console.log(`Data fetched in ${fetchTime}ms`);
-      console.log('DashboardDataProvider: Alerts fetched:', alertsData?.alerts);
-      console.log('DashboardDataProvider: Equipment status fetched:', equipmentData);
 
       // Process equipment data - flatten the matrix structure
       let equipmentList = [];

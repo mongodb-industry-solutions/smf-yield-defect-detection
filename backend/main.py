@@ -59,8 +59,8 @@ MDB_CHECKPOINTER_WRITES = MDB_CHECKPOINTER_COLLECTION + "_writes"
 
 # Demo Mode Configuration
 DEMO_MODE_ENABLED = os.getenv("DEMO_MODE_ENABLED", "false").lower() == "true"
-DEMO_INTERVAL_SECONDS = int(os.getenv("DEMO_INTERVAL_SECONDS", "8"))  # 8 seconds for 60 data points in 2 minutes (15 intervals × 4 equipment)
-DEMO_EXCURSION_PROBABILITY = float(os.getenv("DEMO_EXCURSION_PROBABILITY", "0.30"))  # Increased to 30% for more frequent excursions
+DEMO_INTERVAL_SECONDS = int(os.getenv("DEMO_INTERVAL_SECONDS", "60"))  # 60 seconds (1 minute) for continuous Atlas Charts visualization
+DEMO_EXCURSION_PROBABILITY = float(os.getenv("DEMO_EXCURSION_PROBABILITY", "0.05"))  # 5% excursion rate for realistic monitoring
 
 # Demo Mode Global State
 demo_mode_active = False
@@ -112,13 +112,14 @@ def generate_demo_metrics(equipment_id: str, is_excursion: bool = False) -> dict
 
     # Apply excursion if needed
     if is_excursion:
-        excursion_type = random.choice(["particle", "rf_power", "temperature"])
+        # Use excursion types that match RCA pattern definitions
+        excursion_type = random.choice(["particle_excursion", "rf_power_drift", "temperature_drift"])
 
-        if excursion_type == "particle":
+        if excursion_type == "particle_excursion":
             metrics["particle_count"] = random.randint(1100, 4000)  # Full range from just above threshold to severe
-        elif excursion_type == "rf_power":
+        elif excursion_type == "rf_power_drift":
             metrics["rf_power"] = metrics["rf_power"] + random.uniform(200, 400)  # Much larger drift for clear excursion
-        elif excursion_type == "temperature":
+        elif excursion_type == "temperature_drift":
             metrics["temperature"] = metrics["temperature"] + random.uniform(5, 10)  # Larger temp drift
 
     # Round values to reasonable precision
@@ -167,7 +168,8 @@ async def demo_data_generator():
     """Generate normal sensor data with occasional anomalies - parallel for all equipment"""
     global demo_mode_active
 
-    equipment_ids = ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01"]
+    # Updated to include all 6 standardized equipment tools (2025-01-03)
+    equipment_ids = ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "ETCH_02", "LITHO_01", "LITHO_02"]
 
     logger.info(f"Demo data generator started - Interval: {DEMO_INTERVAL_SECONDS}s, Excursion probability: {DEMO_EXCURSION_PROBABILITY}")
     logger.info(f"Generating parallel data for {len(equipment_ids)} equipment - {60 // (120 // DEMO_INTERVAL_SECONDS)} data points per 2 minutes")
@@ -1545,6 +1547,84 @@ async def get_wafer_batches(
             
     except Exception as e:
         logger.error(f"Error fetching wafer batches: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/wafers/yield-timeline")
+async def get_yield_timeline(
+    limit: int = Query(50, description="Number of wafers to include in timeline"),
+    include_alerts: bool = Query(True, description="Include alert markers")
+):
+    """
+    Get yield trend timeline data for charting
+    Returns wafer yield data with optional alert markers for correlation visualization
+    """
+    try:
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            wafer_collection = mdb_connector.get_collection("wafer_defects")
+            alert_collection = mdb_connector.get_collection("alerts")
+
+            # Get latest wafers sorted by inspection time
+            wafers = list(wafer_collection.find()
+                        .sort("inspection_timestamp", -1)
+                        .limit(limit))
+
+            # Reverse to get chronological order for chart
+            wafers.reverse()
+
+            # Extract timeline data
+            timeline_data = []
+            for wafer in wafers:
+                timeline_data.append({
+                    "wafer_id": wafer.get("wafer_id"),
+                    "timestamp": wafer.get("inspection_timestamp"),
+                    "yield_percentage": wafer.get("defect_summary", {}).get("yield_percentage", 0),
+                    "pattern": wafer.get("defect_summary", {}).get("defect_pattern"),
+                    "severity": wafer.get("defect_summary", {}).get("severity"),
+                    "equipment_id": wafer.get("equipment_id"),
+                    "lot_id": wafer.get("lot_id")
+                })
+
+            # Get alerts in same timeframe if requested
+            alert_markers = []
+            if include_alerts and timeline_data:
+                start_time = timeline_data[0]["timestamp"]
+                end_time = timeline_data[-1]["timestamp"]
+
+                alerts = list(alert_collection.find({
+                    "timestamp": {"$gte": start_time, "$lte": end_time}
+                }).sort("timestamp", 1))
+
+                for alert in alerts:
+                    alert_markers.append({
+                        "alert_id": alert.get("alert_id"),
+                        "timestamp": alert.get("timestamp"),
+                        "severity": alert.get("severity"),
+                        "equipment_id": alert.get("equipment_id"),
+                        "excursion_type": alert.get("source_data", {}).get("excursion_type")
+                    })
+
+            # Convert MongoDB dates to ISO strings
+            timeline_data = convert_objectids(timeline_data)
+            alert_markers = convert_objectids(alert_markers)
+
+            return {
+                "timeline": timeline_data,
+                "alert_markers": alert_markers,
+                "count": len(timeline_data),
+                "timeframe": {
+                    "start": timeline_data[0]["timestamp"] if timeline_data else None,
+                    "end": timeline_data[-1]["timestamp"] if timeline_data else None
+                },
+                "stats": {
+                    "avg_yield": sum(d["yield_percentage"] for d in timeline_data) / len(timeline_data) if timeline_data else 0,
+                    "min_yield": min(d["yield_percentage"] for d in timeline_data) if timeline_data else 0,
+                    "max_yield": max(d["yield_percentage"] for d in timeline_data) if timeline_data else 0
+                }
+            }
+
+    except Exception as e:
+        logger.error(f"Error fetching yield timeline: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -3079,7 +3159,7 @@ async def start_demo_mode():
             "message": "Demo mode started successfully",
             "interval_seconds": DEMO_INTERVAL_SECONDS,
             "excursion_probability": DEMO_EXCURSION_PROBABILITY,
-            "equipment_ids": ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01"]
+            "equipment_ids": ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "ETCH_02", "LITHO_01", "LITHO_02"]
         }
 
     except Exception as e:
@@ -3269,10 +3349,10 @@ async def get_demo_status():
     # Simple status without database queries to avoid blocking
     task_running = demo_task is not None
 
-    # Calculate rates for parallel equipment updates
+    # Calculate rates for parallel equipment updates (updated to 6 equipment - 2025-01-03)
     intervals_per_minute = 60 / DEMO_INTERVAL_SECONDS
     intervals_per_hour = 3600 / DEMO_INTERVAL_SECONDS
-    equipment_count = 4
+    equipment_count = 6  # Updated from 4 to 6 to include all standardized equipment
 
     # Total data points (all equipment report each interval)
     total_per_minute = equipment_count * intervals_per_minute
@@ -3284,7 +3364,7 @@ async def get_demo_status():
         "task_running": task_running,
         "interval_seconds": DEMO_INTERVAL_SECONDS,
         "excursion_probability": DEMO_EXCURSION_PROBABILITY,
-        "equipment_ids": ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01"],
+        "equipment_ids": ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "ETCH_02", "LITHO_01", "LITHO_02"],
         "parallel_mode": True,
         "expected_rate": {
             "per_interval": f"{equipment_count} readings (all equipment)",
@@ -3294,5 +3374,139 @@ async def get_demo_status():
             "excursions_per_hour": f"{total_per_hour * DEMO_EXCURSION_PROBABILITY:.0f}",
             "particle_alerts_per_hour": f"{total_per_hour * DEMO_EXCURSION_PROBABILITY * 0.7:.0f}"  # ~70% of excursions are particle
         },
-        "note": "Parallel mode: All equipment report simultaneously each interval"
+        "note": "Parallel mode: All 6 standardized equipment report simultaneously each interval"
     }
+
+
+@app.post("/demo/reset")
+async def reset_demo_to_healthy_state():
+    """
+    Complete demo reset: Fix all equipment and restore healthy yield
+    Resolves alerts, injects healthy sensors, and generates high-yield wafers
+    """
+    try:
+        results = {
+            "alerts_resolved": 0,
+            "healthy_sensors_injected": 0,
+            "healthy_wafers_generated": 0,
+            "new_yield": None
+        }
+
+        # Step 1: Resolve all open/acknowledged alerts
+        if alert_manager:
+            unresolved_alerts = alert_manager.alerts_collection.find({
+                "status": {"$in": ["open", "acknowledged"]}
+            })
+            alert_ids = [str(alert["_id"]) for alert in unresolved_alerts]
+
+            if alert_ids:
+                update_result = alert_manager.alerts_collection.update_many(
+                    {"status": {"$in": ["open", "acknowledged"]}},
+                    {
+                        "$set": {
+                            "status": "resolved",
+                            "resolved_at": datetime.now(),
+                            "resolution": "Demo reset - all equipment restored to healthy state",
+                            "updated_by": "demo_reset"
+                        }
+                    }
+                )
+                results["alerts_resolved"] = update_result.modified_count
+                logger.info(f"Demo reset: Resolved {results['alerts_resolved']} alerts")
+
+        # Step 2: Inject healthy sensor data for all equipment
+        equipment_ids = ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01"]
+        writer = SensorDataWriter(mongodb_uri=MDB_URI, database=MDB_DATABASE_NAME)
+
+        for equipment_id in equipment_ids:
+            healthy_data = {
+                "timestamp": datetime.now(timezone.utc),
+                "equipment_id": equipment_id,
+                "process_step": equipment_id.split("_")[0],
+                "metrics": {
+                    "particle_count": 420 + random.randint(-20, 20),  # Healthy: ~400-440
+                    "rf_power": 1200 if "CMP" in equipment_id else 1000,
+                    "chamber_pressure": 45.0 if "CMP" in equipment_id else 35.0,
+                    "temperature": 65.0 if "CMP" in equipment_id else 70.0,
+                    "flow_rate": 200.0 if "CMP" in equipment_id else 150.0
+                },
+                "metadata": {
+                    "source": "demo_reset",
+                    "action": "healthy_state_restored"
+                }
+            }
+
+            result = writer.write_sensor_data(healthy_data)
+            if result["success"]:
+                results["healthy_sensors_injected"] += 1
+
+        writer.close()
+        logger.info(f"Demo reset: Injected {results['healthy_sensors_injected']} healthy sensor readings")
+
+        # Step 3: Generate healthy wafers to improve yield
+        wafer_generator = WaferGenerator(
+            mongodb_uri=MDB_URI,
+            database=MDB_DATABASE_NAME,
+            s3_bucket_uri=os.getenv("S3_BUCKET_URI")
+        )
+
+        # Generate 4 healthy wafers (one per equipment) with 95-98% yield
+        for i, equipment_id in enumerate(equipment_ids):
+            healthy_wafer_data = {
+                "alert_id": f"reset_{datetime.now().timestamp()}",
+                "equipment_id": equipment_id,
+                "excursion_type": "recovery",  # Will map to low defect rate
+                "severity": "low",
+                "timestamp": datetime.now(timezone.utc),
+                "metrics": {
+                    "particle_count": 400,
+                    "rf_power": 1200,
+                    "chamber_pressure": 45,
+                    "temperature": 65,
+                    "flow_rate": 200
+                }
+            }
+
+            # Generate wafer with very low defect rate for high yield
+            wafer_doc = await wafer_generator.generate_excursion_wafer(healthy_wafer_data)
+
+            # Override pattern to ensure healthy yield
+            wafer_doc["defect_summary"]["defect_pattern"] = "random"
+            wafer_doc["defect_summary"]["severity"] = "low"
+            # Ensure high yield (95-98%)
+            wafer_doc["defect_summary"]["yield_percentage"] = 95 + random.uniform(0, 3)
+            wafer_doc["defect_summary"]["total_defects"] = random.randint(5, 15)
+            wafer_doc["description"] = f"Post-recovery verification wafer from {equipment_id} - Equipment restored to healthy state"
+
+            wafer_generator.wafer_collection.insert_one(wafer_doc)
+            results["healthy_wafers_generated"] += 1
+
+        # Step 4: Calculate new average yield (before cleanup)
+        latest_wafers = list(wafer_generator.db["wafer_defects"].find()
+                           .sort("inspection_timestamp", -1)
+                           .limit(10))
+
+        # Now cleanup after we're done with the database
+        wafer_generator.cleanup()
+
+        if latest_wafers:
+            avg_yield = sum(w["defect_summary"]["yield_percentage"] for w in latest_wafers) / len(latest_wafers)
+            results["new_yield"] = round(avg_yield, 1)
+
+        logger.info(f"Demo reset complete: {results}")
+
+        return {
+            "status": "success",
+            "message": "Demo reset to healthy state complete",
+            **results,
+            "equipment_status": "All equipment restored to healthy operating conditions",
+            "expected_kpi_changes": {
+                "yield": f"~{results['new_yield']}%" if results['new_yield'] else "95-98%",
+                "active_alerts": 0,
+                "equipment_health": "All healthy"
+            }
+        }
+
+    except Exception as e:
+        logger.error(f"Error during demo reset: {e}")
+        raise HTTPException(status_code=500, detail=f"Demo reset failed: {str(e)}")

@@ -61,6 +61,7 @@ class WaferGenerator:
             'rf_power_drift': ('systematic', 0.20),       # 20% for RF drift
             'temperature_drift': ('edge', 0.15),          # 15% for temperature issues
             'pressure_drop': ('random', 0.10),            # 10% for pressure variations
+            'recovery': ('random', 0.03),                 # 3% defect rate = 97% yield for recovery
         }
 
         return pattern_map.get(excursion_type, ('random', 0.08))

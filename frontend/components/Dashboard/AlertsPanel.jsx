@@ -46,7 +46,11 @@ const AlertsPanel = () => {
         impact: alert.impact,
         rca_recommendations: alert.rca_recommendations,
         historical_context: alert.historical_context,
-        correlation_data: alert.correlation_data
+        correlation_data: alert.correlation_data,
+        // CRITICAL: Preserve rca_hints and rca_analysis for historical cases
+        rca_hints: alert.rca_hints,
+        rca_analysis: alert.rca_analysis,
+        source_data: alert.source_data
       }));
 
       // Sort by timestamp (most recent first)

@@ -149,7 +149,8 @@ class SemanticSearchService:
                     "content": doc.get("content", "")[:500] + "...",  # Truncate content
                     "summary": doc.get("summary"),
                     "score": doc.get("score"),
-                    "metadata": doc.get("metadata", {})
+                    "metadata": doc.get("metadata", {}),
+                    "findings": doc.get("findings", {})  # Include findings for root cause extraction
                 })
             
             logger.info(f"Knowledge search for '{query[:50]}...' returned {len(formatted_results)} results")

@@ -266,8 +266,20 @@ class RCAGenerator:
         excursion_value = source_data.get("value", 0)
         metrics = source_data.get("metrics", {})
 
+        # Normalize excursion type names for backward compatibility
+        # Maps various naming conventions to standard RCA pattern names
+        excursion_type_map = {
+            "particle": "particle_excursion",
+            "particle_spike": "particle_excursion",
+            "rf_power": "rf_power_drift",
+            "rf_drift": "rf_power_drift",
+            "temperature": "temperature_drift",
+            "temp_drift": "temperature_drift"
+        }
+        normalized_type = excursion_type_map.get(excursion_type, excursion_type)
+
         # Check for particle excursion
-        if excursion_type == "particle_excursion" or metrics.get("particle_count", 0) > 1000:
+        if normalized_type == "particle_excursion" or metrics.get("particle_count", 0) > 1000:
             if "particle_excursion" in self.rca_patterns:
                 pattern = self.rca_patterns["particle_excursion"]
                 identified_patterns.append({
@@ -280,7 +292,7 @@ class RCAGenerator:
                 })
 
         # Check for RF power drift
-        elif excursion_type == "rf_power_drift":
+        elif normalized_type == "rf_power_drift":
             if "rf_power_drift" in self.rca_patterns:
                 pattern = self.rca_patterns["rf_power_drift"]
                 rf_power = metrics.get("rf_power", excursion_value)
@@ -298,7 +310,7 @@ class RCAGenerator:
                 })
 
         # Check for temperature drift
-        elif excursion_type == "temperature_drift":
+        elif normalized_type == "temperature_drift":
             if "temperature_drift" in self.rca_patterns:
                 pattern = self.rca_patterns["temperature_drift"]
                 temperature = metrics.get("temperature", excursion_value)
@@ -344,36 +356,39 @@ class RCAGenerator:
         
         return identified_patterns
     
-    def _filter_causes(self, causes: List[Dict], 
+    def _filter_causes(self, causes: List[Dict],
                       correlation_analysis: dict) -> List[Dict]:
         """Filter and rank probable causes based on correlation analysis"""
-        
+
         filtered_causes = []
-        
+
         for cause in causes:
             # Adjust confidence based on correlation indicators
             adjusted_confidence = cause["confidence"]
-            
+
             # Check for supporting indicators in correlation analysis
             indicators_found = 0
             for indicator in cause.get("indicators", []):
                 if self._check_indicator(indicator, correlation_analysis):
                     indicators_found += 1
-            
+
+            # Always include cause, but boost confidence if indicators are present
             if indicators_found > 0:
                 # Boost confidence if indicators are present
                 adjusted_confidence = min(1.0, adjusted_confidence + 0.1 * indicators_found)
-                
-                filtered_causes.append({
-                    "cause": cause["cause"],
-                    "confidence": round(adjusted_confidence, 2),
-                    "actions": cause["actions"],
-                    "supporting_evidence": indicators_found
-                })
-        
-        # Sort by confidence
+
+            # Include cause regardless of indicators found
+            # This ensures we always return probable causes even with weak correlation evidence
+            filtered_causes.append({
+                "cause": cause["cause"],
+                "confidence": round(adjusted_confidence, 2),
+                "actions": cause["actions"],
+                "supporting_evidence": indicators_found
+            })
+
+        # Sort by confidence (causes with indicators will rank higher)
         filtered_causes.sort(key=lambda x: x["confidence"], reverse=True)
-        
+
         return filtered_causes[:3]  # Return top 3 causes
     
     def _check_indicator(self, indicator: str, correlation_analysis: dict) -> bool:
@@ -532,10 +547,17 @@ class RCAGenerator:
             # Format results
             similar_cases = []
             for result in results:
+                # Extract root cause from multiple possible locations
+                # Priority: findings.root_cause > metadata.root_cause > extract from content
+                root_cause = (
+                    result.get("findings", {}).get("root_cause") or  # Try findings first (data generation location)
+                    result.get("metadata", {}).get("root_cause") or  # Fallback to metadata
+                    self._extract_root_cause(result.get("content", ""))  # Last resort: extract from content
+                )
+
                 case_summary = {
                     "title": result.get("title", ""),
-                    "root_cause": result.get("metadata", {}).get("root_cause", 
-                                  self._extract_root_cause(result.get("content", ""))),
+                    "root_cause": root_cause,
                     "resolution_time": result.get("metadata", {}).get("resolution_time_hours", 0),
                     "defect_type": result.get("metadata", {}).get("defect_type", ""),
                     "relevance_score": result.get("score", 0),
