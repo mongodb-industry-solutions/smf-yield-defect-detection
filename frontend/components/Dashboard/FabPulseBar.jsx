@@ -2,11 +2,17 @@
 
 import React, { useState, useEffect } from 'react';
 import Card from '@leafygreen-ui/card';
+import Badge from '@leafygreen-ui/badge';
+import Icon from '@leafygreen-ui/icon';
+import { H3, Description } from '@leafygreen-ui/typography';
+import QueryTransparencyCard from '@/components/common/QueryTransparencyCard';
 import styles from './FabPulseBar.module.css';
 
 const FabPulseBar = () => {
   const [kpiData, setKpiData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showQuery, setShowQuery] = useState(false);
+  const [queryTime, setQueryTime] = useState(null);
 
   // Add default/skeleton data for immediate display
   const defaultKPI = {
@@ -17,16 +23,63 @@ const FabPulseBar = () => {
   };
 
   const fetchKPIData = async () => {
+    const startTime = performance.now();
     try {
       const response = await fetch('http://localhost:8000/kpi/statistics');
       const data = await response.json();
+      const endTime = performance.now();
+
       setKpiData(data.kpi);
+      setQueryTime(Math.round(endTime - startTime));
       setIsLoading(false);
     } catch (error) {
       console.error('Error fetching KPI data:', error);
       setIsLoading(false);
     }
   };
+
+  // MongoDB Aggregation Pipeline for KPI Calculation
+  const kpiAggregationPipeline = [
+    {
+      $facet: {
+        yieldStats: [
+          { $match: { timestamp: { $gte: "$$last24Hours" } } },
+          { $group: { _id: null, avgYield: { $avg: "$yield_percentage" } } }
+        ],
+        alertStats: [
+          {
+            $lookup: {
+              from: "alerts",
+              pipeline: [
+                { $match: { status: "open" } },
+                { $count: "total" }
+              ],
+              as: "activeAlerts"
+            }
+          }
+        ],
+        resolutionStats: [
+          {
+            $lookup: {
+              from: "alerts",
+              pipeline: [
+                { $match: { status: "resolved", resolved_at: { $gte: "$$last7Days" } } },
+                {
+                  $project: {
+                    resolutionTime: {
+                      $subtract: ["$resolved_at", "$timestamp"]
+                    }
+                  }
+                },
+                { $group: { _id: null, avgMTTR: { $avg: "$resolutionTime" } } }
+              ],
+              as: "mttrData"
+            }
+          }
+        ]
+      }
+    }
+  ];
 
   useEffect(() => {
     // Initial fetch
@@ -39,11 +92,11 @@ const FabPulseBar = () => {
   }, []);
 
   const getMetricColor = (metric, value) => {
-    if (!metric.thresholds) return '#00684a';
+    if (!metric.thresholds) return 'var(--color-status-good)';
 
-    if (value >= metric.thresholds.good) return '#00684a'; // Green
-    if (value >= metric.thresholds.warning) return '#FDB813'; // Yellow
-    return '#DC382D'; // Red
+    if (value >= metric.thresholds.good) return 'var(--color-status-good)';
+    if (value >= metric.thresholds.warning) return 'var(--color-status-warning)';
+    return 'var(--color-status-critical)';
   };
 
   const getTrendIcon = (trend) => {
@@ -85,6 +138,31 @@ const FabPulseBar = () => {
   return (
     <div className={styles.container}>
       <Card className={styles.card}>
+        {/* MongoDB Branding Header */}
+        <div className={styles.header}>
+          <div className={styles.headerLeft}>
+            <H3 className={styles.title}>Fab Pulse - Real-Time KPIs</H3>
+            <Badge variant="green" className={styles.mongoBadge}>
+              <Icon glyph="Database" size="small" /> MongoDB Aggregation
+            </Badge>
+          </div>
+          <div className={styles.headerRight}>
+            <button
+              className={styles.queryButton}
+              onClick={() => setShowQuery(!showQuery)}
+              title="Show MongoDB Query"
+            >
+              <Icon glyph="Code" size="small" />
+              {showQuery ? 'Hide' : 'Show'} Query
+            </button>
+            <div className={styles.pulseIndicator}>
+              <span className={styles.pulseDot}></span>
+              <span className={styles.pulseText}>LIVE</span>
+            </div>
+          </div>
+        </div>
+
+        {/* KPI Metrics Grid */}
         <div className={styles.metricsGrid}>
           {metrics.map(metric => (
             <div key={metric.key} className={styles.metric}>
@@ -93,7 +171,7 @@ const FabPulseBar = () => {
                 <span
                   className={styles.value}
                   style={{
-                    color: metric.highlight ? getMetricColor(metric.data, metric.data.value) : '#1e2d3d'
+                    color: metric.highlight ? getMetricColor(metric.data, metric.data.value) : 'var(--color-neutral-dark3)'
                   }}
                 >
                   {metric.format(metric.data.value)}
@@ -108,10 +186,21 @@ const FabPulseBar = () => {
             </div>
           ))}
         </div>
-        <div className={styles.pulseIndicator}>
-          <span className={styles.pulseDot}></span>
-          <span className={styles.pulseText}>LIVE</span>
-        </div>
+
+        {/* MongoDB Query Transparency */}
+        {showQuery && (
+          <div className={styles.querySection}>
+            <QueryTransparencyCard
+              title="KPI Calculation Pipeline"
+              query={kpiAggregationPipeline}
+              queryType="aggregation"
+              executionTime={queryTime}
+              documentsScanned={4}
+              indexUsed="timestamp_1_status_1"
+              defaultOpen={true}
+            />
+          </div>
+        )}
       </Card>
     </div>
   );

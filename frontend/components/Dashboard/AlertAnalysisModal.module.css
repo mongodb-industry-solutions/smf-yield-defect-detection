@@ -1,31 +1,72 @@
+/* Modal Wrapper - Ensure it's above FabPulseBar (z-index: 1001) */
 .modal {
+  z-index: 1100 !important;
+}
+
+/* Modal Dialog */
+.modal :global([role="dialog"]) {
+  border-radius: var(--radius-xl) !important;
+  box-shadow: var(--shadow-xl) !important;
   max-width: 900px !important;
 }
 
-.header {
-  padding: 24px 24px 16px 24px;
-  border-bottom: 1px solid #e0e4e7;
+/* Modal backdrop */
+.modal :global([role="presentation"]) {
+  z-index: 1099 !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+}
+
+/* Modal Container */
+.modalContainer {
+  display: flex;
+  flex-direction: column;
+  height: 85vh;
+  max-height: 85vh;
+}
+
+/* Modal Header */
+.modalHeader {
+  padding: 24px;
+  border-bottom: 1px solid var(--color-neutral-light2);
+  flex-shrink: 0;
+  background: var(--color-neutral-light3);
 }
 
 .headerTop {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
-.headerTop h2 {
-  margin: 0;
-  color: #1e2d3d;
-  font-size: 24px;
-  font-weight: 600;
+.modalTitle {
+  margin: 0 !important;
+  color: var(--color-neutral-dark3) !important;
+}
+
+.badgeGroup {
+  display: flex;
+  gap: 8px;
+}
+
+.alertTitle {
+  margin: 8px 0 4px 0 !important;
+  color: var(--color-neutral-dark3) !important;
 }
 
 .alertId {
-  font-size: 12px;
-  color: #6b778c;
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
-  margin: 0;
+  font-size: 12px !important;
+  color: var(--color-neutral-base) !important;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace !important;
+  margin: 0 !important;
+}
+
+/* Modal Content */
+.modalContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 24px 24px 24px;
 }
 
 .tabs {
@@ -33,8 +74,25 @@
   min-height: 400px;
 }
 
+/* Tab Content */
 .tabContent {
   padding: 24px 0;
+}
+
+.card {
+  margin-bottom: 20px !important;
+  padding: 20px !important;
+  background: rgba(255, 255, 255, 0.8) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.sectionTitle {
+  margin: 0 0 16px 0 !important;
+  color: var(--color-neutral-dark3) !important;
 }
 
 .section {
@@ -45,16 +103,9 @@
   margin-bottom: 0;
 }
 
-.section h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #1e2d3d;
-  margin: 0 0 16px 0;
-}
-
 .detailsGrid {
-  background: #f7f9fb;
-  border-radius: 8px;
+  background: var(--color-neutral-light3);
+  border-radius: var(--radius-md);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -66,7 +117,7 @@
   justify-content: space-between;
   align-items: center;
   padding-bottom: 12px;
-  border-bottom: 1px solid #e0e4e7;
+  border-bottom: 1px solid var(--color-neutral-light2);
 }
 
 .detailRow:last-child {
@@ -77,12 +128,12 @@
 .label {
   font-size: 13px;
   font-weight: 500;
-  color: #6b778c;
+  color: var(--color-neutral-dark1);
 }
 
 .value {
   font-size: 13px;
-  color: #1e2d3d;
+  color: var(--color-neutral-dark3);
   text-align: right;
   max-width: 60%;
   word-break: break-word;
@@ -96,19 +147,25 @@
 
 .metricCard {
   background: white !important;
-  border: 1px solid #e0e4e7 !important;
-  border-radius: 8px !important;
+  border: 1px solid var(--color-neutral-light2) !important;
+  border-radius: var(--radius-md) !important;
   padding: 12px !important;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
+  transition: all var(--transition-fast) !important;
+}
+
+.metricCard:hover {
+  box-shadow: var(--shadow-sm) !important;
+  transform: translateY(-2px);
 }
 
 .metricLabel {
   font-size: 11px;
   font-weight: 500;
-  color: #6b778c;
+  color: var(--color-neutral-dark1);
   text-transform: capitalize;
   margin-bottom: 8px;
 }
@@ -116,14 +173,14 @@
 .metricValue {
   font-size: 20px;
   font-weight: 600;
-  color: #1e2d3d;
+  color: var(--color-neutral-dark3);
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
 }
 
 .impactGrid {
-  background: #fff8e1;
-  border: 1px solid #ffeb3b;
-  border-radius: 8px;
+  background: var(--color-yellow-light2);
+  border: 1px solid var(--color-yellow-base);
+  border-radius: var(--radius-md);
   padding: 16px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -354,3 +411,12 @@
   justify-content: flex-end;
   gap: 12px;
 }
+/* Feature Header for MongoDB Branding */
+.featureHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+

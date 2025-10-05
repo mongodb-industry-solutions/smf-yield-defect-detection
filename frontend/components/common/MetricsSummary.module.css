@@ -1,0 +1,109 @@
+.grid {
+  display: grid;
+  gap: var(--spacing-md);
+  width: 100%;
+}
+
+.metricCard {
+  background: white;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+  overflow: hidden;
+}
+
+.metricCard:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.metricContent {
+  padding: var(--spacing-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+/* Icon */
+.iconContainer {
+  margin-bottom: var(--spacing-xs);
+}
+
+/* Label */
+.label {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--color-neutral-dark1);
+  margin: 0;
+}
+
+/* Value Container */
+.valueContainer {
+  display: flex;
+  align-items: baseline;
+  gap: var(--spacing-sm);
+  flex-wrap: wrap;
+}
+
+.value {
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  margin: 0;
+  color: var(--color-neutral-dark3);
+}
+
+.unit {
+  font-size: 18px;
+  font-weight: 500;
+  margin-left: 4px;
+  color: var(--color-neutral-dark1);
+}
+
+/* Trend */
+.trend {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.trendIcon {
+  font-size: 16px;
+}
+
+.trendValue {
+  font-size: 13px;
+}
+
+/* Subtitle */
+.subtitle {
+  font-size: 12px;
+  color: var(--color-neutral-dark1);
+  margin: 0;
+  margin-top: var(--spacing-xs);
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .value {
+    font-size: 28px;
+  }
+
+  .unit {
+    font-size: 16px;
+  }
+}

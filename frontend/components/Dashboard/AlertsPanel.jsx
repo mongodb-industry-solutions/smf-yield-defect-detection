@@ -3,9 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import Card from '@leafygreen-ui/card';
 import Badge from '@leafygreen-ui/badge';
+import Icon from '@leafygreen-ui/icon';
+import IconButton from '@leafygreen-ui/icon-button';
+import Button from '@leafygreen-ui/button';
 import { H3, Body, Description } from '@leafygreen-ui/typography';
 import { useDashboardData } from '@/contexts/DashboardDataProvider';
 import AlertAnalysisModal from './AlertAnalysisModal';
+import QueryTransparencyCard from '@/components/common/QueryTransparencyCard';
 import styles from './AlertsPanel.module.css';
 
 const AlertsPanel = () => {
@@ -16,6 +20,8 @@ const AlertsPanel = () => {
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [selectedAlert, setSelectedAlert] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showQuery, setShowQuery] = useState(false);
+  const [queryTime, setQueryTime] = useState(null);
 
   useEffect(() => {
     if (dataAlerts) {
@@ -92,15 +98,15 @@ const AlertsPanel = () => {
     switch(severity?.toLowerCase()) {
       case 'critical':
       case 'high':
-        return '#DC382D'; // Red
+        return 'var(--color-risk-high)';
       case 'warning':
       case 'medium':
-        return '#FDB813'; // Yellow
+        return 'var(--color-risk-medium)';
       case 'info':
       case 'low':
-        return '#0076FF'; // Blue
+        return 'var(--color-blue-base)';
       default:
-        return '#6B7280'; // Gray
+        return 'var(--color-neutral-base)';
     }
   };
 
@@ -191,44 +197,101 @@ const AlertsPanel = () => {
     return `${Math.floor(diff / 3600)}h ago`;
   };
 
+  // MongoDB Alert Query Pipeline
+  const alertQueryPipeline = [
+    {
+      $match: {
+        status: { $in: ["open", "acknowledged"] },
+        timestamp: { $gte: "$$last7Days" }
+      }
+    },
+    {
+      $lookup: {
+        from: "wafer_defects",
+        localField: "wafer_id",
+        foreignField: "wafer_id",
+        as: "defect_details"
+      }
+    },
+    {
+      $lookup: {
+        from: "process_context",
+        let: { equipment: "$equipment_id" },
+        pipeline: [
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ["$equipment_id", "$$equipment"] },
+                  { $eq: ["$is_problematic", true] }
+                ]
+              }
+            }
+          }
+        ],
+        as: "problematic_context"
+      }
+    },
+    {
+      $sort: { timestamp: -1, severity: -1 }
+    },
+    {
+      $limit: 50
+    }
+  ];
+
   return (
-    <div className={styles.panel}>
-      <Card className={styles.header}>
-        <div className={styles.headerContent}>
+    <div className={styles.container}>
+      <Card className={styles.card}>
+        <div className={styles.header}>
           <div className={styles.headerLeft}>
             <div className={styles.titleRow}>
-              <H3>Active Alerts</H3>
-              <div className={styles.liveIndicator} title="Auto-refresh enabled (30s)">
-                <span className={styles.liveDot}></span>
-                <span className={styles.liveText}>LIVE</span>
-              </div>
+              <h3>Active Alerts</h3>
+              <p className={styles.subtitle}>
+                {alerts.length} alert{alerts.length !== 1 ? 's' : ''} requiring attention
+              </p>
             </div>
-            <Description>{alerts.length} alert{alerts.length !== 1 ? 's' : ''} requiring attention</Description>
           </div>
           <div className={styles.headerRight}>
-            <button
-              className={styles.resolveButton}
-              onClick={handleResolveAll}
-              title="Resolve all alerts"
+            <Badge variant="red" className={styles.mongoBadge}>
+              <Icon glyph="ImportantWithCircle" size="small" /> Real-Time Detection
+            </Badge>
+            <IconButton
+              aria-label="Show MongoDB query"
+              onClick={() => setShowQuery(!showQuery)}
+              className={styles.queryButton}
             >
-              ✓
-            </button>
-            <button
-              className={`${styles.refreshButton} ${isRefreshing ? styles.spinning : ''}`}
+              <Icon glyph={showQuery ? "ChevronUp" : "Code"} />
+            </IconButton>
+            <IconButton
+              aria-label="Resolve all alerts"
+              onClick={handleResolveAll}
+              className={styles.iconButton}
+            >
+              <Icon glyph="Checkmark" />
+            </IconButton>
+            <IconButton
+              aria-label="Refresh alerts"
               onClick={handleRefresh}
               disabled={isRefreshing}
-              title="Refresh alerts"
+              className={`${styles.iconButton} ${isRefreshing ? styles.spinning : ''}`}
             >
-              ↻
-            </button>
-            <Description className={styles.lastRefreshText}>
-              {formatLastRefresh()}
-            </Description>
+              <Icon glyph="Refresh" />
+            </IconButton>
           </div>
         </div>
-      </Card>
 
-      <div className={styles.alertsContainer}>
+        {/* Query Transparency Section */}
+        {showQuery && (
+          <QueryTransparencyCard
+            title="Active Alerts Query"
+            query={alertQueryPipeline}
+            queryType="aggregation"
+            executionTime={queryTime}
+          />
+        )}
+
+        <div className={styles.alertsContainer}>
         {alerts.length === 0 ? (
           <Card className={styles.emptyState}>
             <div className={styles.emptyContent}>
@@ -272,9 +335,11 @@ const AlertsPanel = () => {
                         <Description className={styles.timestamp}>
                           {formatTime(alert.timestamp)}
                         </Description>
-                        <span className={styles.expandIcon}>
-                          {isExpanded ? '▼' : '▶'}
-                        </span>
+                        <Icon
+                          glyph={isExpanded ? "ChevronDown" : "ChevronRight"}
+                          size="small"
+                          className={styles.expandIcon}
+                        />
                       </div>
                     </div>
 
@@ -330,15 +395,17 @@ const AlertsPanel = () => {
                         {/* Action buttons and Alert ID at bottom */}
                         <div className={styles.alertFooter}>
                           <Description className={styles.alertId}>ID: {alert.alert_id}</Description>
-                          <button
-                            className={styles.analyzeButton}
+                          <Button
+                            variant="primary"
+                            size="small"
+                            rightGlyph={<Icon glyph="ArrowRight" />}
                             onClick={(e) => {
                               e.stopPropagation();
                               openAnalysisModal(alert);
                             }}
                           >
-                            Analyze Alert →
-                          </button>
+                            Analyze Alert
+                          </Button>
                         </div>
                       </div>
                     )}
@@ -348,7 +415,8 @@ const AlertsPanel = () => {
             })}
           </div>
         )}
-      </div>
+        </div>
+      </Card>
 
       {/* Alert Analysis Modal */}
       <AlertAnalysisModal

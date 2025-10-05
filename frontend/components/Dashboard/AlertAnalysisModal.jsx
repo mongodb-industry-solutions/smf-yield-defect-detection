@@ -4,8 +4,11 @@ import React, { useState, useEffect } from 'react';
 import Modal from '@leafygreen-ui/modal';
 import Button from '@leafygreen-ui/button';
 import Badge from '@leafygreen-ui/badge';
+import Icon from '@leafygreen-ui/icon';
 import { Tab, Tabs } from '@leafygreen-ui/tabs';
 import Card from '@leafygreen-ui/card';
+import { H2, H3, Body, Description } from '@leafygreen-ui/typography';
+import Code from '@leafygreen-ui/code';
 import styles from './AlertAnalysisModal.module.css';
 
 const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
@@ -99,11 +102,11 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
 
   const getSeverityColor = (severity) => {
     switch (severity) {
-      case 'critical': return '#DC382D';
-      case 'high': return '#FDB813';
-      case 'medium': return '#FFE169';
-      case 'low': return '#13AA52';
-      default: return '#6b778c';
+      case 'critical': return 'var(--color-risk-critical)';
+      case 'high': return 'var(--color-risk-high)';
+      case 'medium': return 'var(--color-risk-medium)';
+      case 'low': return 'var(--color-risk-low)';
+      default: return 'var(--color-neutral-dark1)';
     }
   };
 
@@ -139,13 +142,14 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
       open={isOpen}
       setOpen={onClose}
       size="large"
+      className={styles.modal}
     >
-      <div style={{ display: 'flex', flexDirection: 'column', height: '85vh', maxHeight: '85vh' }}>
+      <div className={styles.modalContainer}>
         {/* Fixed Header */}
-        <div style={{ padding: '20px', borderBottom: '1px solid #e0e4e7', flexShrink: 0 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-            <h2 style={{ margin: 0, fontSize: '24px', color: '#1e2d3d' }}>Alert Analysis</h2>
-            <div style={{ display: 'flex', gap: '8px' }}>
+        <div className={styles.modalHeader}>
+          <div className={styles.headerTop}>
+            <H2 className={styles.modalTitle}>Alert Analysis</H2>
+            <div className={styles.badgeGroup}>
               <Badge variant={alert.severity === 'critical' ? 'red' : alert.severity === 'high' ? 'yellow' : 'blue'}>
                 {alert.severity?.toUpperCase()}
               </Badge>
@@ -154,22 +158,22 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
               </Badge>
             </div>
           </div>
-          <p style={{ margin: '5px 0', fontSize: '14px', fontWeight: '600', color: '#1e2d3d' }}>{alert.title}</p>
-          <p style={{ margin: 0, fontSize: '12px', color: '#6b778c', fontFamily: 'monospace' }}>{alert.alert_id}</p>
+          <Body weight="medium" className={styles.alertTitle}>{alert.title}</Body>
+          <Description className={styles.alertId}>{alert.alert_id}</Description>
         </div>
 
         {/* Scrollable Content */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0 20px 20px 20px' }}>
+        <div className={styles.modalContent}>
           <Tabs
             aria-label="Alert Analysis Tabs"
             selected={activeTab}
             setSelected={setActiveTab}
           >
           <Tab name="Overview">
-            <div style={{ padding: '20px' }}>
+            <div className={styles.tabContent}>
               {/* Basic Alert Information */}
-              <Card style={{ marginBottom: '20px', padding: '20px' }}>
-                <h3 style={{ marginTop: 0, marginBottom: '15px', color: '#1e2d3d' }}>Alert Details</h3>
+              <Card className={styles.card}>
+                <H3 className={styles.sectionTitle}>Alert Details</H3>
                 <div className={styles.detailsGrid}>
                   <div className={styles.detailRow}>
                     <span className={styles.label}>Equipment:</span>
@@ -270,13 +274,19 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
           </Tab>
 
           <Tab name="Root Cause Analysis">
-            <div style={{ padding: '20px' }}>
+            <div className={styles.tabContent}>
               {/* RCA Recommendations */}
               {rcaData.length > 0 ? (
-                <div>
-                  <h3 style={{ marginTop: 0, marginBottom: '20px', color: '#1e2d3d' }}>
-                    Root Cause Analysis & Recommendations
-                  </h3>
+                <>
+                  <Card className={styles.card}>
+                    <div className={styles.featureHeader}>
+                      <H3 className={styles.sectionTitle}>Root Cause Analysis & Recommendations</H3>
+                      <Badge variant="purple">
+                        <Icon glyph="Bulb" size="small" /> Vector Search
+                      </Badge>
+                    </div>
+                    <Description>Using MongoDB Atlas Vector Search to find similar historical cases</Description>
+                  </Card>
                   {rcaData.map((rec, index) => (
                     <Card key={index} style={{ marginBottom: '15px', padding: '20px' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
@@ -310,7 +320,7 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
                       )}
                     </Card>
                   ))}
-                </div>
+                </>
               ) : (
                 <Card style={{ padding: '40px', textAlign: 'center' }}>
                   <p style={{ color: '#6b778c', margin: 0 }}>
@@ -359,11 +369,16 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
           </Tab>
 
           <Tab name="Correlation Analysis">
-            <div style={{ padding: '20px' }}>
+            <div className={styles.tabContent}>
               {/* Process Context Correlation */}
               {correlationData.correlations?.process_context && (
-                <Card style={{ marginBottom: '20px', padding: '20px' }}>
-                  <h3 style={{ marginTop: 0, marginBottom: '15px', color: '#1e2d3d' }}>Process Context Analysis</h3>
+                <Card className={styles.card}>
+                  <div className={styles.featureHeader}>
+                    <H3 className={styles.sectionTitle}>Process Context Analysis</H3>
+                    <Badge variant="green">
+                      <Icon glyph="Database" size="small" /> MongoDB $lookup
+                    </Badge>
+                  </div>
 
                   {correlationData.correlations.process_context.problematic_materials?.length > 0 && (
                     <div style={{ marginBottom: '20px' }}>
@@ -497,6 +512,7 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
               )}
             </div>
           </Tab>
+
 
           <Tab name="Actions">
             <div style={{ padding: '20px' }}>

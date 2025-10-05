@@ -6,7 +6,10 @@ import FabPulseBar from './FabPulseBar';
 import ProcessHealthMatrix from './ProcessHealthMatrix';
 import AlertsPanel from './AlertsPanel';
 import DemoControlPanel from './DemoControlPanel';
+import MongoDBConsolePanel from './MongoDBConsolePanel';
 import LiveParticleMonitor from './LiveParticleMonitor';
+import LiveTemperatureMonitor from './LiveTemperatureMonitor';
+import LiveRFPowerMonitor from './LiveRFPowerMonitor';
 import LiveWaferImageMapCompact from './LiveWaferImageMapCompact';
 import EquipmentMetricsChart from './EquipmentMetricsChart';
 import { useDashboardData } from '@/contexts/DashboardDataProvider';
@@ -26,32 +29,20 @@ const Dashboard = () => {
           {/* Demo Control Panel */}
           <DemoControlPanel />
 
-          {/* Live Monitoring Charts */}
-          <div className={styles.chartsContainer}>
+          {/* MongoDB Console Panel - Shows live operations flow */}
+          <MongoDBConsolePanel />
+
+          {/* First Row: Three Atlas Charts */}
+          <div className={styles.chartsRowThree}>
             <LiveParticleMonitor />
-            <EquipmentMetricsChart />
+            <LiveTemperatureMonitor />
+            <LiveRFPowerMonitor />
           </div>
 
-          {/* Bottom Visualizations */}
-          <div className={styles.bottomVisualizationsContainer}>
-            {/* Wafer Defect Images - Half Width */}
+          {/* Second Row: Wafer Map and Equipment Metrics */}
+          <div className={styles.chartsRowTwo}>
             <LiveWaferImageMapCompact />
-
-            {/* Space for another visualization */}
-            <Card style={{
-              background: 'white',
-              borderRadius: '12px',
-              padding: '20px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              minHeight: '280px'
-            }}>
-              <div style={{ textAlign: 'center', color: '#6b778c' }}>
-                <h3 style={{ margin: '0 0 10px 0', color: '#1e2d3d' }}>Additional Visualization</h3>
-                <p style={{ margin: 0 }}>Space for Alert Trends, Yield History, or Process Analytics</p>
-              </div>
-            </Card>
+            <EquipmentMetricsChart />
           </div>
         </div>
         <div className={styles.rightPanel}>

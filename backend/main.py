@@ -3382,15 +3382,36 @@ async def get_demo_status():
 async def reset_demo_to_healthy_state():
     """
     Complete demo reset: Fix all equipment and restore healthy yield
-    Resolves alerts, injects healthy sensors, and generates high-yield wafers
+    Stops demo mode, resolves alerts, injects healthy sensors, and generates high-yield wafers
     """
+    global demo_mode_active, demo_task
+
     try:
         results = {
             "alerts_resolved": 0,
             "healthy_sensors_injected": 0,
             "healthy_wafers_generated": 0,
-            "new_yield": None
+            "new_yield": None,
+            "demo_stopped": False,
+            "excursion_data_cleared": 0
         }
+
+        # Step 0: Stop demo mode first to prevent new excursions
+        if demo_mode_active:
+            logger.info("Stopping demo mode before reset...")
+            demo_mode_active = False
+
+            # Cancel the demo task if it exists
+            if demo_task and not demo_task.done():
+                demo_task.cancel()
+            demo_task = None
+
+            results["demo_stopped"] = True
+            logger.info("Demo mode stopped successfully")
+
+            # Wait for monitoring service to process the stop
+            # Give extra time to ensure all pending operations complete
+            await asyncio.sleep(5)
 
         # Step 1: Resolve all open/acknowledged alerts
         if alert_manager:
@@ -3414,34 +3435,44 @@ async def reset_demo_to_healthy_state():
                 results["alerts_resolved"] = update_result.modified_count
                 logger.info(f"Demo reset: Resolved {results['alerts_resolved']} alerts")
 
+        # Step 1.5: Clear recent excursion sensor data
+        # This prevents monitoring service from re-detecting old excursions
+        try:
+            sensor_collection = mongodb_client[MDB_DATABASE_NAME][MDB_TIMESERIES_COLLECTION]
+
+            # Delete sensor readings with excursions from last 2 hours
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=2)
+            delete_result = sensor_collection.delete_many({
+                "timestamp": {"$gte": cutoff_time},
+                "$or": [
+                    {"metrics.particle_count": {"$gt": 1000}},
+                    {"metrics.rf_power": {"$gt": 1400}},
+                    {"metrics.temperature": {"$gt": 75}}
+                ]
+            })
+
+            results["excursion_data_cleared"] = delete_result.deleted_count
+            logger.info(f"Cleared {delete_result.deleted_count} excursion sensor readings")
+        except Exception as e:
+            logger.error(f"Error clearing excursion data: {e}")
+
         # Step 2: Inject healthy sensor data for all equipment
+        # NOTE: Sensor injection is DISABLED to prevent RF power drift detection
+        # Equipment health is determined by open alerts, not sensor values
+        # Sensor readings will update naturally with next monitoring cycle
         equipment_ids = ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01"]
-        writer = SensorDataWriter(mongodb_uri=MDB_URI, database=MDB_DATABASE_NAME)
 
-        for equipment_id in equipment_ids:
-            healthy_data = {
-                "timestamp": datetime.now(timezone.utc),
-                "equipment_id": equipment_id,
-                "process_step": equipment_id.split("_")[0],
-                "metrics": {
-                    "particle_count": 420 + random.randint(-20, 20),  # Healthy: ~400-440
-                    "rf_power": 1200 if "CMP" in equipment_id else 1000,
-                    "chamber_pressure": 45.0 if "CMP" in equipment_id else 35.0,
-                    "temperature": 65.0 if "CMP" in equipment_id else 70.0,
-                    "flow_rate": 200.0 if "CMP" in equipment_id else 150.0
-                },
-                "metadata": {
-                    "source": "demo_reset",
-                    "action": "healthy_state_restored"
-                }
-            }
+        # DISABLED: Sensor injection causes new alerts due to RF power drift detection
+        # writer = SensorDataWriter(mongodb_uri=MDB_URI, database=MDB_DATABASE_NAME)
+        # for equipment_id in equipment_ids:
+        #     healthy_data = {...}
+        #     result = writer.write_sensor_data(healthy_data)
+        #     if result["success"]:
+        #         results["healthy_sensors_injected"] += 1
+        # writer.close()
 
-            result = writer.write_sensor_data(healthy_data)
-            if result["success"]:
-                results["healthy_sensors_injected"] += 1
-
-        writer.close()
-        logger.info(f"Demo reset: Injected {results['healthy_sensors_injected']} healthy sensor readings")
+        results["healthy_sensors_injected"] = 0  # Disabled
+        logger.info(f"Demo reset: Sensor injection disabled (equipment health determined by alerts)")
 
         # Step 3: Generate healthy wafers to improve yield
         wafer_generator = WaferGenerator(
@@ -3493,6 +3524,23 @@ async def reset_demo_to_healthy_state():
             avg_yield = sum(w["defect_summary"]["yield_percentage"] for w in latest_wafers) / len(latest_wafers)
             results["new_yield"] = round(avg_yield, 1)
 
+        # Step 5: Wait for monitoring service to sync
+        # Give monitoring service time to process the healthy data
+        logger.info("Waiting for monitoring service to sync...")
+        await asyncio.sleep(3)
+
+        # Verify no new alerts were created
+        new_alerts_count = 0
+        if alert_manager:
+            new_alerts_count = alert_manager.alerts_collection.count_documents({
+                "status": {"$in": ["open", "acknowledged"]},
+                "timestamp": {"$gte": datetime.now(timezone.utc) - timedelta(seconds=10)}
+            })
+
+            if new_alerts_count > 0:
+                logger.warning(f"Warning: {new_alerts_count} new alerts created during reset")
+                results["warning"] = f"{new_alerts_count} new alerts created during reset"
+
         logger.info(f"Demo reset complete: {results}")
 
         return {
@@ -3502,7 +3550,7 @@ async def reset_demo_to_healthy_state():
             "equipment_status": "All equipment restored to healthy operating conditions",
             "expected_kpi_changes": {
                 "yield": f"~{results['new_yield']}%" if results['new_yield'] else "95-98%",
-                "active_alerts": 0,
+                "active_alerts": new_alerts_count,
                 "equipment_health": "All healthy"
             }
         }

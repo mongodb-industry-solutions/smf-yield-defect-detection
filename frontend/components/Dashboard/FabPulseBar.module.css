@@ -11,12 +11,101 @@
 }
 
 .card {
-  background: white !important;
-  border-radius: 12px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
-  padding: 20px 30px !important;
+  background: rgba(255, 255, 255, 0.75) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  border-radius: 16px !important;
+  box-shadow: var(--shadow-md) !important;
+  padding: 24px 32px !important;
   position: relative;
   overflow: visible !important;
+  transition: all var(--transition-normal) !important;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg) !important;
+}
+
+/* Header Section */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid rgba(0, 104, 74, 0.1);
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--color-primary-dark2);
+}
+
+.mongoBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.queryButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--color-primary-light3);
+  color: var(--color-primary-dark2);
+  border: 1px solid var(--color-primary-light2);
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.queryButton:hover {
+  background: var(--color-primary-light2);
+  border-color: var(--color-primary-light1);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.queryButton:active {
+  transform: translateY(0);
+}
+
+/* Query Section */
+.querySection {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid rgba(0, 104, 74, 0.1);
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .metricsGrid {
@@ -35,7 +124,7 @@
 .metricLabel {
   font-size: 12px;
   font-weight: 600;
-  color: #6b778c;
+  color: var(--color-neutral-dark1);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -49,9 +138,9 @@
 .value {
   font-size: 32px;
   font-weight: 700;
-  color: #1e2d3d;
+  color: var(--color-neutral-dark3);
   line-height: 1;
-  transition: color 0.3s ease;
+  transition: color var(--transition-normal);
 }
 
 .trend {
@@ -65,24 +154,22 @@
 }
 
 .trendUp {
-  color: #00684a;
+  color: var(--color-status-good);
   background: rgba(0, 104, 74, 0.1);
 }
 
 .trendDown {
-  color: #DC382D;
+  color: var(--color-status-critical);
   background: rgba(220, 56, 45, 0.1);
 }
 
 .pulseIndicator {
-  position: absolute;
-  top: 20px;
-  right: 30px;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 6px 12px;
   background: rgba(0, 237, 100, 0.1);
+  border: 1px solid rgba(0, 237, 100, 0.2);
   border-radius: 12px;
 }
 
@@ -109,13 +196,13 @@
 .pulseText {
   font-size: 11px;
   font-weight: 700;
-  color: #00684a;
+  color: var(--color-primary-dark2);
   letter-spacing: 0.5px;
 }
 
 .loading {
   text-align: center;
-  color: #6b778c;
+  color: var(--color-neutral-dark1);
   padding: 20px;
   font-size: 14px;
 }

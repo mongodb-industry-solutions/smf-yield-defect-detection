@@ -1,35 +1,39 @@
 .container {
   width: 100%;
-  margin-bottom: 20px;
+  height: 100%;
 }
 
 .card {
   background: white !important;
-  border-radius: 12px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06) !important;
   padding: 0 !important;
   overflow: hidden !important;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .header {
-  padding: 20px 24px;
+  padding: 12px 16px;
   border-bottom: 1px solid #e0e4e7;
   display: flex;
   justify-content: space-between;
   align-items: center;
   background: #fafbfc;
+  flex-shrink: 0;
 }
 
 .headerLeft h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 600;
   color: #1e2d3d;
 }
 
 .subtitle {
-  margin: 4px 0 0 0;
-  font-size: 13px;
+  margin: 2px 0 0 0;
+  font-size: 11px;
   color: #6b778c;
 }
 
@@ -42,19 +46,19 @@
 .liveIndicator {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: 4px;
+  padding: 3px 8px;
   background: rgba(0, 237, 100, 0.1);
-  border-radius: 12px;
-  font-size: 11px;
+  border-radius: 10px;
+  font-size: 9px;
   font-weight: 700;
   color: #00684a;
-  letter-spacing: 0.5px;
+  letter-spacing: 0.3px;
 }
 
 .liveDot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   background: #00ed64;
   border-radius: 50%;
   animation: pulse 2s infinite;
@@ -75,8 +79,9 @@
 .chartContainer {
   position: relative;
   width: 100%;
-  height: 400px;
+  flex: 1;
   background: #f7f9fb;
+  min-height: 320px;
 }
 
 .chartIframe {

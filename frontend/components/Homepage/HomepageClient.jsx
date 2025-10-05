@@ -4,7 +4,9 @@ import React from 'react';
 import Link from 'next/link';
 import Card from '@leafygreen-ui/card';
 import Button from '@leafygreen-ui/button';
-import { H1, H2, H3, Body, Description } from '@leafygreen-ui/typography';
+import Badge from '@leafygreen-ui/badge';
+import Icon from '@leafygreen-ui/icon';
+import { H1, H2, H3, Body, Description, Subtitle } from '@leafygreen-ui/typography';
 import styles from './Homepage.module.css';
 
 const HomepageClient = () => {
@@ -12,20 +14,48 @@ const HomepageClient = () => {
     <div className={styles.container}>
       {/* Hero Section */}
       <div className={styles.hero}>
+        <Badge variant="green" className={styles.heroBadge}>
+          <Icon glyph="Database" size="small" /> Powered by MongoDB Atlas
+        </Badge>
         <H1 className={styles.heroTitle}>
-          SMF Yield Defect Detection System
+          SMF Yield Defect Detection
         </H1>
-        <Description className={styles.heroSubtitle}>
-          Real-time semiconductor manufacturing monitoring powered by MongoDB
-        </Description>
+        <Subtitle className={styles.heroSubtitle}>
+          Real-time semiconductor manufacturing monitoring
+        </Subtitle>
         <Body className={styles.heroDescription}>
-          Addressing a $50B+ annual industry challenge by reducing yield loss detection from hours to seconds
+          Addressing a <strong>$50B+ annual industry challenge</strong> by reducing yield loss detection from <strong>hours to seconds</strong>
         </Body>
-        <Link href="/live-monitoring">
-          <Button variant="primary" size="large" className={styles.ctaButton}>
-            Enter Live Monitoring Dashboard
+        <div className={styles.heroActions}>
+          <Link href="/live-monitoring">
+            <Button variant="primary" size="large" className={styles.ctaButton}>
+              <Icon glyph="Charts" /> Enter Dashboard
+            </Button>
+          </Link>
+          <Button variant="default" size="large" className={styles.secondaryButton}>
+            <Icon glyph="Play" /> Watch Demo
           </Button>
-        </Link>
+        </div>
+
+        {/* Stats Bar */}
+        <div className={styles.statsBar}>
+          <div className={styles.stat}>
+            <div className={styles.statValue}>5,764+</div>
+            <div className={styles.statLabel}>Sensor Data Points</div>
+          </div>
+          <div className={styles.stat}>
+            <div className={styles.statValue}>100+</div>
+            <div className={styles.statLabel}>Wafer Defect Maps</div>
+          </div>
+          <div className={styles.stat}>
+            <div className={styles.statValue}>191</div>
+            <div className={styles.statLabel}>AI Embeddings</div>
+          </div>
+          <div className={styles.stat}>
+            <div className={styles.statValue}>&lt; 1s</div>
+            <div className={styles.statLabel}>Detection Time</div>
+          </div>
+        </div>
       </div>
 
       {/* What This Demo Shows */}

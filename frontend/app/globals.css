@@ -1,42 +1,372 @@
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-/* Uncomment this line to implement default dark mode colors if system is set to dark mode */
-/* @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #ffffff;
-    --foreground: #ededed;
-  }
-} */
+/**
+ * Global Styles - MongoDB LeafyGreen UI Integration
+ * SMF Yield Defect Detection System
+ */
 
+/* ========================================
+   CSS VARIABLES - MongoDB LeafyGreen Palette
+   ======================================== */
+:root {
+  /* Primary MongoDB Green */
+  --color-primary-dark3: #00271E;
+  --color-primary-dark2: #00684A;
+  --color-primary-dark1: #00885C;
+  --color-primary-base: #00ED64;
+  --color-primary-light1: #83FFCD;
+  --color-primary-light2: #C1FFE4;
+  --color-primary-light3: #E6FFF6;
+
+  /* Risk Colors */
+  --color-risk-critical: #8B0000;
+  --color-risk-high: #DC382D;
+  --color-risk-medium: #FDB813;
+  --color-risk-low: #00684A;
+
+  /* Status Colors */
+  --color-status-good: #00684A;
+  --color-status-warning: #FDB813;
+  --color-status-critical: #DC382D;
+  --color-status-unknown: #89979B;
+
+  /* Neutral Gray Scale */
+  --color-neutral-dark3: #1C2D38;
+  --color-neutral-dark2: #3D4F58;
+  --color-neutral-dark1: #5C6C75;
+  --color-neutral-base: #89979B;
+  --color-neutral-light1: #C1C7C6;
+  --color-neutral-light2: #E7EEEC;
+  --color-neutral-light3: #F9FBFA;
+
+  /* Blue Accent */
+  --color-blue-base: #0076FF;
+  --color-blue-light1: #63B0FF;
+  --color-blue-light2: #C1E7FF;
+  --color-blue-dark1: #005BB5;
+  --color-blue-dark2: #003F88;
+
+  /* Yellow Accent */
+  --color-yellow-base: #FDB813;
+  --color-yellow-light1: #FFC555;
+  --color-yellow-light2: #FFE7B3;
+  --color-yellow-dark1: #D59700;
+  --color-yellow-dark2: #AD7200;
+
+  /* Red Accent */
+  --color-red-base: #DC382D;
+  --color-red-light1: #FF7968;
+  --color-red-light2: #FFC4BD;
+  --color-red-dark1: #C3190C;
+  --color-red-dark2: #8B0000;
+
+  /* Purple Accent */
+  --color-purple-base: #9B3EEF;
+  --color-purple-light1: #C47EFF;
+  --color-purple-light2: #E7C4FF;
+  --color-purple-dark1: #7421DE;
+  --color-purple-dark2: #5A1AA7;
+
+  /* Background & Foreground */
+  --background: #FFFFFF;
+  --background-secondary: #F9FBFA;
+  --foreground: #1C2D38;
+  --foreground-secondary: #5C6C75;
+
+  /* Spacing Scale */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 32px;
+  --spacing-xl: 64px;
+
+  /* Border Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Shadows */
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.16);
+  --shadow-xl: 0 12px 48px rgba(0, 0, 0, 0.20);
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0.0, 0.2, 1);
+  --transition-normal: 200ms cubic-bezier(0.4, 0.0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0.0, 0.2, 1);
+}
+
+/* ========================================
+   FONT IMPORTS & TYPOGRAPHY
+   ======================================== */
+@import url('https://fonts.googleapis.com/css2?family=Euclid+Circular+A:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;500;600&display=swap');
+
+/* ========================================
+   BASE STYLES
+   ======================================== */
 html,
 body {
   max-width: 100vw;
   overflow-x: hidden;
+  margin: 0;
+  padding: 0;
 }
 
 body {
   color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--background-secondary);
+  font-family: 'Euclid Circular A', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 * {
   box-sizing: border-box;
-  padding: 0;
-  margin: 0;
 }
 
 a {
-  color: inherit;
+  color: var(--color-blue-base);
   text-decoration: none;
+  transition: color var(--transition-fast);
 }
 
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
+a:hover {
+  color: var(--color-blue-dark1);
+  text-decoration: underline;
+}
+
+/* ========================================
+   UTILITY CLASSES
+   ======================================== */
+
+/* Glassmorphism Effects */
+.glass-light {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.glass-dark {
+  background: rgba(30, 45, 61, 0.8);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Elevation/Shadows */
+.elevation-0 {
+  box-shadow: none;
+}
+
+.elevation-1 {
+  box-shadow: var(--shadow-sm);
+}
+
+.elevation-2 {
+  box-shadow: var(--shadow-md);
+}
+
+.elevation-3 {
+  box-shadow: var(--shadow-lg);
+}
+
+.elevation-4 {
+  box-shadow: var(--shadow-xl);
+}
+
+/* Spacing Utilities */
+.p-xs { padding: var(--spacing-xs); }
+.p-sm { padding: var(--spacing-sm); }
+.p-md { padding: var(--spacing-md); }
+.p-lg { padding: var(--spacing-lg); }
+.p-xl { padding: var(--spacing-xl); }
+
+.m-xs { margin: var(--spacing-xs); }
+.m-sm { margin: var(--spacing-sm); }
+.m-md { margin: var(--spacing-md); }
+.m-lg { margin: var(--spacing-lg); }
+.m-xl { margin: var(--spacing-xl); }
+
+/* Border Radius */
+.rounded-sm { border-radius: var(--radius-sm); }
+.rounded-md { border-radius: var(--radius-md); }
+.rounded-lg { border-radius: var(--radius-lg); }
+.rounded-xl { border-radius: var(--radius-xl); }
+
+/* ========================================
+   LEAFYGREEN MODAL Z-INDEX FIX
+   ======================================== */
+
+/* Ensure LeafyGreen modals appear above FabPulseBar (z-index: 1001) */
+[data-leafygreen-ui="modal-portal"] {
+  z-index: 1100 !important;
+}
+
+[data-leafygreen-ui="modal-backdrop"] {
+  z-index: 1099 !important;
+}
+
+[data-leafygreen-ui="modal-container"] {
+  z-index: 1100 !important;
+}
+
+/* ========================================
+   ANIMATIONS
+   ======================================== */
+
+/* Fade In Animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
   }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn var(--transition-slow) ease-out;
+}
+
+/* Shimmer Loading Effect */
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-neutral-light2) 0%,
+    var(--color-neutral-light3) 20%,
+    var(--color-neutral-light2) 40%,
+    var(--color-neutral-light2) 100%
+  );
+  background-size: 1000px 100%;
+  animation: shimmer 2s infinite linear;
+}
+
+/* Pulse Animation */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Spin Animation */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+/* Slide In from Right */
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.slide-in-right {
+  animation: slideInRight var(--transition-slow) ease-out;
+}
+
+/* ========================================
+   SCROLLBAR STYLING
+   ======================================== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-neutral-light2);
+  border-radius: var(--radius-sm);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-neutral-base);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-neutral-dark1);
+}
+
+/* ========================================
+   SELECTION STYLING
+   ======================================== */
+::selection {
+  background-color: var(--color-primary-light2);
+  color: var(--color-primary-dark2);
+}
+
+::-moz-selection {
+  background-color: var(--color-primary-light2);
+  color: var(--color-primary-dark2);
+}
+
+/* ========================================
+   FOCUS STYLES (Accessibility)
+   ======================================== */
+:focus-visible {
+  outline: 2px solid var(--color-blue-base);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-blue-base);
+  outline-offset: 2px;
+}
+
+/* ========================================
+   RESPONSIVE BREAKPOINTS
+   ======================================== */
+@media (max-width: 768px) {
+  body {
+    font-size: 13px;
+  }
+
+  .p-lg { padding: var(--spacing-md); }
+  .p-xl { padding: var(--spacing-lg); }
+}
+
+@media (max-width: 480px) {
+  body {
+    font-size: 12px;
+  }
+
+  .p-md { padding: var(--spacing-sm); }
+  .p-lg { padding: var(--spacing-sm); }
 }

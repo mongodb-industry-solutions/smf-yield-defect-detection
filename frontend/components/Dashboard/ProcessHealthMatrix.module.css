@@ -6,46 +6,85 @@
 }
 
 .card {
-  background: white !important;
+  background: rgba(255, 255, 255, 0.85) !important;
+  backdrop-filter: blur(10px) !important;
+  -webkit-backdrop-filter: blur(10px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
   border-radius: 12px !important;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08) !important;
   padding: 0 !important;
   overflow: visible !important;
   height: 100%;
   display: flex;
   flex-direction: column;
+  transition: all var(--transition-normal, 200ms) ease;
+}
+
+.card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12) !important;
+  transform: translateY(-2px);
 }
 
 .header {
   padding: 20px 24px;
-  border-bottom: 1px solid #e0e4e7;
+  border-bottom: 1px solid rgba(224, 228, 231, 0.3);
+  background: rgba(250, 251, 252, 0.6);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+.headerContent {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #fafbfc;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.headerLeft {
-  flex: 1;
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-.headerLeft h3 {
+.titleRow h3 {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
   color: #1e2d3d;
+  white-space: nowrap;
 }
 
 .subtitle {
-  margin: 4px 0 0 0;
+  margin: 0;
   font-size: 13px;
   color: #6b778c;
+  white-space: nowrap;
 }
 
-.headerRight {
+.badgeRow {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.mongoBadge {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+}
+
+.queryButton {
+  background: transparent !important;
+  border: 1px solid var(--color-neutral-light2, #e0e4e7) !important;
+  border-radius: var(--radius-md, 8px) !important;
+  transition: all var(--transition-fast, 150ms) ease !important;
+}
+
+.queryButton:hover {
+  background: var(--color-neutral-light3, #f7f9fb) !important;
+  border-color: var(--color-primary-dark2, #00684a) !important;
 }
 
 .liveIndicator {
@@ -84,10 +123,22 @@
 .matrixGrid {
   display: flex;
   flex-direction: column;
-  gap: 0;
-  padding: 0;
+  gap: 4px;
+  padding: 8px 0;
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Hide scrollbar completely for Webkit */
+.matrixGrid::-webkit-scrollbar {
+  display: none;
+}
+
+/* Firefox */
+.matrixGrid {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .processColumn {
@@ -101,8 +152,10 @@
 
 .processHeader {
   padding: 16px 20px;
-  background: #f7f9fb;
-  border-bottom: 1px solid #e0e4e7;
+  background: rgba(247, 249, 251, 0.8);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  border-bottom: 1px solid rgba(224, 228, 231, 0.5);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -147,30 +200,10 @@
 }
 
 .equipmentList {
-  padding: 12px;
+  padding: 16px 20px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: none;
-  overflow-y: visible;
-}
-
-.equipmentList::-webkit-scrollbar {
-  width: 4px;
-}
-
-.equipmentList::-webkit-scrollbar-track {
-  background: #f1f3f4;
-  border-radius: 2px;
-}
-
-.equipmentList::-webkit-scrollbar-thumb {
-  background: #c1c7cd;
-  border-radius: 2px;
-}
-
-.equipmentList::-webkit-scrollbar-thumb:hover {
-  background: #a0a7b0;
+  gap: 12px;
 }
 
 .noEquipment {
@@ -181,12 +214,14 @@
 }
 
 .equipmentCard {
-  background: white;
-  border: 1px solid #e0e4e7;
-  border-radius: 8px;
-  padding: 12px;
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  border: 1px solid rgba(224, 228, 231, 0.5);
+  border-radius: var(--radius-md, 8px);
+  padding: 14px 16px;
   position: relative;
-  transition: all 0.2s ease;
+  transition: all var(--transition-normal, 200ms) ease;
   cursor: pointer;
   animation: slideIn 0.3s ease-out;
   animation-fill-mode: both;
@@ -204,8 +239,9 @@
 }
 
 .equipmentCard:hover {
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.12));
+  transform: translateY(-3px);
+  border-color: var(--color-primary-dark2, #00684a);
 }
 
 .equipmentCard.critical {
@@ -226,8 +262,8 @@
 .equipmentHeader {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .statusDot {
@@ -264,7 +300,7 @@
 .equipmentMetrics {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .metricRow {
@@ -309,64 +345,43 @@
   font-style: italic;
 }
 
-/* Tooltip */
-.tooltip {
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  background: #1e2d3d;
-  color: white;
-  padding: 12px;
-  border-radius: 6px;
-  font-size: 11px;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.2s ease;
-  z-index: 10;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-}
-
-.tooltip::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 6px solid transparent;
-  border-top-color: #1e2d3d;
-}
-
-.equipmentCard:hover .tooltip {
-  opacity: 1;
-  transform: translateX(-50%) translateY(-8px);
+/* LeafyGreen Tooltip Content */
+.tooltipContent {
+  padding: 8px;
+  max-width: 280px;
 }
 
 .tooltipHeader {
   font-weight: 600;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  font-size: 13px;
+  color: #fff;
 }
 
 .tooltipMetrics {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .tooltipMetrics > div {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
+  line-height: 1.5;
 }
 
 /* Legend */
 .legend {
   padding: 12px 20px;
-  background: #f7f9fb;
-  border-top: 1px solid #e0e4e7;
+  background: rgba(247, 249, 251, 0.8);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+  border-top: 1px solid rgba(224, 228, 231, 0.5);
   display: flex;
   justify-content: center;
   gap: 24px;
