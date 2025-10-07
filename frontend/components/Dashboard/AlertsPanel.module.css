@@ -29,39 +29,67 @@
 
 /* Header section - matches ProcessHealthMatrix */
 .header {
-  padding: 20px 24px;
+  padding: 16px 20px;
   border-bottom: 1px solid rgba(224, 228, 231, 0.3);
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  gap: 10px;
   background: rgba(250, 251, 252, 0.6);
   backdrop-filter: blur(5px);
   -webkit-backdrop-filter: blur(5px);
 }
 
+.headerTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.headerBottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .headerLeft {
   flex: 1;
+  min-width: 0;
+}
+
+.titleRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .titleRow h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   color: #1e2d3d;
-  margin-bottom: 4px;
+  white-space: nowrap;
 }
 
 .subtitle {
   margin: 0;
-  font-size: 13px;
+  font-size: 12px;
   color: #6b778c;
+  white-space: nowrap;
 }
 
 .headerRight {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
 }
 
 .mongoBadge {
@@ -228,14 +256,41 @@
   white-space: nowrap;
 }
 
+.alertTitleCompact {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  color: #1e2d3d !important;
+  margin: 0 !important;
+  line-height: 1.4 !important;
+}
+
 .alertTime {
   font-size: 12px;
   color: #6b778c;
   margin: 0;
 }
 
+.timestamp {
+  font-size: 11px !important;
+  color: #6b778c !important;
+  margin: 0 !important;
+  white-space: nowrap;
+}
+
 .alertHeaderRight {
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.expandIcon {
+  transition: transform 0.2s ease;
+  color: #6b778c;
+}
+
+.alertCard.expanded .expandIcon {
+  transform: rotate(180deg);
 }
 
 .chevronIcon {
@@ -266,6 +321,13 @@
 }
 
 /* Expanded alert content */
+.alertExpandedContent {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(224, 228, 231, 0.3);
+  animation: expand 0.3s ease-out;
+}
+
 .expandedContent {
   margin-top: 16px;
   padding-top: 16px;
@@ -284,11 +346,73 @@
   }
 }
 
+/* Alert description */
+.alertDescription {
+  margin-bottom: 12px;
+  color: #5e6c84;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* Alert metadata */
+.alertMetadata {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 10px;
+  background: rgba(247, 249, 251, 0.5);
+  border-radius: 6px;
+  border: 1px solid rgba(224, 228, 231, 0.3);
+}
+
+.metadataRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.metadataLabel {
+  font-weight: 600;
+  color: #6b778c;
+  min-width: 80px;
+}
+
+.metadataValue {
+  color: #1e2d3d;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
+}
+
+/* Alert metrics section */
+.alertMetrics {
+  margin-bottom: 12px;
+}
+
+.metricsTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b778c;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .metricsGrid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.metricItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: rgba(247, 249, 251, 0.5);
+  border: 1px solid rgba(224, 228, 231, 0.3);
+  border-radius: 4px;
 }
 
 .metricCard {
@@ -300,14 +424,14 @@
 }
 
 .metricLabel {
-  font-size: 11px;
+  font-size: 10px;
   color: #6b778c;
-  text-transform: uppercase;
-  margin-bottom: 4px;
+  text-transform: capitalize;
+  font-weight: 500;
 }
 
 .metricValue {
-  font-size: 18px;
+  font-size: 14px;
   font-weight: 600;
   color: #1e2d3d;
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
@@ -319,6 +443,22 @@
 
 .metricValue.warning {
   color: #fdb813;
+}
+
+/* Alert footer */
+.alertFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(224, 228, 231, 0.2);
+}
+
+.alertId {
+  font-size: 11px;
+  color: #6b778c;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', monospace;
 }
 
 .alertActions {

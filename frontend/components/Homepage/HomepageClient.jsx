@@ -18,10 +18,10 @@ const HomepageClient = () => {
           <Icon glyph="Database" size="small" /> Powered by MongoDB Atlas
         </Badge>
         <H1 className={styles.heroTitle}>
-          SMF Yield Defect Detection
+          Yield Analytics & Quality Control
         </H1>
         <Subtitle className={styles.heroSubtitle}>
-          Real-time semiconductor manufacturing monitoring
+          Real-time semiconductor manufacturing monitoring powered by MongoDB Atlas
         </Subtitle>
         <Body className={styles.heroDescription}>
           Addressing a <strong>$50B+ annual industry challenge</strong> by reducing yield loss detection from <strong>hours to seconds</strong>
@@ -40,16 +40,16 @@ const HomepageClient = () => {
         {/* Stats Bar */}
         <div className={styles.statsBar}>
           <div className={styles.stat}>
-            <div className={styles.statValue}>5,764+</div>
-            <div className={styles.statLabel}>Sensor Data Points</div>
+            <div className={styles.statValue}>Real-Time</div>
+            <div className={styles.statLabel}>Sensor Monitoring</div>
           </div>
           <div className={styles.stat}>
-            <div className={styles.statValue}>100+</div>
-            <div className={styles.statLabel}>Wafer Defect Maps</div>
+            <div className={styles.statValue}>AI-Powered</div>
+            <div className={styles.statLabel}>Defect Detection</div>
           </div>
           <div className={styles.stat}>
-            <div className={styles.statValue}>191</div>
-            <div className={styles.statLabel}>AI Embeddings</div>
+            <div className={styles.statValue}>Vector Search</div>
+            <div className={styles.statLabel}>Root Cause Analysis</div>
           </div>
           <div className={styles.stat}>
             <div className={styles.statValue}>&lt; 1s</div>
@@ -67,7 +67,7 @@ const HomepageClient = () => {
               <div className={styles.cardIcon}>📊</div>
               <H3 className={styles.cardTitle}>Real-Time Sensor Monitoring</H3>
               <Description className={styles.cardDescription}>
-                Track 5,764+ sensor data points across CMP, ETCH, and LITHO equipment with live updates every 8 seconds
+                Track sensor data across CMP, ETCH, and LITHO equipment with live updates every 8 seconds using MongoDB Time Series Collections
               </Description>
             </div>
           </Card>
@@ -77,7 +77,7 @@ const HomepageClient = () => {
               <div className={styles.cardIcon}>⚠️</div>
               <H3 className={styles.cardTitle}>Intelligent Alert Correlation</H3>
               <Description className={styles.cardDescription}>
-                Automatic correlation of excursions with process context, identifying problematic materials and batches
+                Automatic correlation of excursions with process context, identifying problematic materials and batches using Aggregation Pipelines
               </Description>
             </div>
           </Card>
@@ -87,7 +87,7 @@ const HomepageClient = () => {
               <div className={styles.cardIcon}>🎯</div>
               <H3 className={styles.cardTitle}>Wafer Defect Visualization</H3>
               <Description className={styles.cardDescription}>
-                Visual defect maps with pattern recognition across 100+ wafers, identifying clusters and systematic issues
+                Visual defect maps with pattern recognition, identifying clusters and systematic issues across semiconductor wafers
               </Description>
             </div>
           </Card>
@@ -97,7 +97,7 @@ const HomepageClient = () => {
               <div className={styles.cardIcon}>🔧</div>
               <H3 className={styles.cardTitle}>Equipment Health Tracking</H3>
               <Description className={styles.cardDescription}>
-                Real-time health monitoring with particle counts, RF power, and temperature metrics for all equipment
+                Real-time health monitoring with particle counts, RF power, and temperature metrics for all equipment using Change Streams
               </Description>
             </div>
           </Card>
@@ -113,7 +113,7 @@ const HomepageClient = () => {
               <span className={styles.mongoIcon}>🕐</span>
               <div>
                 <strong>Time Series Collections</strong>
-                <Description>5,764 sensor records with 30-minute granularity and 90-day retention</Description>
+                <Description>Optimized storage for sensor data with 30-minute granularity and 90-day retention</Description>
               </div>
             </div>
 
@@ -121,7 +121,7 @@ const HomepageClient = () => {
               <span className={styles.mongoIcon}>🔍</span>
               <div>
                 <strong>Vector Search</strong>
-                <Description>191 embeddings for semantic root cause analysis using Voyage AI</Description>
+                <Description>Semantic root cause analysis using Voyage AI embeddings for intelligent pattern matching</Description>
               </div>
             </div>
 
@@ -129,7 +129,7 @@ const HomepageClient = () => {
               <span className={styles.mongoIcon}>🔄</span>
               <div>
                 <strong>Change Streams</strong>
-                <Description>Real-time alerts triggered on excursion detection</Description>
+                <Description>Real-time alerts triggered on excursion detection without polling</Description>
               </div>
             </div>
 
@@ -137,7 +137,7 @@ const HomepageClient = () => {
               <span className={styles.mongoIcon}>📊</span>
               <div>
                 <strong>Aggregation Pipelines</strong>
-                <Description>Complex correlation analysis with $lookup for process context</Description>
+                <Description>Complex correlation analysis with $lookup joins for process context enrichment</Description>
               </div>
             </div>
 
@@ -145,7 +145,7 @@ const HomepageClient = () => {
               <span className={styles.mongoIcon}>💾</span>
               <div>
                 <strong>Hybrid Storage</strong>
-                <Description>Thumbnails in MongoDB, full wafer images in S3</Description>
+                <Description>Efficient storage with thumbnails in MongoDB and full wafer images in S3</Description>
               </div>
             </div>
 
@@ -153,7 +153,7 @@ const HomepageClient = () => {
               <span className={styles.mongoIcon}>🗄️</span>
               <div>
                 <strong>Flexible Schema</strong>
-                <Description>Adapts to diverse semiconductor data without migrations</Description>
+                <Description>Adapts to diverse semiconductor manufacturing data without schema migrations</Description>
               </div>
             </div>
           </div>

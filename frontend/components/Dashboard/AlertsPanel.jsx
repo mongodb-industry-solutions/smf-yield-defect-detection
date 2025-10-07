@@ -244,7 +244,7 @@ const AlertsPanel = () => {
     <div className={styles.container}>
       <Card className={styles.card}>
         <div className={styles.header}>
-          <div className={styles.headerLeft}>
+          <div className={styles.headerTop}>
             <div className={styles.titleRow}>
               <h3>Active Alerts</h3>
               <p className={styles.subtitle}>
@@ -252,32 +252,34 @@ const AlertsPanel = () => {
               </p>
             </div>
           </div>
-          <div className={styles.headerRight}>
+          <div className={styles.headerBottom}>
             <Badge variant="red" className={styles.mongoBadge}>
               <Icon glyph="ImportantWithCircle" size="small" /> Real-Time Detection
             </Badge>
-            <IconButton
-              aria-label="Show MongoDB query"
-              onClick={() => setShowQuery(!showQuery)}
-              className={styles.queryButton}
-            >
-              <Icon glyph={showQuery ? "ChevronUp" : "Code"} />
-            </IconButton>
-            <IconButton
-              aria-label="Resolve all alerts"
-              onClick={handleResolveAll}
-              className={styles.iconButton}
-            >
-              <Icon glyph="Checkmark" />
-            </IconButton>
-            <IconButton
-              aria-label="Refresh alerts"
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className={`${styles.iconButton} ${isRefreshing ? styles.spinning : ''}`}
-            >
-              <Icon glyph="Refresh" />
-            </IconButton>
+            <div className={styles.headerActions}>
+              <IconButton
+                aria-label="Show MongoDB query"
+                onClick={() => setShowQuery(!showQuery)}
+                className={styles.queryButton}
+              >
+                <Icon glyph={showQuery ? "ChevronUp" : "Code"} />
+              </IconButton>
+              <IconButton
+                aria-label="Resolve all alerts"
+                onClick={handleResolveAll}
+                className={styles.iconButton}
+              >
+                <Icon glyph="Checkmark" />
+              </IconButton>
+              <IconButton
+                aria-label="Refresh alerts"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className={`${styles.iconButton} ${isRefreshing ? styles.spinning : ''}`}
+              >
+                <Icon glyph="Refresh" />
+              </IconButton>
+            </div>
           </div>
         </div>
 
