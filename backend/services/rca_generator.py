@@ -440,8 +440,9 @@ class RCAGenerator:
         
         # Fallback to traditional search
         # Build search criteria based on alert
+        # Include both RCA reports and troubleshooting guides for comprehensive analysis
         search_criteria = {
-            "metadata.document_type": "rca_report"
+            "metadata.document_type": {"$in": ["rca_report", "troubleshooting_guide"]}
         }
         
         # Add process area if available
@@ -535,11 +536,12 @@ class RCAGenerator:
                 query_parts.append(f"equipment {alert['equipment_id']}")
             
             query = " ".join(query_parts)
-            
-            # Search for similar RCA reports
+
+            # Search for similar RCA reports AND troubleshooting guides
+            # Including troubleshooting guides provides procedural guidance alongside historical cases
             results = await self.semantic_search.search_knowledge_base(
                 query=query,
-                document_types=["rca_report"],
+                document_types=["rca_report", "troubleshooting_guide"],
                 limit=5,
                 min_score=0.6
             )
@@ -561,6 +563,7 @@ class RCAGenerator:
                     "resolution_time": result.get("metadata", {}).get("resolution_time_hours", 0),
                     "defect_type": result.get("metadata", {}).get("defect_type", ""),
                     "relevance_score": result.get("score", 0),
+                    "document_type": result.get("document_type", "rca_report"),  # Track document type
                     "semantic_match": True  # Flag to indicate semantic search was used
                 }
                 similar_cases.append(case_summary)
