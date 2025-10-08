@@ -137,6 +137,40 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
   // This field is populated immediately by AlertManager and later enhanced by RCA analysis
   const historicalCases = rcaHints.similar_historical_cases || [];
 
+  // Get similar wafer defects from vector search
+  const similarWaferDefects = rcaHints.similar_wafer_defects || [];
+
+  // Get identified patterns with probable causes
+  const identifiedPatterns = rcaHints.identified_patterns || [];
+
+  // Unified Analysis Tab Data
+  const overallConfidence = Math.max(
+    rcaHints.confidence_score || 0,
+    correlationData.confidence_score || 0
+  );
+  const insights = correlationData.insights || [];
+  const problematicMaterials = correlationData.correlations?.process_context?.problematic_materials || [];
+  const temporal = correlationData.correlations?.temporal || null;
+  const equipment = correlationData.correlations?.equipment || null;
+  const batch = correlationData.correlations?.batch || null;
+  const recipe = correlationData.correlations?.recipe || null;
+  const spatial = correlationData.correlations?.spatial || null;
+
+  // Filter historical cases by relevance
+  const highRelevanceCases = historicalCases.filter(c => c.relevance_score >= 0.7);
+  const mediumRelevanceCases = historicalCases.filter(c => c.relevance_score >= 0.5 && c.relevance_score < 0.7);
+
+  // Debug: Log historical cases
+  if (historicalCases.length > 0 && isOpen) {
+    console.log('[AlertAnalysisModal] Historical Cases:', historicalCases.map(c => ({
+      title: c.title,
+      relevance: c.relevance_score,
+      type: c.document_type
+    })));
+    console.log('[AlertAnalysisModal] High relevance (≥0.7):', highRelevanceCases.length);
+    console.log('[AlertAnalysisModal] Medium relevance (0.5-0.7):', mediumRelevanceCases.length);
+  }
+
   return (
     <Modal
       open={isOpen}
@@ -256,7 +290,7 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
 
               {/* Process Context Metadata */}
               {metadata.slurry_batch && (
-                <Card style={{ padding: '20px' }}>
+                <Card style={{ padding: '20px', marginBottom: '20px' }}>
                   <h3 style={{ marginTop: 0, marginBottom: '15px', color: '#1e2d3d' }}>Process Context</h3>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
                     <div>
@@ -270,249 +304,640 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
                   </div>
                 </Card>
               )}
+
+              {/* Alert Lifecycle Timeline */}
+              <Card style={{ padding: '20px' }}>
+                <H3 style={{ marginTop: 0, marginBottom: '15px' }}>Alert Timeline</H3>
+                <div style={{ position: 'relative', paddingLeft: '30px' }}>
+                  {/* Created */}
+                  <div style={{ marginBottom: '16px', position: 'relative' }}>
+                    <div style={{ position: 'absolute', left: '-30px', top: '4px', width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#00A35C', border: '3px solid white', boxShadow: '0 0 0 2px #00A35C' }} />
+                    <Body weight="medium" style={{ fontSize: '12px' }}>Created</Body>
+                    <Description style={{ fontSize: '11px' }}>{formatTimestamp(alert.timestamp)}</Description>
+                  </div>
+
+                  {/* RCA Generated */}
+                  {alert.rca_analysis?.generated_at && (
+                    <div style={{ marginBottom: '16px', position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: '-30px', top: '4px', width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#00A35C', border: '3px solid white', boxShadow: '0 0 0 2px #00A35C' }} />
+                      <Body weight="medium" style={{ fontSize: '12px' }}>RCA Analysis Completed</Body>
+                      <Description style={{ fontSize: '11px' }}>{formatTimestamp(alert.rca_analysis.generated_at)}</Description>
+                    </div>
+                  )}
+
+                  {/* Correlation Analysis */}
+                  {(alert.correlation_data?.analysis_timestamp || alert.correlation_analysis?.analysis_timestamp) && (
+                    <div style={{ marginBottom: '16px', position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: '-30px', top: '4px', width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#00A35C', border: '3px solid white', boxShadow: '0 0 0 2px #00A35C' }} />
+                      <Body weight="medium" style={{ fontSize: '12px' }}>Correlation Analysis Completed</Body>
+                      <Description style={{ fontSize: '11px' }}>{formatTimestamp(alert.correlation_data?.analysis_timestamp || alert.correlation_analysis?.analysis_timestamp)}</Description>
+                    </div>
+                  )}
+
+                  {/* Acknowledged */}
+                  {alert.acknowledged_at && (
+                    <div style={{ marginBottom: '16px', position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: '-30px', top: '4px', width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#FFB000', border: '3px solid white', boxShadow: '0 0 0 2px #FFB000' }} />
+                      <Body weight="medium" style={{ fontSize: '12px' }}>Acknowledged</Body>
+                      <Description style={{ fontSize: '11px' }}>{formatTimestamp(alert.acknowledged_at)}</Description>
+                    </div>
+                  )}
+
+                  {/* Resolved */}
+                  {alert.resolved_at ? (
+                    <div style={{ position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: '-30px', top: '4px', width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#00A35C', border: '3px solid white', boxShadow: '0 0 0 2px #00A35C' }} />
+                      <Body weight="medium" style={{ fontSize: '12px' }}>Resolved</Body>
+                      <Description style={{ fontSize: '11px' }}>{formatTimestamp(alert.resolved_at)}</Description>
+                    </div>
+                  ) : (
+                    <div style={{ position: 'relative' }}>
+                      <div style={{ position: 'absolute', left: '-30px', top: '4px', width: '20px', height: '20px', borderRadius: '50%', backgroundColor: '#E0E4E7', border: '3px solid white', boxShadow: '0 0 0 2px #E0E4E7' }} />
+                      <Body weight="medium" style={{ fontSize: '12px', color: '#6b778c' }}>Awaiting Resolution</Body>
+                    </div>
+                  )}
+                </div>
+              </Card>
             </div>
           </Tab>
 
-          <Tab name="Root Cause Analysis">
+          <Tab name="Analysis">
             <div className={styles.tabContent}>
-              {/* RCA Recommendations */}
-              {rcaData.length > 0 ? (
-                <>
-                  <Card className={styles.card}>
-                    <div className={styles.featureHeader}>
-                      <H3 className={styles.sectionTitle}>Root Cause Analysis & Recommendations</H3>
-                      <Badge variant="purple">
-                        <Icon glyph="Bulb" size="small" /> Vector Search
-                      </Badge>
+              {/* NEW: Excursion Trigger Section */}
+              {alert.source_data?.excursion_type && (
+                <Card style={{ marginBottom: '20px', padding: '20px', backgroundColor: '#FFF4E6', borderLeft: '4px solid #FF991F' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <Icon glyph="Warning" size="large" fill="#FF991F" />
+                    <div style={{ flex: 1 }}>
+                      <H3 style={{ margin: 0, marginBottom: '4px' }}>Excursion Detected</H3>
+                      <Body weight="medium" style={{ fontSize: '16px' }}>
+                        {alert.source_data.excursion_type.replace(/_/g, ' ').toUpperCase()}
+                      </Body>
+                      {alert.source_data.excursion_type === 'temperature_drift' && alert.source_data.metrics?.temp_drift && (
+                        <Description style={{ marginTop: '4px' }}>
+                          Drift: {alert.source_data.metrics.temp_drift}°C (Current: {alert.source_data.metrics?.temperature}°C, Threshold: 65°C)
+                        </Description>
+                      )}
+                      {alert.source_data.excursion_type === 'particle_excursion' && alert.source_data.metrics?.particle_count > 1000 && (
+                        <Description style={{ marginTop: '4px' }}>
+                          Particle Count: {alert.source_data.metrics.particle_count}/cm³ (Threshold: 1000/cm³)
+                        </Description>
+                      )}
+                      {alert.source_data.excursion_type === 'rf_power_drift' && alert.source_data.metrics?.rf_power && (
+                        <Description style={{ marginTop: '4px' }}>
+                          RF Power: {alert.source_data.metrics.rf_power}W (Threshold: 1400W)
+                        </Description>
+                      )}
                     </div>
-                    <Description>Using MongoDB Atlas Vector Search to find similar historical cases</Description>
-                  </Card>
-                  {rcaData.map((rec, index) => (
-                    <Card key={index} style={{ marginBottom: '15px', padding: '20px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
-                        <h4 style={{ margin: 0, color: '#1e2d3d' }}>
-                          {rec.title || `Recommendation ${index + 1}`}
-                        </h4>
-                        {rec.confidence && (
-                          <Badge variant={rec.confidence > 0.8 ? 'green' : rec.confidence > 0.5 ? 'yellow' : 'lightgray'}>
-                            {Math.round(rec.confidence * 100)}% Confidence
-                          </Badge>
-                        )}
-                      </div>
-
-                      {rec.actions && rec.actions.length > 0 && (
-                        <div style={{ marginTop: '15px' }}>
-                          <h5 style={{ marginBottom: '10px', color: '#5e6c84' }}>Recommended Actions:</h5>
-                          <ol style={{ margin: 0, paddingLeft: '20px' }}>
-                            {rec.actions.map((action, actionIndex) => (
-                              <li key={actionIndex} style={{ marginBottom: '5px', lineHeight: '1.5' }}>
-                                {action}
-                              </li>
-                            ))}
-                          </ol>
-                        </div>
-                      )}
-
-                      {rec.pattern && (
-                        <div style={{ marginTop: '10px' }}>
-                          <Badge variant="lightgray">Pattern: {rec.pattern}</Badge>
-                        </div>
-                      )}
-                    </Card>
-                  ))}
-                </>
-              ) : (
-                <Card style={{ padding: '40px', textAlign: 'center' }}>
-                  <p style={{ color: '#6b778c', margin: 0 }}>
-                    {isAnalyzing ? 'Analyzing alert...' : 'No RCA recommendations available yet'}
-                  </p>
+                    <Badge variant="red" style={{ fontSize: '14px' }}>
+                      {alert.rca_analysis?.suggested_priority?.toUpperCase() || 'URGENT'}
+                    </Badge>
+                  </div>
                 </Card>
               )}
 
-              {/* Historical Similar Cases */}
-              {historicalCases.length > 0 && (
-                <div style={{ marginTop: '30px' }}>
-                  <h3 style={{ marginBottom: '20px', color: '#1e2d3d' }}>
-                    Similar Historical Cases
-                  </h3>
+              {/* Section 1: Analysis Summary */}
+              {(overallConfidence > 0 || insights.length > 0) && (
+                <Card style={{ marginBottom: '20px', padding: '20px', backgroundColor: '#f9fbfa' }}>
+                  <H3 style={{ margin: 0, marginBottom: '16px' }}>Analysis Summary</H3>
+
+                  {overallConfidence > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: insights.length > 0 ? '16px' : '0' }}>
+                      <div>
+                        <Body weight="medium">Overall Confidence</Body>
+                        <Description style={{ fontSize: '12px' }}>Combined confidence from correlation and RCA analysis</Description>
+                      </div>
+                      <Badge variant={overallConfidence > 0.8 ? 'green' : overallConfidence > 0.6 ? 'yellow' : 'lightgray'} style={{ fontSize: '16px', padding: '8px 16px' }}>
+                        {Math.round(overallConfidence * 100)}%
+                      </Badge>
+                    </div>
+                  )}
+
+                  {insights.length > 0 && (
+                    <div>
+                      {overallConfidence > 0 && <div style={{ borderTop: '1px solid #e0e4e7', margin: '16px 0' }} />}
+                      <Body weight="medium" style={{ marginBottom: '12px' }}>Key Insights</Body>
+                      <ul style={{ margin: 0, paddingLeft: '20px' }}>
+                        {insights.map((insight, index) => (
+                          <li key={index} style={{ marginBottom: '8px', lineHeight: '1.5' }}>
+                            <Body style={{ fontSize: '13px' }}>{insight}</Body>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </Card>
+              )}
+
+              {/* Section 2: Root Cause Identification */}
+              {(identifiedPatterns.length > 0 || problematicMaterials.length > 0 || rcaData.length > 0) && (
+                <Card style={{ marginBottom: '20px', padding: '20px', borderLeft: '4px solid #C84018' }}>
+                  <H3 style={{ margin: 0, marginBottom: '16px', color: '#C84018' }}>Root Cause Identification</H3>
+
+                  {/* NEW: Identified Patterns with Probable Causes */}
+                  {identifiedPatterns.length > 0 && (
+                    <div style={{ marginBottom: (problematicMaterials.length > 0 || rcaData.length > 0) ? '24px' : '0' }}>
+                      <Body weight="medium" style={{ marginBottom: '12px' }}>Identified Patterns</Body>
+                      <Description style={{ marginBottom: '12px', fontSize: '12px' }}>
+                        Pattern-based analysis with probable root causes
+                      </Description>
+                      {identifiedPatterns.map((pattern, idx) => (
+                        <Card key={idx} style={{ padding: '15px', marginBottom: '12px', backgroundColor: '#FFF9F5', border: '1px solid #FFE4B3' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '12px' }}>
+                            <div style={{ flex: 1 }}>
+                              <Badge variant="yellow" style={{ marginBottom: '8px' }}>
+                                {pattern.pattern_type?.replace(/_/g, ' ').toUpperCase()}
+                              </Badge>
+                              <Body style={{ fontSize: '13px' }}>{pattern.trigger}</Body>
+                            </div>
+                          </div>
+
+                          {pattern.probable_causes && pattern.probable_causes.length > 0 && (
+                            <>
+                              <Body weight="medium" style={{ fontSize: '12px', marginTop: '12px', marginBottom: '8px' }}>
+                                Probable Causes:
+                              </Body>
+                              {pattern.probable_causes.map((cause, causeIdx) => (
+                                <div key={causeIdx} style={{ padding: '10px', backgroundColor: 'white', borderRadius: '6px', marginBottom: '8px', border: '1px solid #FFE4B3' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                    <Body weight="medium" style={{ fontSize: '13px' }}>{cause.cause}</Body>
+                                    <Badge variant={cause.confidence > 0.7 ? 'green' : 'yellow'}>
+                                      {Math.round(cause.confidence * 100)}%
+                                    </Badge>
+                                  </div>
+                                  {cause.actions && cause.actions.length > 0 && (
+                                    <ol style={{ margin: '8px 0 0 0', paddingLeft: '20px', fontSize: '12px' }}>
+                                      {cause.actions.map((action, actionIdx) => (
+                                        <li key={actionIdx} style={{ marginBottom: '4px', lineHeight: '1.5' }}>
+                                          <Body style={{ fontSize: '12px' }}>{action}</Body>
+                                        </li>
+                                      ))}
+                                    </ol>
+                                  )}
+                                  {cause.supporting_evidence !== undefined && cause.supporting_evidence > 0 && (
+                                    <Description style={{ fontSize: '11px', marginTop: '6px' }}>
+                                      {cause.supporting_evidence} supporting case{cause.supporting_evidence !== 1 ? 's' : ''} found
+                                    </Description>
+                                  )}
+                                </div>
+                              ))}
+                            </>
+                          )}
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Problematic Materials */}
+                  {problematicMaterials.length > 0 && (
+                    <div style={{ marginBottom: rcaData.length > 0 ? '24px' : '0' }}>
+                      <Body weight="medium" style={{ marginBottom: '12px' }}>Known Problematic Materials</Body>
+                      <Description style={{ marginBottom: '12px', fontSize: '12px' }}>
+                        Materials identified as problematic in the process context database
+                      </Description>
+                      <div style={{ display: 'grid', gap: '12px' }}>
+                        {problematicMaterials.map((material, idx) => (
+                      <div key={idx} style={{ padding: '12px', backgroundColor: '#FFF4E6', borderRadius: '6px', border: '1px solid #FFE4B3' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                          <Badge variant="red">
+                            {material.type === 'slurry_batch' && 'Slurry Batch'}
+                            {material.type === 'recipe' && 'Recipe'}
+                            {material.type === 'reticle' && 'Reticle'}
+                          </Badge>
+                          <Body weight="medium">{material.id}</Body>
+                        </div>
+
+                        {material.issues && material.issues.length > 0 && (
+                          <div style={{ marginTop: '8px' }}>
+                            {material.issues.map((issue, issueIdx) => (
+                              <div key={issueIdx} style={{ display: 'flex', alignItems: 'flex-start', gap: '6px', marginBottom: '4px' }}>
+                                <Badge variant={issue.severity === 'high' ? 'red' : issue.severity === 'medium' ? 'yellow' : 'lightgray'} style={{ fontSize: '10px' }}>
+                                  {issue.severity?.toUpperCase()}
+                                </Badge>
+                                <Body style={{ fontSize: '12px', flex: 1 }}>{issue.description}</Body>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {material.details && (
+                          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #FFE4B3' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '8px', fontSize: '11px' }}>
+                              {material.type === 'slurry_batch' && (
+                                <>
+                                  {material.details.qc_status && (
+                                    <div>
+                                      <span style={{ color: '#6b778c' }}>QC Status: </span>
+                                      <Badge variant={material.details.qc_status === 'failed' ? 'red' : 'green'} style={{ fontSize: '10px' }}>
+                                        {material.details.qc_status}
+                                      </Badge>
+                                    </div>
+                                  )}
+                                  {material.details.large_particle_count && (
+                                    <div>
+                                      <span style={{ color: '#6b778c' }}>Particle Count: </span>
+                                      <span style={{ fontWeight: '600' }}>{material.details.large_particle_count}</span>
+                                    </div>
+                                  )}
+                                  {material.details.manufacturer && (
+                                    <div>
+                                      <span style={{ color: '#6b778c' }}>Manufacturer: </span>
+                                      <span>{material.details.manufacturer}</span>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                              {material.type === 'reticle' && (
+                                <>
+                                  {material.details.total_exposures && (
+                                    <div>
+                                      <span style={{ color: '#6b778c' }}>Total Exposures: </span>
+                                      <span style={{ fontWeight: '600' }}>{material.details.total_exposures}</span>
+                                    </div>
+                                  )}
+                                  {material.details.condition && (
+                                    <div>
+                                      <span style={{ color: '#6b778c' }}>Condition: </span>
+                                      <span>{material.details.condition}</span>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        </div>
+                      ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* RCA Recommendations */}
+                  {rcaData.length > 0 && (
+                    <div>
+                      {problematicMaterials.length > 0 && <div style={{ borderTop: '1px solid #FFE4B3', margin: '20px 0' }} />}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                        <Body weight="medium">Recommended Actions</Body>
+                        <Badge variant="purple">
+                          <Icon glyph="Bulb" size="small" /> Vector Search
+                        </Badge>
+                      </div>
+                      <Description style={{ marginBottom: '16px', fontSize: '12px' }}>
+                        AI-generated recommendations based on similar historical cases
+                      </Description>
+
+                      <div style={{ display: 'grid', gap: '12px' }}>
+                        {rcaData.map((rec, index) => (
+                          <div key={index} style={{ padding: '12px', backgroundColor: '#f9fbfa', borderRadius: '6px', border: '1px solid #e0e4e7' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                              <Body weight="medium" style={{ fontSize: '14px' }}>
+                                {rec.title || `Recommendation ${index + 1}`}
+                              </Body>
+                              {rec.confidence && (
+                                <Badge variant={rec.confidence > 0.8 ? 'green' : rec.confidence > 0.5 ? 'yellow' : 'lightgray'}>
+                                  {Math.round(rec.confidence * 100)}%
+                                </Badge>
+                              )}
+                            </div>
+
+                            {rec.actions && rec.actions.length > 0 && (
+                              <ol style={{ margin: '8px 0 0 0', paddingLeft: '20px' }}>
+                                {rec.actions.map((action, actionIndex) => (
+                                  <li key={actionIndex} style={{ marginBottom: '4px', lineHeight: '1.5' }}>
+                                    <Body style={{ fontSize: '12px' }}>{action}</Body>
+                                  </li>
+                                ))}
+                              </ol>
+                            )}
+
+                            {rec.pattern && (
+                              <div style={{ marginTop: '8px' }}>
+                                <Badge variant="lightgray" style={{ fontSize: '10px' }}>Pattern: {rec.pattern}</Badge>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              )}
+
+              {/* Section 3: Correlation Evidence */}
+              {(temporal || equipment || batch || recipe || spatial) && (
+                <Card style={{ marginBottom: '20px', padding: '20px' }}>
+                  <H3 style={{ margin: 0, marginBottom: '16px' }}>Correlation Evidence</H3>
+                  <Description style={{ marginBottom: '16px', fontSize: '12px' }}>
+                    Supporting data from correlation analysis across multiple dimensions
+                  </Description>
+
+                  {/* Check if we have any actual data to display */}
+                  {!(temporal && (temporal.correlation_strength > 0 || temporal.yield_impact !== 0 || temporal.defect_rate_change !== 0)) &&
+                   !equipment &&
+                   !(batch?.suspect_batches?.length > 0) &&
+                   !recipe?.worst_recipe &&
+                   !(spatial?.dominant_patterns?.length > 0) ? (
+                    <div style={{ padding: '20px', textAlign: 'center', backgroundColor: '#f9fbfa', borderRadius: '6px' }}>
+                      <Description>No wafers processed yet. Correlation evidence will appear once wafers are inspected.</Description>
+                    </div>
+                  ) : (
+                  <div style={{ display: 'grid', gap: '16px' }}>
+                    {/* Temporal Impact - Only show if there's actual data (not all zeros) */}
+                    {temporal && (temporal.correlation_strength > 0 || temporal.yield_impact !== 0 || temporal.defect_rate_change !== 0) && (
+                      <div style={{ padding: '12px', backgroundColor: '#f9fbfa', borderRadius: '6px' }}>
+                        <Body weight="medium" style={{ marginBottom: '8px', fontSize: '13px' }}>Temporal Impact</Body>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', fontSize: '12px' }}>
+                          {temporal.correlation_strength > 0 && (
+                            <div>
+                              <Description style={{ fontSize: '11px' }}>Correlation Strength</Description>
+                              <Body weight="medium">{(temporal.correlation_strength * 100).toFixed(0)}%</Body>
+                            </div>
+                          )}
+                          {temporal.yield_impact !== 0 && (
+                            <div>
+                              <Description style={{ fontSize: '11px' }}>Yield Impact</Description>
+                              <Body weight="medium" style={{ color: temporal.yield_impact < 0 ? '#C84018' : '#00684A' }}>
+                                {temporal.yield_impact > 0 ? '+' : ''}{temporal.yield_impact}%
+                              </Body>
+                            </div>
+                          )}
+                          {temporal.defect_rate_change !== 0 && (
+                            <div>
+                              <Description style={{ fontSize: '11px' }}>Defect Rate Change</Description>
+                              <Body weight="medium" style={{ color: temporal.defect_rate_change > 0 ? '#C84018' : '#00684A' }}>
+                                {temporal.defect_rate_change > 0 ? '+' : ''}{temporal.defect_rate_change}%
+                              </Body>
+                            </div>
+                          )}
+                          {temporal.time_lag_hours && (
+                            <div>
+                              <Description style={{ fontSize: '11px' }}>Time Lag</Description>
+                              <Body weight="medium">{temporal.time_lag_hours}h</Body>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Equipment Health */}
+                    {equipment && (
+                      <div style={{ padding: '12px', backgroundColor: '#f9fbfa', borderRadius: '6px' }}>
+                        <Body weight="medium" style={{ marginBottom: '8px', fontSize: '13px' }}>Equipment Health</Body>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px', fontSize: '12px' }}>
+                          {equipment.equipment_health_score !== undefined && equipment.equipment_health_score > 0 && (
+                            <div>
+                              <Description style={{ fontSize: '11px' }}>Health Score</Description>
+                              <Body weight="medium" style={{ color: equipment.equipment_health_score > 0.8 ? '#00684A' : equipment.equipment_health_score > 0.6 ? '#FFB000' : '#C84018' }}>
+                                {(equipment.equipment_health_score * 100).toFixed(0)}%
+                              </Body>
+                            </div>
+                          )}
+                          {equipment.utilization_rate !== undefined && equipment.utilization_rate > 0 && (
+                            <div>
+                              <Description style={{ fontSize: '11px' }}>Utilization</Description>
+                              <Body weight="medium">{equipment.utilization_rate}%</Body>
+                            </div>
+                          )}
+                          {equipment.recent_anomalies !== undefined && (
+                            <div>
+                              <Description style={{ fontSize: '11px' }}>Recent Anomalies</Description>
+                              <Body weight="medium" style={{ color: equipment.recent_anomalies > 0 ? '#C84018' : '#00684A' }}>
+                                {equipment.recent_anomalies}
+                              </Body>
+                            </div>
+                          )}
+                          {equipment.maintenance_due !== undefined && (
+                            <div>
+                              <Description style={{ fontSize: '11px' }}>Maintenance Due</Description>
+                              <Badge variant={equipment.maintenance_due ? 'red' : 'green'} style={{ fontSize: '10px' }}>
+                                {equipment.maintenance_due ? 'Yes' : 'No'}
+                              </Badge>
+                            </div>
+                          )}
+                        </div>
+                        {equipment.metric_trends && Object.keys(equipment.metric_trends).length > 0 && (
+                          <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #e0e4e7' }}>
+                            <Description style={{ fontSize: '11px', marginBottom: '4px' }}>Metric Trends</Description>
+                            {Object.entries(equipment.metric_trends).map(([metric, trend]) => (
+                              <div key={metric} style={{ fontSize: '11px', marginBottom: '2px' }}>
+                                <Body style={{ fontSize: '11px' }}>
+                                  {metric.replace(/_/g, ' ')}: {trend.trend}
+                                  {trend.rate_of_change && ` (${trend.rate_of_change > 0 ? '+' : ''}${trend.rate_of_change}/hr)`}
+                                </Body>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Material Analysis */}
+                    {(batch || recipe) && (
+                      <div style={{ padding: '12px', backgroundColor: '#f9fbfa', borderRadius: '6px' }}>
+                        <Body weight="medium" style={{ marginBottom: '8px', fontSize: '13px' }}>Material Analysis</Body>
+                        <div style={{ display: 'grid', gap: '8px', fontSize: '12px' }}>
+                          {batch?.suspect_batches && batch.suspect_batches.length > 0 && (
+                            <div>
+                              <Description style={{ fontSize: '11px' }}>Suspect Batches</Description>
+                              {batch.suspect_batches.slice(0, 3).map((b, idx) => (
+                                <Body key={idx} style={{ fontSize: '11px' }}>
+                                  {b.batch_id}: {b.yield}% yield ({b.wafer_count} wafers)
+                                </Body>
+                              ))}
+                            </div>
+                          )}
+                          {recipe?.worst_recipe && (
+                            <div>
+                              <Description style={{ fontSize: '11px' }}>Worst Recipe</Description>
+                              <Body style={{ fontSize: '11px' }}>
+                                {recipe.worst_recipe.recipe_id}: {recipe.worst_recipe.avg_yield}% yield
+                              </Body>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Spatial Patterns */}
+                    {spatial?.dominant_patterns && spatial.dominant_patterns.length > 0 && (
+                      <div style={{ padding: '12px', backgroundColor: '#f9fbfa', borderRadius: '6px' }}>
+                        <Body weight="medium" style={{ marginBottom: '8px', fontSize: '13px' }}>Spatial Patterns</Body>
+                        <div style={{ display: 'grid', gap: '4px', fontSize: '12px' }}>
+                          {spatial.dominant_patterns.slice(0, 3).map((pattern, idx) => (
+                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Body style={{ fontSize: '11px' }}>
+                                {pattern.pattern.charAt(0).toUpperCase() + pattern.pattern.slice(1)}
+                              </Body>
+                              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <Description style={{ fontSize: '10px' }}>{pattern.percentage.toFixed(1)}%</Description>
+                                <Description style={{ fontSize: '10px' }}>({pattern.frequency} wafers)</Description>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  )}
+                </Card>
+              )}
+
+              {/* NEW: Similar Defect Fingerprints */}
+              {similarWaferDefects.length > 0 && (
+                <Card style={{ marginBottom: '20px', padding: '20px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+                    <H3 style={{ margin: 0 }}>Similar Defect Fingerprints</H3>
+                    <Badge variant="purple">
+                      <Icon glyph="Bulb" size="small" /> Multimodal Search
+                    </Badge>
+                  </div>
+                  <Description style={{ marginBottom: '16px', fontSize: '12px' }}>
+                    Visually similar wafer defect patterns from voyage-multimodal-3 embeddings
+                  </Description>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px' }}>
+                    {similarWaferDefects.map((defect, idx) => (
+                      <Card key={idx} style={{ padding: '12px' }}>
+                        {defect.thumbnail_base64 && (
+                          <img
+                            src={`data:image/png;base64,${defect.thumbnail_base64}`}
+                            alt="Wafer defect"
+                            style={{ width: '100%', borderRadius: '4px', marginBottom: '8px' }}
+                          />
+                        )}
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                          <Body weight="medium" style={{ fontSize: '12px' }}>{defect.wafer_id}</Body>
+                          <Badge variant={defect.similarity_score > 0.8 ? 'green' : 'yellow'}>
+                            {Math.round(defect.similarity_score * 100)}%
+                          </Badge>
+                        </div>
+                        <Description style={{ fontSize: '11px' }}>
+                          {defect.pattern} • Yield: {defect.yield}%
+                        </Description>
+                      </Card>
+                    ))}
+                  </div>
+                </Card>
+              )}
+
+              {/* Section 4: Historical Context */}
+              {(highRelevanceCases.length > 0 || mediumRelevanceCases.length > 0) && (
+                <Card style={{ padding: '20px' }}>
+                  {highRelevanceCases.length > 0 ? (
+                    <>
+                      <H3 style={{ margin: 0, marginBottom: '16px' }}>
+                        Historical Context ({highRelevanceCases.length} high-confidence match{highRelevanceCases.length !== 1 ? 'es' : ''})
+                      </H3>
+                      <Description style={{ marginBottom: '16px', fontSize: '12px' }}>
+                        Similar cases from historical RCA reports and troubleshooting guides (≥70% relevance)
+                      </Description>
+                    </>
+                  ) : (
+                    <>
+                      <H3 style={{ margin: 0, marginBottom: '16px' }}>
+                        Historical Context ({mediumRelevanceCases.length} medium-confidence match{mediumRelevanceCases.length !== 1 ? 'es' : ''})
+                      </H3>
+                      <Description style={{ marginBottom: '16px', fontSize: '12px' }}>
+                        Similar cases from historical RCA reports and troubleshooting guides (50-70% relevance)
+                      </Description>
+                    </>
+                  )}
                   <div style={{ display: 'grid', gap: '15px' }}>
-                    {historicalCases.map((case_, index) => (
+                    {/* Remove duplicates by title - show high relevance if available, otherwise medium */}
+                    {Array.from(new Map((highRelevanceCases.length > 0 ? highRelevanceCases : mediumRelevanceCases).map(c => [c.title, c])).values()).map((case_, index) => (
                       <Card key={index} style={{ padding: '15px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                          <h5 style={{ margin: 0, color: '#1e2d3d' }}>{case_.title}</h5>
-                          <Badge variant="lightgray">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                              {/* Document Type Badge */}
+                              {case_.document_type === 'troubleshooting_guide' && (
+                                <Badge variant="blue">Troubleshooting Guide</Badge>
+                              )}
+                              {case_.document_type === 'rca_report' && (
+                                <Badge variant="green">RCA Report</Badge>
+                              )}
+                              {case_.document_type === 'best_practice' && (
+                                <Badge variant="purple">Best Practice</Badge>
+                              )}
+                              {case_.semantic_match && (
+                                <Badge variant="lightgray">Vector Search</Badge>
+                              )}
+                            </div>
+                            <h5 style={{ margin: 0, color: '#1e2d3d' }}>{case_.title}</h5>
+                          </div>
+                          <Badge variant={case_.relevance_score > 0.8 ? 'green' : case_.relevance_score > 0.6 ? 'yellow' : 'lightgray'}>
                             {Math.round((case_.relevance_score || 0) * 100)}% Match
                           </Badge>
                         </div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '12px' }}>
-                          <div>
-                            <span style={{ color: '#6b778c' }}>Resolution Time: </span>
-                            <span style={{ fontWeight: '600' }}>{case_.resolution_time}h</span>
-                          </div>
-                          <div>
-                            <span style={{ color: '#6b778c' }}>Defect Type: </span>
-                            <span>{case_.defect_type?.replace(/_/g, ' ')}</span>
-                          </div>
-                          {case_.root_cause && (
-                            <div>
-                              <span style={{ color: '#6b778c' }}>Root Cause: </span>
-                              <span>{case_.root_cause}</span>
+
+                        {/* Show content with more details */}
+                        <div style={{ marginTop: '8px' }}>
+                          {/* Always show resolution time and defect type if available */}
+                          {(case_.resolution_time !== undefined && case_.resolution_time > 0) || case_.defect_type || case_.root_cause ? (
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', fontSize: '12px', marginBottom: '8px', padding: '8px', backgroundColor: '#f9fbfa', borderRadius: '4px' }}>
+                              {case_.resolution_time !== undefined && case_.resolution_time > 0 && (
+                                <div>
+                                  <Description style={{ fontSize: '10px', marginBottom: '2px' }}>Resolution Time</Description>
+                                  <Body weight="medium" style={{ fontSize: '12px' }}>{case_.resolution_time}h</Body>
+                                </div>
+                              )}
+                              {case_.defect_type && (
+                                <div>
+                                  <Description style={{ fontSize: '10px', marginBottom: '2px' }}>Defect Type</Description>
+                                  <Body style={{ fontSize: '12px' }}>{case_.defect_type?.replace(/_/g, ' ')}</Body>
+                                </div>
+                              )}
+                              {case_.process_area && (
+                                <div>
+                                  <Description style={{ fontSize: '10px', marginBottom: '2px' }}>Process Area</Description>
+                                  <Body style={{ fontSize: '12px' }}>{case_.process_area}</Body>
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+
+                          {/* Root cause (if available) */}
+                          {case_.root_cause && case_.root_cause !== 'Root cause not specified' && (
+                            <div style={{ padding: '8px', backgroundColor: '#e8f5e9', borderRadius: '4px', border: '1px solid #c8e6c9', marginBottom: '8px' }}>
+                              <Description style={{ fontSize: '10px', marginBottom: '4px', color: '#2e7d32' }}>Root Cause</Description>
+                              <Body style={{ fontSize: '12px', color: '#1e2d3d' }}>{case_.root_cause}</Body>
+                            </div>
+                          )}
+
+                          {/* Troubleshooting guide content */}
+                          {case_.document_type === 'troubleshooting_guide' && case_.content && (
+                            <div style={{ padding: '12px', backgroundColor: '#e3f2fd', borderRadius: '4px', border: '1px solid #90caf9', marginBottom: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                                <Icon glyph="InfoWithCircle" size="small" fill="#1565c0" />
+                                <Body weight="medium" style={{ fontSize: '12px', color: '#1565c0' }}>
+                                  Troubleshooting Steps
+                                </Body>
+                              </div>
+                              <div style={{ fontSize: '11px', color: '#1e2d3d', whiteSpace: 'pre-wrap', lineHeight: '1.6', maxHeight: '300px', overflowY: 'auto' }}>
+                                {case_.content}
+                              </div>
+                              {case_.metadata?.estimated_mttr_hours && (
+                                <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid #90caf9' }}>
+                                  <Description style={{ fontSize: '10px', marginBottom: '2px' }}>Estimated MTTR</Description>
+                                  <Body style={{ fontSize: '12px', color: '#1565c0' }}>{case_.metadata.estimated_mttr_hours} hours</Body>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Show if no meaningful data is available */}
+                          {!case_.resolution_time && !case_.defect_type && !case_.root_cause && case_.document_type === 'rca_report' && (
+                            <div style={{ padding: '8px', backgroundColor: '#f9fbfa', borderRadius: '4px' }}>
+                              <Description style={{ fontSize: '11px' }}>Limited details available for this case</Description>
                             </div>
                           )}
                         </div>
                       </Card>
                     ))}
                   </div>
-                </div>
-              )}
-            </div>
-          </Tab>
-
-          <Tab name="Correlation Analysis">
-            <div className={styles.tabContent}>
-              {/* Process Context Correlation */}
-              {correlationData.correlations?.process_context && (
-                <Card className={styles.card}>
-                  <div className={styles.featureHeader}>
-                    <H3 className={styles.sectionTitle}>Process Context Analysis</H3>
-                    <Badge variant="green">
-                      <Icon glyph="Database" size="small" /> MongoDB $lookup
-                    </Badge>
-                  </div>
-
-                  {correlationData.correlations.process_context.problematic_materials?.length > 0 && (
-                    <div style={{ marginBottom: '20px' }}>
-                      <h4 style={{ color: '#DC382D', marginBottom: '10px' }}>⚠️ Problematic Materials Detected</h4>
-                      {correlationData.correlations.process_context.problematic_materials.map((material, index) => (
-                        <div key={index} style={{
-                          background: '#ffebee',
-                          border: '1px solid #ef5350',
-                          borderRadius: '8px',
-                          padding: '15px',
-                          marginBottom: '10px'
-                        }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                            <span style={{ fontWeight: '600' }}>
-                              {material.type?.replace(/_/g, ' ').toUpperCase()}: {material.id}
-                            </span>
-                            <Badge variant="red">PROBLEMATIC</Badge>
-                          </div>
-
-                          {material.issues?.map((issue, issueIndex) => (
-                            <div key={issueIndex} style={{ marginBottom: '5px' }}>
-                              <div style={{ color: '#c62828', fontWeight: '500' }}>
-                                {issue.description}
-                              </div>
-                              <div style={{ fontSize: '12px', color: '#6b778c' }}>
-                                Severity: {issue.severity} | Date: {new Date(issue.date).toLocaleDateString()}
-                              </div>
-                            </div>
-                          ))}
-
-                          {material.details && (
-                            <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px solid #ffcdd2' }}>
-                              <div style={{ fontSize: '12px' }}>
-                                <strong>QC Status:</strong> {material.details.qc_status} |
-                                <strong> Large Particle Count:</strong> {material.details.large_particle_count} |
-                                <strong> Manufacturer:</strong> {material.details.manufacturer}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {correlationData.correlations.process_context.correlation_found && (
-                    <div style={{ background: '#e8f5e9', border: '1px solid #4caf50', borderRadius: '8px', padding: '15px' }}>
-                      <div style={{ fontWeight: '600', marginBottom: '5px' }}>
-                        Correlation Found with Confidence: {Math.round((correlationData.correlations.process_context.confidence || 0) * 100)}%
-                      </div>
-                    </div>
-                  )}
-                </Card>
-              )}
-
-              {/* Equipment Correlation */}
-              {correlationData.correlations?.equipment && (
-                <Card style={{ marginBottom: '20px', padding: '20px' }}>
-                  <h3 style={{ marginTop: 0, marginBottom: '15px', color: '#1e2d3d' }}>Equipment Analysis</h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px' }}>
-                    <div>
-                      <span style={{ color: '#6b778c', fontSize: '12px' }}>Utilization Rate: </span>
-                      <span style={{ fontWeight: '600' }}>{correlationData.correlations.equipment.utilization_rate}%</span>
-                    </div>
-                    <div>
-                      <span style={{ color: '#6b778c', fontSize: '12px' }}>Recent Anomalies: </span>
-                      <span style={{ fontWeight: '600', color: correlationData.correlations.equipment.recent_anomalies > 0 ? '#DC382D' : '#00684a' }}>
-                        {correlationData.correlations.equipment.recent_anomalies}
-                      </span>
-                    </div>
-                    <div>
-                      <span style={{ color: '#6b778c', fontSize: '12px' }}>Maintenance Due: </span>
-                      <span style={{ fontWeight: '600', color: correlationData.correlations.equipment.maintenance_due ? '#DC382D' : '#00684a' }}>
-                        {correlationData.correlations.equipment.maintenance_due ? 'Yes' : 'No'}
-                      </span>
-                    </div>
-                    <div>
-                      <span style={{ color: '#6b778c', fontSize: '12px' }}>Data Points Analyzed: </span>
-                      <span style={{ fontWeight: '600' }}>{correlationData.correlations.equipment.data_points}</span>
-                    </div>
-                  </div>
-                </Card>
-              )}
-
-              {/* Temporal Correlation */}
-              {correlationData.correlations?.temporal && (
-                <Card style={{ marginBottom: '20px', padding: '20px' }}>
-                  <h3 style={{ marginTop: 0, marginBottom: '15px', color: '#1e2d3d' }}>Temporal Analysis</h3>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px' }}>
-                    <div>
-                      <span style={{ color: '#6b778c', fontSize: '12px' }}>Correlation Strength: </span>
-                      <span style={{ fontWeight: '600' }}>{(correlationData.correlations.temporal.correlation_strength || 0).toFixed(2)}</span>
-                    </div>
-                    <div>
-                      <span style={{ color: '#6b778c', fontSize: '12px' }}>Yield Impact: </span>
-                      <span style={{ fontWeight: '600' }}>{correlationData.correlations.temporal.yield_impact}%</span>
-                    </div>
-                    <div>
-                      <span style={{ color: '#6b778c', fontSize: '12px' }}>Defect Rate Change: </span>
-                      <span style={{ fontWeight: '600' }}>{correlationData.correlations.temporal.defect_rate_change}%</span>
-                    </div>
-                    {correlationData.correlations.temporal.time_lag_hours && (
-                      <div>
-                        <span style={{ color: '#6b778c', fontSize: '12px' }}>Time Lag: </span>
-                        <span style={{ fontWeight: '600' }}>{correlationData.correlations.temporal.time_lag_hours}h</span>
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              )}
-
-              {/* Insights */}
-              {correlationData.insights && correlationData.insights.length > 0 && (
-                <Card style={{ padding: '20px' }}>
-                  <h3 style={{ marginTop: 0, marginBottom: '15px', color: '#1e2d3d' }}>Key Insights</h3>
-                  <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                    {correlationData.insights.map((insight, index) => (
-                      <li key={index} style={{ marginBottom: '8px', lineHeight: '1.5' }}>
-                        {insight}
-                      </li>
-                    ))}
-                  </ul>
-                  {correlationData.confidence_score && (
-                    <div style={{ marginTop: '15px', paddingTop: '15px', borderTop: '1px solid #e0e4e7' }}>
-                      <span style={{ color: '#6b778c', fontSize: '12px' }}>Overall Confidence Score: </span>
-                      <Badge variant={correlationData.confidence_score > 0.5 ? 'green' : 'yellow'}>
-                        {Math.round(correlationData.confidence_score * 100)}%
-                      </Badge>
-                    </div>
-                  )}
                 </Card>
               )}
             </div>
           </Tab>
-
 
           <Tab name="Actions">
             <div style={{ padding: '20px' }}>

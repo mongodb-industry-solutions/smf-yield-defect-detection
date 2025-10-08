@@ -117,7 +117,13 @@ class WaferGenerator:
         )
 
         # Calculate inspection timestamp (simulating 2-4 hour delay from excursion)
-        inspection_time = datetime.now()
+        # Use the excursion timestamp, not current time
+        delay_hours = np.random.uniform(2, 4)  # Realistic inspection delay
+        if isinstance(timestamp, str):
+            excursion_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+        else:
+            excursion_time = timestamp
+        inspection_time = excursion_time + timedelta(hours=delay_hours)
 
         # Determine lot ID (matching existing format)
         lot_id = f"LOT_2025_{(wafer_count // 25 + 1):03d}"  # 25 wafers per lot

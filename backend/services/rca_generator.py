@@ -210,29 +210,37 @@ class RCAGenerator:
         """Generate RCA analysis for a given alert
         Note: Method name kept as generate_rca_hints for backward compatibility"""
         self.logger.info(f"Generating RCA analysis for alert {alert_id}")
-        
+
         # Get alert and correlation analysis
         alert = await self.alerts_collection.find_one({"_id": ObjectId(alert_id)})
         if not alert:
             raise ValueError(f"Alert {alert_id} not found")
-        
+
         correlation_analysis = alert.get("correlation_analysis", {})
-        
+
         # Identify applicable RCA patterns
         applicable_patterns = await self._identify_patterns(alert, correlation_analysis)
-        
+
         # Search historical knowledge
         similar_cases = await self._search_similar_cases(alert)
-        
+
+        # NEW: Search for similar wafer defects (visual pattern matching)
+        similar_wafers = await self._search_similar_wafers(alert, correlation_analysis)
+
         # Generate recommendations
         recommendations = self._generate_recommendations(
-            applicable_patterns, 
+            applicable_patterns,
             similar_cases,
-            correlation_analysis
+            correlation_analysis,
+            similar_wafers  # Pass similar wafers to recommendations
         )
-        
-        # Calculate confidence scores
-        overall_confidence = self._calculate_overall_confidence(recommendations)
+
+        # Calculate confidence scores (coordinated with correlation confidence)
+        correlation_confidence = correlation_analysis.get("confidence_score", 0.5)
+        overall_confidence = self._calculate_overall_confidence(
+            recommendations,
+            correlation_confidence
+        )
 
         # Prepare RCA analysis
         rca_analysis = {
@@ -241,6 +249,7 @@ class RCAGenerator:
             "identified_patterns": applicable_patterns,
             "recommendations": recommendations,
             "similar_historical_cases": similar_cases,
+            "similar_wafer_defects": similar_wafers if similar_wafers else [],  # NEW: Add similar wafers
             "confidence_score": overall_confidence,
             "suggested_priority": self._determine_priority(alert, recommendations)
         }
@@ -453,23 +462,48 @@ class RCAGenerator:
         # Search for similar cases
         cursor = self.historical_knowledge_collection.find(
             search_criteria
-        ).sort("metadata.resolution_time_hours", 1).limit(5)
-        
+        ).sort("metadata.resolution_time_hours", 1).limit(10)  # Get more for deduplication
+
         similar_cases = []
+        seen_titles = set()  # Track unique titles to prevent duplicates
+
         async for doc in cursor:
+            title = doc.get("title", "")
+
+            # Skip duplicates
+            if title in seen_titles:
+                continue
+
+            seen_titles.add(title)
+
+            # Get resolution time with proper handling
+            doc_type = doc.get("document_type", "rca_report")
+            resolution_time = doc.get("metadata", {}).get("resolution_time_hours", 0)
+
+            # Troubleshooting guides don't have resolution times
+            if doc_type == "troubleshooting_guide":
+                resolution_time = None
+            elif resolution_time == 0:
+                resolution_time = None
+
             # Extract relevant information
             case_summary = {
-                "title": doc.get("title", ""),
+                "title": title,
                 "root_cause": self._extract_root_cause(doc.get("content", "")),
-                "resolution_time": doc.get("metadata", {}).get("resolution_time_hours", 0),
+                "resolution_time": resolution_time,
                 "defect_type": doc.get("metadata", {}).get("defect_type", ""),
-                "relevance_score": self._calculate_relevance(doc, alert)
+                "relevance_score": self._calculate_relevance(doc, alert),
+                "document_type": doc_type
             }
             similar_cases.append(case_summary)
-        
+
+            # Stop once we have 5 unique cases
+            if len(similar_cases) >= 5:
+                break
+
         # Sort by relevance
         similar_cases.sort(key=lambda x: x["relevance_score"], reverse=True)
-        
+
         return similar_cases[:3]  # Return top 3 most relevant
     
     async def _search_similar_cases_semantic(self, alert: dict) -> List[Dict[str, Any]]:
@@ -542,13 +576,23 @@ class RCAGenerator:
             results = await self.semantic_search.search_knowledge_base(
                 query=query,
                 document_types=["rca_report", "troubleshooting_guide"],
-                limit=5,
+                limit=10,  # Get more candidates for deduplication
                 min_score=0.6
             )
-            
-            # Format results
+
+            # Format results with deduplication
             similar_cases = []
+            seen_titles = set()  # Track unique titles to prevent duplicates
+
             for result in results:
+                title = result.get("title", "")
+
+                # Skip duplicates (same document may have multiple embeddings)
+                if title in seen_titles:
+                    continue
+
+                seen_titles.add(title)
+
                 # Extract root cause from multiple possible locations
                 # Priority: findings.root_cause > metadata.root_cause > extract from content
                 root_cause = (
@@ -557,18 +601,36 @@ class RCAGenerator:
                     self._extract_root_cause(result.get("content", ""))  # Last resort: extract from content
                 )
 
+                # Get resolution time with proper handling for troubleshooting guides
+                doc_type = result.get("document_type", "rca_report")
+                resolution_time = result.get("metadata", {}).get("resolution_time_hours", 0)
+
+                # Troubleshooting guides don't have resolution times (they're not incidents)
+                if doc_type == "troubleshooting_guide":
+                    resolution_time = None
+                elif resolution_time == 0:
+                    # Zero resolution time is unrealistic for RCA reports
+                    resolution_time = None
+
                 case_summary = {
-                    "title": result.get("title", ""),
+                    "title": title,
                     "root_cause": root_cause,
-                    "resolution_time": result.get("metadata", {}).get("resolution_time_hours", 0),
+                    "resolution_time": resolution_time,
                     "defect_type": result.get("metadata", {}).get("defect_type", ""),
                     "relevance_score": result.get("score", 0),
-                    "document_type": result.get("document_type", "rca_report"),  # Track document type
-                    "semantic_match": True  # Flag to indicate semantic search was used
+                    "document_type": doc_type,
+                    "semantic_match": True,  # Flag to indicate semantic search was used
+                    "content": result.get("content", ""),  # Full content for troubleshooting guides
+                    "metadata": result.get("metadata", {}),  # Includes estimated_mttr_hours, process_area, etc.
+                    "process_area": result.get("metadata", {}).get("process_area", "")  # Extract for easy access
                 }
                 similar_cases.append(case_summary)
-            
-            self.logger.info(f"Found {len(similar_cases)} similar cases using semantic search")
+
+                # Stop once we have 5 unique cases
+                if len(similar_cases) >= 5:
+                    break
+
+            self.logger.info(f"Found {len(similar_cases)} unique similar cases using semantic search")
             return similar_cases[:3]  # Return top 3 most relevant
             
         except Exception as e:
@@ -577,7 +639,59 @@ class RCAGenerator:
             self.use_semantic_search = False
             # Fallback to traditional search logic
             return await self._search_similar_cases(alert)
-    
+
+    async def _search_similar_wafers(self, alert: dict, correlation_analysis: dict) -> List[Dict[str, Any]]:
+        """Search for wafers with similar defect patterns using vector similarity"""
+
+        # Only search if semantic search is available
+        if not self.use_semantic_search or not self.semantic_search:
+            return []
+
+        try:
+            # Get equipment and excursion info from alert
+            equipment_id = alert.get("equipment_id")
+            source_data = alert.get("source_data", {})
+            excursion_type = source_data.get("excursion_type", "")
+
+            # Try to get specific wafer from correlation analysis if available
+            wafer_id = None
+            affected_wafers = correlation_analysis.get("affected_wafers", {})
+            if affected_wafers.get("total", 0) > 0:
+                # Get the most recent affected wafer (likely to have defects)
+                # Check post_alert first (most recent), then during_alert
+                correlations = correlation_analysis.get("correlations", {})
+                # Extract wafer_id from temporal correlation if available
+                # For now, we proceed without specific wafer_id
+
+            # Map excursion type to defect pattern
+            pattern_map = {
+                "particle_spike": "clustered",
+                "particle_excursion": "clustered",
+                "rf_power_drift": "systematic",
+                "temperature_drift": "edge",
+                "pressure_drift": "random"
+            }
+            expected_pattern = pattern_map.get(excursion_type, "systematic")
+
+            # Search for similar defects by pattern and equipment
+            # Lower threshold to 0.6 to get more matches for visual comparison
+            similar_wafers = await self.semantic_search.find_similar_defects(
+                pattern=expected_pattern,
+                equipment=equipment_id,
+                limit=5,
+                min_score=0.6
+            )
+
+            if similar_wafers:
+                self.logger.info(f"Found {len(similar_wafers)} similar wafer defects (pattern: {expected_pattern})")
+                return similar_wafers
+
+            return []
+
+        except Exception as e:
+            self.logger.warning(f"Wafer similarity search failed: {e}")
+            return []
+
     def _extract_root_cause(self, content: str) -> str:
         """Extract root cause from RCA report content"""
         # Simple extraction - look for "Root Cause:" in content
@@ -614,13 +728,31 @@ class RCAGenerator:
         
         return round(relevance, 2)
     
-    def _generate_recommendations(self, patterns: List[Dict], 
+    def _generate_recommendations(self, patterns: List[Dict],
                                  similar_cases: List[Dict],
-                                 correlation_analysis: dict) -> List[Dict[str, Any]]:
+                                 correlation_analysis: dict,
+                                 similar_wafers: List[Dict] = None) -> List[Dict[str, Any]]:
         """Generate actionable recommendations"""
-        
+
         recommendations = []
-        
+
+        # NEW: Add visual pattern matching insights from similar wafers
+        if similar_wafers and len(similar_wafers) > 0:
+            top_wafer = similar_wafers[0]
+            if top_wafer.get("score", 0) > 0.75:  # Lowered from 0.85 to 0.75 for better match coverage
+                recommendations.insert(0, {  # Insert at top for visibility
+                    "title": f"⚡ Similar defect pattern detected ({top_wafer['score']:.0%} match)",
+                    "confidence": top_wafer["score"],
+                    "actions": [
+                        f"Defect DNA matches wafer {top_wafer['wafer_id']} (visual similarity: {top_wafer['score']:.0%})",
+                        f"Pattern: {top_wafer.get('defect_pattern', 'unknown')} with {top_wafer.get('yield_percentage', 0):.1f}% yield",
+                        f"Equipment: {top_wafer.get('equipment', 'N/A')}",
+                        "Review historical root cause for this defect pattern"
+                    ],
+                    "pattern": "visual_similarity",
+                    "priority": "urgent" if top_wafer["score"] > 0.90 else "high"  # Adjusted urgent threshold
+                })
+
         # Generate recommendations from identified patterns
         for pattern in patterns:
             for cause in pattern.get("probable_causes", [])[:2]:  # Top 2 causes per pattern
@@ -632,7 +764,7 @@ class RCAGenerator:
                     "priority": self._calculate_action_priority(cause, correlation_analysis)
                 }
                 recommendations.append(recommendation)
-        
+
         # Add insights from similar cases
         if similar_cases and similar_cases[0]["relevance_score"] > 0.5:
             top_case = similar_cases[0]
@@ -690,26 +822,44 @@ class RCAGenerator:
         else:
             return "low"
     
-    def _calculate_overall_confidence(self, recommendations: List[Dict]) -> float:
-        """Calculate overall confidence in RCA hints"""
-        
+    def _calculate_overall_confidence(self, recommendations: List[Dict],
+                                       correlation_confidence: float = 0.5) -> float:
+        """Calculate overall confidence in RCA hints
+
+        Ensures RCA confidence is coordinated with correlation confidence:
+        - RCA confidence should be within ±0.15 of correlation confidence
+        - This prevents contradictory scoring (e.g., 0.15 correlation vs 0.728 RCA)
+        - Maintains consistent confidence across the analysis pipeline
+        """
+
         if not recommendations:
-            return 0.0
-        
+            # If no recommendations, RCA confidence should be lower than correlation
+            return round(max(0.0, correlation_confidence - 0.20), 3)
+
         # Weighted average of top recommendations
         weights = [0.4, 0.3, 0.2, 0.1, 0.0]  # Weights for top 5
         total_confidence = 0.0
         total_weight = 0.0
-        
+
         for i, rec in enumerate(recommendations[:5]):
             weight = weights[i] if i < len(weights) else 0.0
             total_confidence += rec["confidence"] * weight
             total_weight += weight
-        
+
         if total_weight > 0:
-            return round(total_confidence / total_weight, 3)
-        
-        return 0.0
+            raw_confidence = total_confidence / total_weight
+        else:
+            raw_confidence = 0.5
+
+        # Coordinate with correlation confidence (keep within ±0.20 for flexibility)
+        # This ensures consistency: strong correlation = strong RCA, weak correlation = weak RCA
+        # Using ±0.20 instead of ±0.15 to allow for RCA's additional insights
+        min_confidence = max(0.0, correlation_confidence - 0.20)
+        max_confidence = min(1.0, correlation_confidence + 0.20)
+
+        coordinated_confidence = max(min_confidence, min(raw_confidence, max_confidence))
+
+        return round(coordinated_confidence, 3)
     
     def _determine_priority(self, alert: dict, recommendations: List[Dict]) -> str:
         """Determine overall priority for the alert"""

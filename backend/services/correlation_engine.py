@@ -47,19 +47,21 @@ class CorrelationEngine:
             raise ValueError(f"Alert {alert_id} not found")
         
         # Define time windows for analysis
-        alert_time = alert['timestamp']
+        # Use source_data timestamp (actual excursion time) for correlation
+        # Wafers are inspected 2-4 hours AFTER excursion, so we need to look forward in time
+        alert_time = alert.get('source_data', {}).get('timestamp') or alert['timestamp']
         equipment_id = alert['equipment_id']
-        
-        # Time windows: before alert, during alert, after alert
+
+        # Time windows: before excursion, during excursion, after excursion (when inspection happens)
         windows = {
             "pre_alert": (alert_time - timedelta(hours=8), alert_time - timedelta(hours=1)),
             "alert_window": (alert_time - timedelta(hours=1), alert_time + timedelta(hours=2)),
-            "post_alert": (alert_time + timedelta(hours=2), alert_time + timedelta(hours=8))
+            "post_alert": (alert_time + timedelta(hours=2), alert_time + timedelta(hours=8))  # Captures inspection delay
         }
         
         # Find affected wafers
         affected_wafers = await self.find_affected_wafers(equipment_id, windows)
-        
+
         # Perform various correlation analyses
         correlations = {
             "temporal": await self.temporal_correlation(alert, affected_wafers, windows),
@@ -67,15 +69,47 @@ class CorrelationEngine:
             "recipe": await self.recipe_correlation(affected_wafers),
             "spatial": await self.spatial_correlation(affected_wafers),
             "equipment": await self.equipment_correlation(equipment_id, alert_time),
-            "process_context": await self.process_context_correlation(alert)  # New correlation
+            "process_context": await self.process_context_correlation(alert)
         }
         
+        # FIX: Map problematic slurry batches from process_context to batch.suspect_batches
+        # This ensures problematic materials are surfaced in suspect_batches for UI/dashboard
+        problematic_materials = correlations.get("process_context", {}).get("problematic_materials", [])
+        if problematic_materials:
+            # Extract slurry batches from problematic materials
+            suspect_batches_from_materials = [
+                {
+                    "batch_id": mat["id"],
+                    "type": mat["type"],
+                    "confidence": 0.8 if mat.get("is_problematic") else 0.5,
+                    "issues": mat.get("issues", []),
+                    "is_problematic": mat.get("is_problematic", False),
+                    "source": "process_context"  # Mark source
+                }
+                for mat in problematic_materials
+                if mat.get("is_problematic") and mat.get("type") == "slurry_batch"
+            ]
+
+            # Merge with existing suspect_batches (avoid duplicates)
+            existing_batches = correlations.get("batch", {}).get("suspect_batches", [])
+            existing_batch_ids = {b.get("batch_id") for b in existing_batches}
+
+            # Add problematic batches that aren't already in suspect_batches
+            for batch in suspect_batches_from_materials:
+                if batch["batch_id"] not in existing_batch_ids:
+                    existing_batches.insert(0, batch)  # Insert at beginning for visibility
+
+            # Update correlations
+            if "batch" not in correlations:
+                correlations["batch"] = {}
+            correlations["batch"]["suspect_batches"] = existing_batches
+
         # Calculate overall confidence score
         confidence_score = self.calculate_confidence(correlations)
-        
+
         # Generate insights
         insights = self.generate_insights(correlations)
-        
+
         # Prepare result
         result = {
             "alert_id": alert_id,
@@ -113,13 +147,17 @@ class CorrelationEngine:
         }
         
         for window_name, (start_time, end_time) in windows.items():
+            # Convert datetime to ISO string format for comparison (wafer timestamps are strings)
+            start_time_str = start_time.isoformat() + "Z" if hasattr(start_time, 'isoformat') else start_time
+            end_time_str = end_time.isoformat() + "Z" if hasattr(end_time, 'isoformat') else end_time
+
             pipeline = [
                 {
                     '$match': {
-                        'process_context.equipment_used': equipment_id,
+                        'process_context.equipment_used': {'$in': [equipment_id]},  # Fixed: Array field requires $in operator
                         'inspection_timestamp': {
-                            '$gte': start_time,
-                            '$lte': end_time
+                            '$gte': start_time_str,  # Fixed: Compare strings to strings
+                            '$lte': end_time_str
                         }
                     }
                 },
@@ -185,11 +223,18 @@ class CorrelationEngine:
         
         # Calculate time lag to first significant defect
         time_lag_hours = None
-        alert_time = alert['timestamp']
-        
+        alert_time = alert.get('source_data', {}).get('timestamp') or alert['timestamp']
+
         for wafer in affected_wafers['alert_window'] + affected_wafers['post_alert']:
             if wafer['defect_summary']['yield_percentage'] < baseline_yield - 5:  # 5% threshold
-                time_lag_hours = (wafer['inspection_timestamp'] - alert_time).total_seconds() / 3600
+                # Convert string timestamp to datetime for comparison
+                wafer_time_str = wafer['inspection_timestamp']
+                wafer_time = datetime.fromisoformat(wafer_time_str.replace('Z', '+00:00'))
+                # Make alert_time timezone aware if needed
+                if alert_time.tzinfo is None:
+                    from datetime import timezone
+                    alert_time = alert_time.replace(tzinfo=timezone.utc)
+                time_lag_hours = (wafer_time - alert_time).total_seconds() / 3600
                 break
         
         # Calculate correlation strength (0-1 scale)
@@ -205,7 +250,7 @@ class CorrelationEngine:
     
     async def batch_correlation(self, affected_wafers: Dict[str, List]) -> Dict[str, Any]:
         """Analyze correlation with material batches"""
-        
+
         all_wafers = affected_wafers['all']
         if not all_wafers:
             return {"suspect_batches": [], "batch_impact": {}}
@@ -271,7 +316,7 @@ class CorrelationEngine:
                     "yield": info["avg_yield"],
                     "wafer_count": info["wafer_count"],
                     "dominant_pattern": info["dominant_pattern"],
-                    "is_problematic": info.get("is_problematic", False)  # Include problematic flag
+                    "is_problematic": info.get("is_problematic", False)
                 }
                 for batch_id, info in sorted_batches[:3]  # Top 3 worst batches
             ]
@@ -579,27 +624,75 @@ class CorrelationEngine:
         }
     
     def calculate_confidence(self, correlations: Dict[str, Any]) -> float:
-        """Calculate overall confidence score for the correlation analysis"""
+        """Calculate overall confidence score for the correlation analysis
 
-        weights = {
-            "temporal": 0.30,
-            "batch": 0.20,
-            "spatial": 0.15,
-            "recipe": 0.10,
-            "equipment": 0.10,
-            "process_context": 0.15  # New weight for process context
-        }
+        Enhanced algorithm that properly values strong evidence:
+        - Base score starts at 0.30 (30% baseline)
+        - Add confidence for each type of evidence found
+        - Cap at 0.85 to leave room for uncertainty
+        """
 
-        scores = {
-            "temporal": correlations["temporal"].get("correlation_strength", 0),
-            "batch": min(1.0, len(correlations["batch"].get("suspect_batches", [])) / 3),
-            "spatial": min(1.0, len(correlations["spatial"].get("dominant_patterns", [])) / 3),
-            "recipe": 0.5 if correlations["recipe"].get("worst_recipe") else 0,
-            "equipment": min(1.0, correlations["equipment"].get("recent_anomalies", 0) / 10),
-            "process_context": correlations.get("process_context", {}).get("confidence", 0)  # Process context score
-        }
+        base_score = 0.30  # Start with 30% baseline confidence
 
-        confidence = sum(scores[key] * weights[key] for key in weights)
+        # Add confidence for temporal correlation (strong predictor)
+        temporal = correlations.get("temporal", {})
+        if temporal.get("correlation_strength", 0) > 0.5:
+            base_score += 0.15
+        elif temporal.get("correlation_strength", 0) > 0.3:
+            base_score += 0.08
+
+        # Add confidence for problematic materials (highest value indicator)
+        process_context = correlations.get("process_context", {})
+        problematic_materials = process_context.get("problematic_materials", [])
+        if problematic_materials:
+            # Strong boost for known problematic materials
+            base_score += 0.25
+            # Additional boost for multiple problematic materials
+            if len(problematic_materials) > 1:
+                base_score += 0.10
+
+        # Add confidence for batch correlation
+        batch = correlations.get("batch", {})
+        suspect_batches = batch.get("suspect_batches", [])
+        if suspect_batches:
+            # Check if any suspect batch is marked as problematic
+            has_problematic_batch = any(b.get("is_problematic", False) for b in suspect_batches)
+            if has_problematic_batch:
+                base_score += 0.15  # Strong evidence
+            else:
+                base_score += 0.08  # Weak evidence (just low yield)
+
+        # Add confidence for equipment maintenance patterns
+        equipment = correlations.get("equipment", {})
+        if equipment.get("maintenance_due", False):
+            base_score += 0.10
+
+        # Add confidence for multiple recent anomalies
+        recent_anomalies = equipment.get("recent_anomalies", 0)
+        if recent_anomalies > 5:
+            base_score += 0.12
+        elif recent_anomalies > 2:
+            base_score += 0.06
+
+        # Add confidence for dominant spatial patterns
+        spatial = correlations.get("spatial", {})
+        dominant_patterns = spatial.get("dominant_patterns", [])
+        if dominant_patterns:
+            # Strong pattern (>50% of wafers)
+            if dominant_patterns[0].get("percentage", 0) > 50:
+                base_score += 0.10
+            else:
+                base_score += 0.05
+
+        # Add confidence for yield impact
+        if temporal.get("yield_impact", 0) > 10:
+            base_score += 0.10
+        elif temporal.get("yield_impact", 0) > 5:
+            base_score += 0.05
+
+        # Cap at 0.85 (leave room for uncertainty)
+        confidence = min(0.85, base_score)
+
         return round(confidence, 3)
     
     def generate_insights(self, correlations: Dict[str, Any]) -> List[str]:
@@ -609,15 +702,17 @@ class CorrelationEngine:
         
         # Temporal insights
         temporal = correlations.get("temporal", {})
-        if temporal.get("yield_impact", 0) > 5:
+        yield_impact = temporal.get("yield_impact", 0)
+        if yield_impact > 5:
             insights.append(
-                f"Significant yield drop of {temporal['yield_impact']:.1f}% detected "
+                f"Significant yield drop of {yield_impact:.1f}% detected "
                 f"following the excursion event"
             )
         
-        if temporal.get("time_lag_hours") is not None:
+        time_lag_hours = temporal.get("time_lag_hours")
+        if time_lag_hours is not None:
             insights.append(
-                f"Defects appeared approximately {temporal['time_lag_hours']:.1f} hours "
+                f"Defects appeared approximately {time_lag_hours:.1f} hours "
                 f"after the sensor excursion"
             )
         
@@ -625,27 +720,32 @@ class CorrelationEngine:
         batch = correlations.get("batch", {})
         if batch.get("suspect_batches"):
             worst_batch = batch["suspect_batches"][0]
+            batch_yield = worst_batch.get('yield', 0)
             insights.append(
-                f"Slurry batch {worst_batch['batch_id']} shows poor performance "
-                f"with {worst_batch['yield']:.1f}% yield"
+                f"Slurry batch {worst_batch.get('batch_id', 'unknown')} shows poor performance "
+                f"with {batch_yield:.1f}% yield"
             )
         
         # Spatial insights
         spatial = correlations.get("spatial", {})
         if spatial.get("dominant_patterns"):
             pattern = spatial["dominant_patterns"][0]
+            pattern_name = pattern.get('pattern', 'unknown')
+            pattern_pct = pattern.get('percentage', 0)
             insights.append(
-                f"Dominant defect pattern is '{pattern['pattern']}' "
-                f"occurring in {pattern['percentage']:.1f}% of wafers"
+                f"Dominant defect pattern is '{pattern_name}' "
+                f"occurring in {pattern_pct:.1f}% of wafers"
             )
-        
+
         # Recipe insights
         recipe = correlations.get("recipe", {})
         if recipe.get("worst_recipe"):
             worst = recipe["worst_recipe"]
+            recipe_id = worst.get('recipe_id', 'unknown')
+            avg_yield = worst.get('avg_yield', 0)
             insights.append(
-                f"Recipe {worst['recipe_id']} associated with lower yields "
-                f"({worst['avg_yield']:.1f}%)"
+                f"Recipe {recipe_id} associated with lower yields "
+                f"({avg_yield:.1f}%)"
             )
         
         # Equipment insights

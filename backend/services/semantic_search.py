@@ -236,9 +236,9 @@ class SemanticSearchService:
                 }
             ]
             
-            # Add equipment filter if specified
+            # Add equipment filter if specified (wafers store equipment in array field)
             if equipment:
-                pipeline.insert(3, {"$match": {"equipment": equipment}})
+                pipeline.insert(3, {"$match": {"process_context.equipment_used": {"$in": [equipment]}}})
             
             # Exclude the reference wafer if searching by wafer_id
             if wafer_id:
@@ -254,15 +254,26 @@ class SemanticSearchService:
             # Format results
             formatted_results = []
             for doc in results:
+                # Extract equipment from array (get first if available)
+                equipment_array = doc.get("process_context", {}).get("equipment_used", [])
+                equipment_str = equipment_array[0] if equipment_array else "N/A"
+
+                # Get yield percentage from defect_summary
+                yield_pct = doc.get("defect_summary", {}).get("yield_percentage", 0)
+
+                # Get full thumbnail (don't truncate for frontend display)
+                thumbnail_base64 = doc.get("ink_map", {}).get("thumbnail_base64", "")
+
                 formatted_results.append({
                     "wafer_id": doc.get("wafer_id"),
                     "lot_id": doc.get("lot_id"),
-                    "defect_pattern": doc.get("defect_summary", {}).get("defect_pattern"),
-                    "equipment_used": doc.get("process_context", {}).get("equipment_used"),
+                    "pattern": doc.get("defect_summary", {}).get("defect_pattern"),  # Frontend expects "pattern"
+                    "equipment": equipment_str,
+                    "yield": yield_pct,  # Frontend expects "yield"
                     "inspection_timestamp": doc.get("inspection_timestamp"),
                     "defect_summary": doc.get("defect_summary"),
-                    "score": doc.get("score"),
-                    "thumbnail": doc.get("ink_map", {}).get("thumbnail_base64", "")[:100] + "..." if doc.get("ink_map", {}).get("thumbnail_base64") else None
+                    "similarity_score": doc.get("score"),  # Frontend expects "similarity_score"
+                    "thumbnail_base64": thumbnail_base64 if thumbnail_base64 else None  # Frontend expects "thumbnail_base64"
                 })
             
             logger.info(f"Defect similarity search returned {len(formatted_results)} results")
