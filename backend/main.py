@@ -30,6 +30,10 @@ from services.websocket_manager import get_websocket_manager, ConnectionType
 from services.wafer_generator import WaferGenerator
 from services.sensor_data_writer import SensorDataWriter
 
+# Import Multi-Agent System (Phase 3)
+from multi_agent import create_initial_state
+from multi_agent.workers import monitoring_agent_tool, investigation_agent_tool, rca_agent_tool
+
 import os
 from dotenv import load_dotenv
 import asyncio
@@ -66,6 +70,17 @@ DEMO_EXCURSION_PROBABILITY = float(os.getenv("DEMO_EXCURSION_PROBABILITY", "0.05
 demo_mode_active = False
 demo_task = None
 
+# Pattern-based demo state for realistic anomaly scenarios
+equipment_pattern_state = {}  # {equipment_id: {"pattern": "drift", "stage": 3, ...}}
+
+# Process context IDs cache (loaded from MongoDB)
+process_context_cache = {
+    "problematic_batches": [],
+    "normal_batches": [],
+    "recipes": [],
+    "loaded": False
+}
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -73,12 +88,226 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Feature flag for AI multi-agent system
+USE_AI_AGENTS = os.getenv("USE_AI_AGENTS", "true").lower() == "true"
+logger.info(f"🤖 AI Multi-Agent System: {'ENABLED' if USE_AI_AGENTS else 'DISABLED'}")
+
 # ============================================================================
 # Demo Mode Functions
 # ============================================================================
 
+async def load_process_context_ids():
+    """Load real process context IDs from MongoDB for demo metadata"""
+    global process_context_cache
+
+    if process_context_cache["loaded"]:
+        return process_context_cache
+
+    try:
+        async_client = AsyncIOMotorClient(MDB_URI)
+        async_db = async_client[MDB_DATABASE_NAME]
+
+        # Fetch problematic slurry batches
+        problematic_cursor = async_db.process_context.find({
+            "is_problematic": True,
+            "context_type": "slurry_batch"
+        })
+        process_context_cache["problematic_batches"] = [
+            doc["context_id"] async for doc in problematic_cursor
+        ]
+
+        # Fetch normal slurry batches
+        normal_cursor = async_db.process_context.find({
+            "is_problematic": False,
+            "context_type": "slurry_batch"
+        })
+        process_context_cache["normal_batches"] = [
+            doc["context_id"] async for doc in normal_cursor
+        ]
+
+        # Fetch recipe IDs
+        recipe_cursor = async_db.process_context.find({
+            "context_type": "recipe"
+        })
+        process_context_cache["recipes"] = [
+            doc["context_id"] async for doc in recipe_cursor
+        ]
+
+        process_context_cache["loaded"] = True
+        async_client.close()
+
+        logger.info(f"✅ Loaded process context: {len(process_context_cache['problematic_batches'])} problematic batches, "
+                   f"{len(process_context_cache['normal_batches'])} normal batches, "
+                   f"{len(process_context_cache['recipes'])} recipes")
+        logger.info(f"📋 Problematic batches: {process_context_cache['problematic_batches']}")
+        logger.info(f"📋 Normal batches (first 5): {process_context_cache['normal_batches'][:5]}")
+        logger.info(f"📋 Recipes: {process_context_cache['recipes']}")
+
+        return process_context_cache
+
+    except Exception as e:
+        logger.error(f"Failed to load process context IDs: {e}")
+        # Fallback to hardcoded values if MongoDB fails
+        process_context_cache["problematic_batches"] = ["SB_2025_021", "SB_2025_043", "SB_2025_045", "SB_2025_047", "SB_2025_048"]
+        process_context_cache["normal_batches"] = ["SB_2025_003", "SB_2025_005", "SB_2025_010", "SB_2025_011", "SB_2025_012"]
+        process_context_cache["recipes"] = ["RECIPE_01", "RECIPE_02", "RECIPE_03", "RECIPE_04", "RECIPE_05"]
+        process_context_cache["loaded"] = True
+        return process_context_cache
+
+def initialize_pattern_state():
+    """Initialize pattern state for realistic demo scenarios with industry-aligned patterns"""
+    global equipment_pattern_state
+    equipment_ids = ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "ETCH_02", "LITHO_01", "LITHO_02"]
+
+    for eq_id in equipment_ids:
+        equipment_pattern_state[eq_id] = {
+            "pattern": "normal",
+            "stage": 0,
+            "baseline_value": None,
+            "target_value": None,
+            "started_at": None,
+            "total_stages": 0
+        }
+
+    logger.info("Initialized pattern-based demo state for realistic anomaly scenarios")
+
+def should_create_pattern(equipment_id: str) -> bool:
+    """Decide if equipment should start a new pattern (5% chance per cycle)"""
+    state = equipment_pattern_state.get(equipment_id, {})
+
+    # Already in a pattern? Continue it
+    if state.get("pattern") != "normal":
+        return False
+
+    # 5% chance to start new pattern
+    return random.random() < 0.05
+
+def get_pattern_metrics(equipment_id: str, base_metrics: dict) -> tuple:
+    """
+    Generate metrics following realistic industry patterns for monitoring agent validation
+
+    Patterns based on industry research (NVIDIA NV-Tesseract, semiconductor fab operations):
+    - drift: Gradual increase (filter degradation, contamination buildup)
+    - spike: Sudden persistent issue (equipment malfunction)
+    - false_positive: Single spike returning to normal (sensor glitch, transient)
+    - oscillation: Recurring pattern (cyclic process issue)
+
+    Returns:
+        (metrics_dict, is_real_excursion_bool)
+    """
+    state = equipment_pattern_state.get(equipment_id, {})
+
+    # Initialize new pattern if needed
+    if state.get("pattern") == "normal" and should_create_pattern(equipment_id):
+        # Choose pattern type (aligned with monitoring agent detection capabilities)
+        pattern_type = random.choices(
+            ["drift", "spike", "false_positive", "oscillation"],
+            weights=[30, 25, 35, 10],  # False positive most common (35%) to showcase filtering
+            k=1
+        )[0]
+
+        state["pattern"] = pattern_type
+        state["stage"] = 0
+        state["baseline_value"] = base_metrics["particle_count"]
+        state["started_at"] = datetime.now(timezone.utc)
+
+        if pattern_type == "drift":
+            state["target_value"] = random.randint(1200, 2000)
+            state["total_stages"] = random.randint(5, 8)  # 5-8 readings to reach target
+            logger.info(f"📈 {equipment_id}: Starting DRIFT pattern ({state['baseline_value']} → {state['target_value']} over {state['total_stages']} readings)")
+        elif pattern_type == "spike":
+            state["target_value"] = random.randint(1500, 3000)
+            state["total_stages"] = random.randint(3, 5)  # Persist 3-5 readings
+            logger.info(f"⚡ {equipment_id}: Starting SPIKE pattern (value: {state['target_value']}, persists: {state['total_stages']} readings)")
+        elif pattern_type == "false_positive":
+            state["target_value"] = random.randint(1050, 1200)  # Just over threshold
+            state["total_stages"] = 1  # Single spike only
+            logger.info(f"🔔 {equipment_id}: Starting FALSE_POSITIVE pattern (spike to {state['target_value']}, immediate return)")
+        elif pattern_type == "oscillation":
+            state["target_value"] = random.randint(1100, 1500)
+            state["total_stages"] = random.randint(6, 10)
+            logger.info(f"🌊 {equipment_id}: Starting OSCILLATION pattern (amplitude: {state['target_value']}, cycles: {state['total_stages']})")
+
+    # Apply current pattern
+    pattern = state.get("pattern", "normal")
+    metrics = base_metrics.copy()
+    is_real_excursion = False
+
+    if pattern == "drift":
+        # Gradual linear increase (realistic filter degradation or contamination buildup)
+        stage = state["stage"]
+        total = state["total_stages"]
+        baseline = state["baseline_value"]
+        target = state["target_value"]
+
+        current_value = baseline + (target - baseline) * (stage / total)
+        metrics["particle_count"] = int(current_value)
+
+        # Only trigger alert on FIRST reading that exceeds threshold (one pattern = one alert)
+        is_real_excursion = (current_value > 1000 and stage == 0)
+
+        state["stage"] += 1
+
+        if state["stage"] >= total:
+            state["pattern"] = "normal"
+            state["stage"] = 0
+            logger.info(f"✅ {equipment_id}: DRIFT pattern completed ({baseline} → {target})")
+
+    elif pattern == "spike":
+        # Sudden spike that persists (equipment malfunction)
+        if state["stage"] == 0:
+            metrics["particle_count"] = state["target_value"]
+        else:
+            metrics["particle_count"] = state["target_value"] + random.randint(-50, 50)
+
+        # Only trigger alert on FIRST reading of spike (one pattern = one alert)
+        is_real_excursion = (state["stage"] == 0)
+
+        state["stage"] += 1
+
+        if state["stage"] >= state["total_stages"]:
+            state["pattern"] = "normal"
+            state["stage"] = 0
+            logger.info(f"✅ {equipment_id}: SPIKE pattern completed")
+
+    elif pattern == "false_positive":
+        # Single spike then immediate return (sensor glitch - LLM should filter this!)
+        if state["stage"] == 0:
+            metrics["particle_count"] = state["target_value"]
+            logger.info(f"🔔 {equipment_id}: FALSE_POSITIVE spike at {state['target_value']} (monitoring agent should filter)")
+            state["stage"] += 1
+        else:
+            # Return to normal immediately
+            metrics["particle_count"] = state["baseline_value"] + random.randint(-20, 20)
+            state["pattern"] = "normal"
+            state["stage"] = 0
+            is_real_excursion = False
+            logger.info(f"✅ {equipment_id}: FALSE_POSITIVE resolved (returned to normal)")
+
+    elif pattern == "oscillation":
+        # Cyclic up/down pattern (recurring process issue)
+        import math
+        stage = state["stage"]
+        baseline = state["baseline_value"]
+        amplitude = state["target_value"] - baseline
+
+        current_value = baseline + (amplitude * abs(math.sin(stage * math.pi / 2)))
+        metrics["particle_count"] = int(current_value)
+
+        # Only trigger alert on FIRST reading that exceeds threshold (one pattern = one alert)
+        is_real_excursion = (current_value > 1000 and stage == 0)
+
+        state["stage"] += 1
+
+        if state["stage"] >= state["total_stages"]:
+            state["pattern"] = "normal"
+            state["stage"] = 0
+            logger.info(f"✅ {equipment_id}: OSCILLATION pattern completed")
+
+    return metrics, is_real_excursion
+
 def generate_demo_metrics(equipment_id: str, is_excursion: bool = False) -> dict:
-    """Generate realistic sensor metrics for demo mode"""
+    """Generate realistic sensor metrics with pattern-based anomalies for monitoring agent validation"""
     base_metrics = {
         "CMP_TOOL": {
             "particle_count": 450 + random.randint(-50, 50),  # [400-500] - realistic clean room range
@@ -110,17 +339,19 @@ def generate_demo_metrics(equipment_id: str, is_excursion: bool = False) -> dict
         equipment_type = "CMP_TOOL"
     metrics = base_metrics.get(equipment_type, base_metrics["CMP_TOOL"]).copy()
 
-    # Apply excursion if needed
-    if is_excursion:
-        # Use excursion types that match RCA pattern definitions
+    # Use pattern-based generation if pattern state exists
+    if equipment_id in equipment_pattern_state:
+        metrics, _ = get_pattern_metrics(equipment_id, metrics)
+    elif is_excursion:
+        # Fallback to old behavior if pattern state not initialized
         excursion_type = random.choice(["particle_excursion", "rf_power_drift", "temperature_drift"])
 
         if excursion_type == "particle_excursion":
-            metrics["particle_count"] = random.randint(1100, 4000)  # Full range from just above threshold to severe
+            metrics["particle_count"] = random.randint(1100, 4000)
         elif excursion_type == "rf_power_drift":
-            metrics["rf_power"] = metrics["rf_power"] + random.uniform(200, 400)  # Much larger drift for clear excursion
+            metrics["rf_power"] = metrics["rf_power"] + random.uniform(200, 400)
         elif excursion_type == "temperature_drift":
-            metrics["temperature"] = metrics["temperature"] + random.uniform(5, 10)  # Larger temp drift
+            metrics["temperature"] = metrics["temperature"] + random.uniform(5, 10)
 
     # Round values to reasonable precision
     metrics["particle_count"] = int(metrics["particle_count"])
@@ -137,32 +368,48 @@ def generate_demo_metrics(equipment_id: str, is_excursion: bool = False) -> dict
     return metrics
 
 def generate_demo_metadata(is_excursion: bool = False) -> dict:
-    """Generate realistic metadata for demo mode"""
+    """Generate realistic metadata using REAL process context IDs from MongoDB"""
+    global process_context_cache
+
     lot_number = random.randint(1, 50)
     wafer_number = random.randint(1, 25)
-    recipe_number = random.randint(1, 10)
 
-    # Use actual batch IDs that exist in database
-    # Problematic batches for excursions: SB_2025_021, SB_2025_043, SB_2025_045, SB_2025_047, SB_2025_048
-    # Normal batches: SB_2025_003, SB_2025_005, SB_2025_010, SB_2025_011, SB_2025_012, etc.
-
+    # Use REAL slurry batch IDs from process_context collection
     if is_excursion and random.random() < 0.7:  # 70% chance to use problematic batch during excursion
-        # Use problematic batches for excursions
-        problematic_batches = ["SB_2025_021", "SB_2025_043", "SB_2025_045", "SB_2025_047", "SB_2025_048"]
-        slurry_batch = random.choice(problematic_batches)
+        # Use real problematic batches from MongoDB
+        if process_context_cache["problematic_batches"]:
+            slurry_batch = random.choice(process_context_cache["problematic_batches"])
+        else:
+            # Fallback if not loaded yet
+            slurry_batch = "SB_2025_021"
     else:
-        # Use normal batches
-        normal_batches = ["SB_2025_003", "SB_2025_005", "SB_2025_010", "SB_2025_011", "SB_2025_012",
-                         "SB_2025_019", "SB_2025_024", "SB_2025_026", "SB_2025_027"]
-        slurry_batch = random.choice(normal_batches)
+        # Use real normal batches from MongoDB
+        if process_context_cache["normal_batches"]:
+            slurry_batch = random.choice(process_context_cache["normal_batches"])
+        else:
+            # Fallback if not loaded yet
+            slurry_batch = "SB_2025_003"
 
-    return {
+    # Use real recipe IDs from MongoDB
+    if process_context_cache["recipes"]:
+        recipe_id = random.choice(process_context_cache["recipes"])
+    else:
+        # Fallback if not loaded yet
+        recipe_id = f"RECIPE_{random.randint(1, 10):02d}"
+
+    metadata = {
         "lot_id": f"LOT_2025_{lot_number:03d}",
         "wafer_id": f"W_{lot_number:03d}_{wafer_number:02d}",
-        "recipe_id": f"RECIPE_{recipe_number:02d}",
+        "recipe_id": recipe_id,
         "slurry_batch": slurry_batch,
         "operator_id": f"OP_{random.randint(100, 200)}"
     }
+
+    # Log when problematic batch is used
+    if is_excursion and slurry_batch in process_context_cache.get("problematic_batches", []):
+        logger.info(f"🚨 Generated excursion metadata with PROBLEMATIC batch: {slurry_batch}")
+
+    return metadata
 
 async def demo_data_generator():
     """Generate normal sensor data with occasional anomalies - parallel for all equipment"""
@@ -184,9 +431,14 @@ async def demo_data_generator():
             excursion_count = 0
             particle_excursion_count = 0
 
+            # Pick at most ONE equipment to have excursion (prevents multiple simultaneous Bedrock calls)
+            excursion_equipment = None
+            if random.random() < DEMO_EXCURSION_PROBABILITY:
+                excursion_equipment = random.choice(equipment_ids)
+
             for equipment_id in equipment_ids:
-                # Determine if this equipment should have an excursion
-                is_excursion = random.random() < DEMO_EXCURSION_PROBABILITY
+                # Only the selected equipment gets excursion
+                is_excursion = (equipment_id == excursion_equipment)
                 if is_excursion:
                     excursion_count += 1
 
@@ -766,8 +1018,8 @@ async def get_alert_correlation(alert_id: str):
         if not alert:
             raise HTTPException(status_code=404, detail="Alert not found")
         
-        # Perform correlation analysis if not already done
-        if not alert.get("correlation_analysis"):
+        # Perform correlation analysis if not already done (skip if AI agents enabled)
+        if not alert.get("correlation_analysis") and not USE_AI_AGENTS:
             # Trigger async correlation analysis
             asyncio.create_task(run_alert_correlation(alert_id))
 
@@ -2405,6 +2657,49 @@ async def run_monitoring_loop():
                             # Determine severity based on excursion type and value
                             severity = determine_severity(excursion)
 
+                            # === AI MULTI-AGENT FILTERING (if enabled) ===
+                            should_create_alert = True
+                            monitoring_decision = None
+
+                            if USE_AI_AGENTS:
+                                try:
+                                    logger.info(f"🤖 Running AI Monitoring Agent for {equipment_id}")
+
+                                    # Create initial state for monitoring agent
+                                    temp_alert_id = str(ObjectId())
+                                    agent_state = create_initial_state(
+                                        alert_id=temp_alert_id,
+                                        equipment_id=equipment_id,
+                                        excursion_type=excursion_type,
+                                        severity=severity.value,
+                                        metrics=metrics,
+                                        metadata=sensor_data.get("metadata", {})
+                                    )
+
+                                    # Run monitoring agent (filters false positives)
+                                    agent_result = await monitoring_agent_tool(agent_state)
+                                    monitoring_decision = agent_result.get("monitoring_decision", {})
+
+                                    # Check agent's decision
+                                    should_create_alert = monitoring_decision.get("create_alert", True)
+
+                                    if not should_create_alert:
+                                        logger.info(f"🚫 Alert FILTERED by AI Agent: {monitoring_decision.get('reasoning')}")
+                                        logger.info(f"   Confidence: {monitoring_decision.get('confidence'):.2f}, Pattern: {monitoring_decision.get('pattern_detected')}")
+                                    else:
+                                        logger.info(f"✅ Alert APPROVED by AI Agent: {monitoring_decision.get('reasoning')}")
+                                        logger.info(f"   Confidence: {monitoring_decision.get('confidence'):.2f}, Pattern: {monitoring_decision.get('pattern_detected')}")
+
+                                except Exception as agent_error:
+                                    logger.error(f"⚠️ AI Agent error (fail-safe: creating alert): {agent_error}")
+                                    should_create_alert = True  # Fail-safe: create alert on error
+
+                            # Create alert only if not filtered
+                            if not should_create_alert:
+                                # Log filtered alert but don't create it
+                                logger.info(f"📊 Excursion detected but FILTERED: {excursion_type} on {equipment_id}")
+                                continue
+
                             # Create alert
                             alert_id = alert_manager.create_alert(
                                 alert_type=AlertType.EXCURSION,
@@ -2419,6 +2714,86 @@ async def run_monitoring_loop():
 
                             logger.info(f"🚨 Alert created: {alert_id} for {excursion_type} on {equipment_id}")
 
+                            # === RUN INVESTIGATION AGENT (if AI enabled) ===
+                            if USE_AI_AGENTS and should_create_alert:
+                                try:
+                                    # Small delay to ensure alert is committed to MongoDB
+                                    await asyncio.sleep(0.1)
+
+                                    logger.info(f"🔬 Running Investigation Agent for alert {alert_id}")
+
+                                    # Get the alert to extract MongoDB _id (same approach as run_alert_correlation)
+                                    alert_doc = alert_manager.get_alert_by_id(alert_id)
+                                    if not alert_doc:
+                                        logger.error(f"   ❌ Alert {alert_id} not found in DB after creation")
+                                        raise ValueError(f"Alert {alert_id} not found")
+
+                                    # Extract MongoDB _id (the actual ObjectId used by CorrelationEngine)
+                                    mongo_id = str(alert_doc["_id"]) if "_id" in alert_doc else alert_id
+                                    logger.info(f"   🔑 Using MongoDB _id: {mongo_id} (from alert {alert_id})")
+
+                                    # Update state with MongoDB _id for correlation engine
+                                    agent_state['alert_id'] = mongo_id
+
+                                    # Run investigation agent
+                                    investigation_result = await investigation_agent_tool(agent_state)
+
+                                    # Log investigation results
+                                    key_findings = investigation_result.get('key_findings', [])
+                                    logger.info(f"   ✅ Investigation complete: {len(key_findings)} key findings")
+
+                                    # Update alert with investigation results in MongoDB
+                                    if key_findings:
+                                        alert_manager.alerts_collection.update_one(
+                                            {"_id": ObjectId(mongo_id)},  # Use mongo_id, not alert_id!
+                                            {"$set": {
+                                                "ai_investigation": {
+                                                    "key_findings": key_findings,
+                                                    "summary": investigation_result.get('investigation_summary'),
+                                                    "correlation_confidence": investigation_result.get('correlation_results', {}).get('confidence_score', 0),
+                                                    "affected_wafers": investigation_result.get('correlation_results', {}).get('affected_wafers', {}).get('total', 0)
+                                                }
+                                            }}
+                                        )
+                                        logger.info(f"   💾 Investigation results saved to alert {alert_id} (MongoDB _id: {mongo_id})")
+
+                                    # === RUN RCA AGENT (nested in investigation success) ===
+                                    try:
+                                        logger.info(f"🔍 Running RCA Agent for alert {alert_id}")
+
+                                        # Update state with investigation results for RCA context
+                                        agent_state['investigation_summary'] = investigation_result.get('investigation_summary', '')
+                                        agent_state['key_findings'] = investigation_result.get('key_findings', [])
+                                        agent_state['correlation_results'] = investigation_result.get('correlation_results', {})
+
+                                        # Run RCA agent
+                                        rca_result = await rca_agent_tool(agent_state)
+
+                                        # Log RCA results
+                                        validated_causes = rca_result.get('validated_causes', [])
+                                        logger.info(f"   ✅ RCA complete: {len(validated_causes)} validated root causes")
+
+                                        # Update alert with RCA results in MongoDB
+                                        if validated_causes:
+                                            alert_manager.alerts_collection.update_one(
+                                                {"_id": ObjectId(mongo_id)},
+                                                {"$set": {
+                                                    "ai_rca": {
+                                                        "validated_causes": validated_causes,
+                                                        "validation": rca_result.get('rca_validation'),
+                                                        "recommendations": rca_result.get('rca_patterns', {}).get('recommendations', []),
+                                                        "confidence": rca_result.get('rca_patterns', {}).get('overall_confidence', 0)
+                                                    }
+                                                }}
+                                            )
+                                            logger.info(f"   💾 RCA results saved to alert {alert_id} (MongoDB _id: {mongo_id})")
+
+                                    except Exception as rca_error:
+                                        logger.error(f"⚠️ RCA Agent error: {rca_error}")
+
+                                except Exception as investigation_error:
+                                    logger.error(f"⚠️ Investigation Agent error: {investigation_error}")
+
                             # Notify WebSocket clients
                             await notify_websocket_clients({
                                 "type": "new_alert",
@@ -2430,11 +2805,13 @@ async def run_monitoring_loop():
                                 "timestamp": sensor_data.get("timestamp").isoformat() if hasattr(sensor_data.get("timestamp"), 'isoformat') else str(sensor_data.get("timestamp"))
                             })
 
-                            # Trigger correlation analysis for all alerts
-                            asyncio.create_task(run_alert_correlation(alert_id))
+                            # Trigger correlation analysis for all alerts (skip if AI agents enabled)
+                            if not USE_AI_AGENTS:
+                                asyncio.create_task(run_alert_correlation(alert_id))
 
-                            # Trigger RCA for critical alerts only
-                            asyncio.create_task(run_alert_rca(alert_id, severity))
+                            # Trigger RCA for critical alerts only (skip if AI agents enabled)
+                            if not USE_AI_AGENTS:
+                                asyncio.create_task(run_alert_rca(alert_id, severity))
 
                             # Schedule wafer defect generation (with delay to simulate inspection)
                             asyncio.create_task(generate_delayed_wafer_defect({
@@ -2443,7 +2820,8 @@ async def run_monitoring_loop():
                                 'excursion_type': excursion_type,
                                 'severity': severity.value,
                                 'timestamp': sensor_data.get('timestamp'),
-                                'metrics': metrics
+                                'metrics': metrics,
+                                'metadata': sensor_data.get('metadata', {})  # Pass metadata for process context!
                             }, delay_seconds=10))  # 10 seconds for demo, can be 7200 for realistic
 
                         # Also check if this is just a normal update to broadcast
@@ -2596,11 +2974,12 @@ async def run_wafer_monitoring_loop():
                                 "timestamp": wafer_data.get("inspection_timestamp")
                             })
 
-                            # Trigger correlation analysis for wafer alerts too
-                            asyncio.create_task(run_alert_correlation(alert_id))
+                            # Trigger correlation analysis for wafer alerts too (skip if AI agents enabled)
+                            if not USE_AI_AGENTS:
+                                asyncio.create_task(run_alert_correlation(alert_id))
 
-                            # Trigger RCA for critical wafer alerts
-                            if alert_severity in [AlertSeverity.CRITICAL, AlertSeverity.HIGH]:
+                            # Trigger RCA for critical wafer alerts (skip if AI agents enabled)
+                            if not USE_AI_AGENTS and alert_severity in [AlertSeverity.CRITICAL, AlertSeverity.HIGH]:
                                 asyncio.create_task(run_alert_rca(alert_id, alert_severity))
 
                 except asyncio.CancelledError:
@@ -3132,6 +3511,172 @@ async def list_agent_sessions(
 # Demo Mode Endpoints
 # ============================================================================
 
+async def reset_demo_collections():
+    """
+    Reset process_sensor_ts with fresh demo data
+
+    Creates:
+    1. Baseline normal readings (last 1 hour) for statistical context
+    2. Anomalous patterns for AI agent testing
+
+    NO vector embeddings - too slow for demo (6-9 second overhead)
+    """
+    try:
+        logger.info("🔄 Resetting demo collections...")
+
+        # Get MongoDB connection
+        async_client = AsyncIOMotorClient(MDB_URI)
+        async_db = async_client[MDB_DATABASE_NAME]
+
+        # ========== STEP 1: CLEAR OLD DATA ==========
+        # Delete demo data (keep production data if timestamp < 1 hour ago)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=1)
+
+        # Clear recent data from process_sensor_ts
+        delete_result = await async_db.process_sensor_ts.delete_many({
+            "timestamp": {"$gte": cutoff_time}
+        })
+        logger.info(f"Cleared {delete_result.deleted_count} recent records from process_sensor_ts")
+
+        # ========== STEP 2: SEED BASELINE DATA (Last 1 Hour) ==========
+        logger.info("Seeding baseline normal readings for statistical context...")
+
+        equipment_ids = ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "ETCH_02", "LITHO_01", "LITHO_02"]
+        baseline_data = []
+
+        # Generate 60 normal readings per equipment (1 per minute for last hour)
+        for minutes_ago in range(60, 0, -1):
+            timestamp = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
+
+            for equipment_id in equipment_ids:
+                data = {
+                    "equipment_id": equipment_id,
+                    "process_step": equipment_id.split("_")[0],
+                    "timestamp": timestamp,
+                    "metrics": generate_demo_metrics(equipment_id, is_excursion=False),
+                    "metadata": generate_demo_metadata(is_excursion=False)
+                }
+                baseline_data.append(data)
+
+        # Bulk insert baseline data ONLY to process_sensor_ts (no alerts!)
+        if baseline_data:
+            # Write ONLY to process_sensor_ts to avoid triggering change stream alerts
+            result = await async_db.process_sensor_ts.insert_many(baseline_data)
+            logger.info(f"Seeded {len(result.inserted_ids)} baseline readings to process_sensor_ts only (no alerts)")
+
+        # ========== STEP 3: SEED ANOMALOUS PATTERNS (Last 10 Minutes) ==========
+        logger.info("Seeding anomalous patterns for AI agent testing...")
+
+        anomaly_data = []
+
+        # Create 3 different anomaly types for testing
+        anomaly_scenarios = [
+            {
+                "equipment_id": "CMP_TOOL_01",
+                "pattern": "drift",
+                "minutes_ago": 10,
+                "stages": 5,
+                "baseline": 450,
+                "target": 1500
+            },
+            {
+                "equipment_id": "ETCH_01",
+                "pattern": "spike",
+                "minutes_ago": 8,
+                "stages": 3,
+                "value": 2000
+            },
+            {
+                "equipment_id": "LITHO_01",
+                "pattern": "false_positive",
+                "minutes_ago": 5,
+                "value": 1100
+            }
+        ]
+
+        for scenario in anomaly_scenarios:
+            eq_id = scenario["equipment_id"]
+
+            if scenario["pattern"] == "drift":
+                # Gradual increase
+                for stage in range(scenario["stages"]):
+                    timestamp = datetime.now(timezone.utc) - timedelta(
+                        minutes=scenario["minutes_ago"] - stage
+                    )
+
+                    particle_count = scenario["baseline"] + (
+                        (scenario["target"] - scenario["baseline"]) * (stage / scenario["stages"])
+                    )
+
+                    metrics = generate_demo_metrics(eq_id, is_excursion=False)
+                    metrics["particle_count"] = int(particle_count)
+
+                    anomaly_data.append({
+                        "equipment_id": eq_id,
+                        "process_step": eq_id.split("_")[0],
+                        "timestamp": timestamp,
+                        "metrics": metrics,
+                        "metadata": generate_demo_metadata(is_excursion=True)
+                    })
+
+            elif scenario["pattern"] == "spike":
+                # Sustained spike
+                for stage in range(scenario["stages"]):
+                    timestamp = datetime.now(timezone.utc) - timedelta(
+                        minutes=scenario["minutes_ago"] - stage
+                    )
+
+                    metrics = generate_demo_metrics(eq_id, is_excursion=False)
+                    metrics["particle_count"] = scenario["value"] + random.randint(-50, 50)
+
+                    anomaly_data.append({
+                        "equipment_id": eq_id,
+                        "process_step": eq_id.split("_")[0],
+                        "timestamp": timestamp,
+                        "metrics": metrics,
+                        "metadata": generate_demo_metadata(is_excursion=True)
+                    })
+
+            elif scenario["pattern"] == "false_positive":
+                # Single spike then normal
+                for stage in range(2):
+                    timestamp = datetime.now(timezone.utc) - timedelta(
+                        minutes=scenario["minutes_ago"] - stage
+                    )
+
+                    metrics = generate_demo_metrics(eq_id, is_excursion=False)
+                    if stage == 0:
+                        metrics["particle_count"] = scenario["value"]
+                    # stage 1 returns to normal (already normal from generate_demo_metrics)
+
+                    anomaly_data.append({
+                        "equipment_id": eq_id,
+                        "process_step": eq_id.split("_")[0],
+                        "timestamp": timestamp,
+                        "metrics": metrics,
+                        "metadata": generate_demo_metadata(is_excursion=stage == 0)
+                    })
+
+        # Bulk insert anomaly data ONLY to process_sensor_ts (no alerts!)
+        if anomaly_data:
+            # Write ONLY to process_sensor_ts to avoid triggering change stream alerts
+            result = await async_db.process_sensor_ts.insert_many(anomaly_data)
+            logger.info(f"Seeded {len(result.inserted_ids)} anomalous readings to process_sensor_ts only (no alerts)")
+
+        async_client.close()
+
+        logger.info("✅ Demo collections reset complete!")
+
+        return {
+            "baseline_readings": len(baseline_data),
+            "anomalous_readings": len(anomaly_data)
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to reset demo collections: {e}")
+        raise
+
+
 @app.post("/demo/start")
 async def start_demo_mode():
     """Start demo mode data generation"""
@@ -3146,17 +3691,30 @@ async def start_demo_mode():
         }
 
     try:
+        # ========== LOAD REAL PROCESS CONTEXT IDs ==========
+        await load_process_context_ids()
+        # ===================================================
+
+        # ========== RESET & SEED COLLECTIONS ==========
+        reset_stats = await reset_demo_collections()
+        logger.info(f"Collections reset: {reset_stats}")
+        # ==============================================
+
+        # Initialize pattern state for realistic anomaly scenarios
+        initialize_pattern_state()
+
         # Set demo mode active flag
         demo_mode_active = True
 
         # Create and start the demo task
         demo_task = asyncio.create_task(demo_data_generator())
 
-        logger.info("Demo mode started successfully")
+        logger.info("Demo mode started successfully with pattern-based anomaly generation")
 
         return {
             "status": "started",
             "message": "Demo mode started successfully",
+            "reset_stats": reset_stats,
             "interval_seconds": DEMO_INTERVAL_SECONDS,
             "excursion_probability": DEMO_EXCURSION_PROBABILITY,
             "equipment_ids": ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "ETCH_02", "LITHO_01", "LITHO_02"]

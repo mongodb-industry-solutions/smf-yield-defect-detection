@@ -26,6 +26,8 @@ dependencies = [
     "voyageai>=0.2.3",
     "aiohttp>=3.9.0",
     "websocket-client>=1.8.0",
+    "langgraph-supervisor>=0.0.29",
+    "langchain-anthropic>=0.3.21",
 ]
 
 [build-system]

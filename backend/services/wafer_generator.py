@@ -103,9 +103,27 @@ class WaferGenerator:
         }
         defect_rate = base_defect_rate * severity_multiplier.get(severity, 1.0)
 
-        # Generate unique wafer ID (matching existing format)
-        wafer_count = self.wafer_collection.count_documents({}) + 1
-        wafer_id = f"W_{wafer_count:04d}"  # Matches format W_0001, W_0002, etc.
+        # Use wafer_id from sensor metadata to maintain correlation
+        # This ensures wafer defect image links to the actual wafer from sensor data
+        wafer_id = excursion_data.get('metadata', {}).get('wafer_id')
+        lot_id = excursion_data.get('metadata', {}).get('lot_id')
+
+        # Fallback: Generate unique IDs if metadata missing (shouldn't happen in normal flow)
+        if not wafer_id:
+            logger.warning(f"No wafer_id in metadata for alert {alert_id}, generating fallback ID")
+            last_wafer = self.wafer_collection.find_one(
+                sort=[("wafer_id", -1)],
+                projection={"wafer_id": 1}
+            )
+            if last_wafer and last_wafer.get("wafer_id", "").startswith("W_"):
+                try:
+                    last_num = int(last_wafer["wafer_id"].split("_")[1])
+                    wafer_count = last_num + 1
+                except (IndexError, ValueError):
+                    wafer_count = self.wafer_collection.count_documents({}) + 1
+            else:
+                wafer_count = self.wafer_collection.count_documents({}) + 1
+            wafer_id = f"W_{wafer_count:04d}"
 
         # Generate wafer map with appropriate defect pattern
         logger.info(f"Generating {pattern_type} wafer defect map for excursion {alert_id}")
@@ -125,8 +143,7 @@ class WaferGenerator:
             excursion_time = timestamp
         inspection_time = excursion_time + timedelta(hours=delay_hours)
 
-        # Determine lot ID (matching existing format)
-        lot_id = f"LOT_2025_{(wafer_count // 25 + 1):03d}"  # 25 wafers per lot
+        # lot_id already set from metadata above (line 109), skip regeneration
 
         # Create defect description based on pattern (matching existing format)
         if pattern_type == "clustered":
@@ -189,7 +206,8 @@ class WaferGenerator:
             "process_context": {
                 "last_process_step": equipment_id.split("_")[0],
                 "equipment_used": [equipment_id],
-                "slurry_batch": f"SB_2025_{np.random.randint(1, 51):03d}",  # Matches existing range
+                "slurry_batch": excursion_data.get('metadata', {}).get('slurry_batch', f"SB_2025_{np.random.randint(1, 51):03d}"),  # Use real slurry_batch from sensor metadata!
+                "recipe_id": excursion_data.get('metadata', {}).get('recipe_id', f"RECIPE_{np.random.randint(1, 10):02d}"),  # Use real recipe_id
                 "clean_cycle": np.random.randint(100, 200)
             }
         }
