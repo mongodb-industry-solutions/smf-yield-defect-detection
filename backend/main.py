@@ -33,6 +33,7 @@ from services.sensor_data_writer import SensorDataWriter
 # Import Multi-Agent System (Phase 3)
 from multi_agent import create_initial_state
 from multi_agent.workers import monitoring_agent_tool, investigation_agent_tool, rca_agent_tool
+from multi_agent.supervisor import supervisor_synthesis_agent
 
 import os
 from dotenv import load_dotenv
@@ -2787,6 +2788,47 @@ async def run_monitoring_loop():
                                                 }}
                                             )
                                             logger.info(f"   💾 RCA results saved to alert {alert_id} (MongoDB _id: {mongo_id})")
+
+                                        # === RUN SUPERVISOR SYNTHESIS (aggregates all agent outputs) ===
+                                        try:
+                                            logger.info(f"🎯 Running Supervisor Synthesis for alert {alert_id}")
+
+                                            # Aggregate all agent results
+                                            supervisor_result = await supervisor_synthesis_agent(
+                                                monitoring_result=agent_result,
+                                                investigation_result=investigation_result,
+                                                rca_result=rca_result,
+                                                alert_context={
+                                                    'equipment_id': equipment_id,
+                                                    'excursion_type': excursion_type,
+                                                    'alert_id': alert_id
+                                                }
+                                            )
+
+                                            # Log supervisor results
+                                            risk_level = supervisor_result.get('risk_level', 'Unknown')
+                                            overall_confidence = supervisor_result.get('overall_confidence', 0)
+                                            logger.info(f"   ✅ Supervisor synthesis complete")
+                                            logger.info(f"   🎯 Risk Level: {risk_level}, Overall Confidence: {overall_confidence:.0%}")
+
+                                            # Update alert with supervisor synthesis
+                                            supervisor_synthesis = supervisor_result.get('supervisor_synthesis', '')
+                                            if supervisor_synthesis:
+                                                alert_manager.alerts_collection.update_one(
+                                                    {"_id": ObjectId(mongo_id)},
+                                                    {"$set": {
+                                                        "ai_supervisor": {
+                                                            "synthesis": supervisor_synthesis,
+                                                            "risk_level": risk_level,
+                                                            "overall_confidence": overall_confidence,
+                                                            "agent_summary": supervisor_result.get('agent_outputs', {})
+                                                        }
+                                                    }}
+                                                )
+                                                logger.info(f"   💾 Supervisor synthesis saved to alert {alert_id} (MongoDB _id: {mongo_id})")
+
+                                        except Exception as supervisor_error:
+                                            logger.error(f"⚠️ Supervisor Synthesis error: {supervisor_error}")
 
                                     except Exception as rca_error:
                                         logger.error(f"⚠️ RCA Agent error: {rca_error}")
