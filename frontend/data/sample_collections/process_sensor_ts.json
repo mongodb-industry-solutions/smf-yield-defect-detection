@@ -1,0 +1,28 @@
+{
+    "collection": "process_sensor_ts",
+    "count": 1,
+    "limit": 1,
+    "documents": [
+        {
+            "timestamp": "2025-10-09T12:40:31.842000",
+            "metadata": {
+                "lot_id": "LOT_2025_043",
+                "operator_id": "OP_108",
+                "recipe_id": "RECIPE_03",
+                "slurry_batch": "SB_2025_024",
+                "wafer_id": "W_043_12"
+            },
+            "process_step": "LITHO",
+            "_id": "68e7ad43e5f7d3f8cd22fa3b",
+            "equipment_id": "LITHO_02",
+            "metrics": {
+                "particle_count": 2891,
+                "rf_power": 798.9,
+                "chamber_pressure": 24.9,
+                "temperature": 22.1,
+                "flow_rate": 96.7,
+                "temp_drift": 0.1
+            }
+        }
+    ]
+}

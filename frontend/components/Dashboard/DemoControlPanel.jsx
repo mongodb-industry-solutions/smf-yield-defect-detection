@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from 'react';
 import Card from '@leafygreen-ui/card';
 import Button from '@leafygreen-ui/button';
-import { demoAPI } from '@/lib/api';
+import Toggle from '@leafygreen-ui/toggle';
+import { demoAPI, aiAgentAPI } from '@/lib/api';
 import styles from './DemoControlPanel.module.css';
 
 const DemoControlPanel = () => {
@@ -19,6 +20,10 @@ const DemoControlPanel = () => {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(null);
 
+  // AI Agent state
+  const [aiEnabled, setAiEnabled] = useState(true);
+  const [aiLoading, setAiLoading] = useState(false);
+
   // Fetch status function
   const fetchStatus = async () => {
     try {
@@ -31,9 +36,20 @@ const DemoControlPanel = () => {
     }
   };
 
+  // Fetch AI agent status
+  const fetchAIStatus = async () => {
+    try {
+      const data = await aiAgentAPI.getStatus();
+      setAiEnabled(data.enabled);
+    } catch (err) {
+      console.error('Error fetching AI agent status:', err);
+    }
+  };
+
   // Fetch status on mount and set up polling
   useEffect(() => {
     fetchStatus(); // Initial fetch
+    fetchAIStatus(); // Fetch AI status
 
     // Poll every 2 seconds
     const interval = setInterval(fetchStatus, 2000);
@@ -54,8 +70,10 @@ const DemoControlPanel = () => {
           await fetchStatus();
         }
       } else {
-        // Start demo mode
-        await demoAPI.start();
+        // Start demo mode with appropriate mode based on AI agents status
+        // If AI agents are enabled, set excursion probability to 0 for manual pattern injection
+        const params = aiEnabled ? { mode: 'agentic' } : { mode: 'charts' };
+        await demoAPI.start(params);
         await fetchStatus();
       }
     } catch (err) {
@@ -111,6 +129,23 @@ const DemoControlPanel = () => {
     }
   };
 
+  // Handle AI Agent toggle
+  const handleAIToggle = async (checked) => {
+    setAiLoading(true);
+    try {
+      await aiAgentAPI.toggle(checked);
+      setAiEnabled(checked);
+      console.log(`AI Agents ${checked ? 'enabled' : 'disabled'}`);
+    } catch (err) {
+      console.error('Error toggling AI agents:', err);
+      setError('Failed to toggle AI agents');
+      // Revert on error
+      setAiEnabled(!checked);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
   return (
     <Card className={styles.compactPanel}>
       <div className={styles.compactContainer}>
@@ -155,8 +190,22 @@ const DemoControlPanel = () => {
           )}
         </div>
 
-        {/* Right: Excursion Injection */}
+        {/* Right: AI Toggle & Excursion Injection */}
         <div className={styles.rightSection}>
+          {/* AI Agent Toggle */}
+          <div className={styles.aiToggleContainer}>
+            <span className={styles.aiLabel}>AI Agents</span>
+            <Toggle
+              size="small"
+              checked={aiEnabled}
+              onChange={handleAIToggle}
+              disabled={aiLoading}
+              aria-label="Toggle AI Agents"
+            />
+          </div>
+
+          <div className={styles.divider}></div>
+
           <div className={styles.injectionControls}>
             <select
               className={styles.compactSelect}

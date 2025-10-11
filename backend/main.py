@@ -173,15 +173,15 @@ def initialize_pattern_state():
     logger.info("Initialized pattern-based demo state for realistic anomaly scenarios")
 
 def should_create_pattern(equipment_id: str) -> bool:
-    """Decide if equipment should start a new pattern (5% chance per cycle)"""
+    """Decide if equipment should start a new pattern based on DEMO_EXCURSION_PROBABILITY"""
     state = equipment_pattern_state.get(equipment_id, {})
 
     # Already in a pattern? Continue it
     if state.get("pattern") != "normal":
         return False
 
-    # 5% chance to start new pattern
-    return random.random() < 0.05
+    # Use global excursion probability (will be 0 in agentic mode)
+    return random.random() < DEMO_EXCURSION_PROBABILITY
 
 def get_pattern_metrics(equipment_id: str, base_metrics: dict) -> tuple:
     """
@@ -3720,9 +3720,16 @@ async def reset_demo_collections():
 
 
 @app.post("/demo/start")
-async def start_demo_mode():
-    """Start demo mode data generation"""
-    global demo_mode_active, demo_task
+async def start_demo_mode(request: Dict[str, Any] = Body(default={})):
+    """Start demo mode data generation
+
+    Request body (optional):
+    {
+        "excursion_probability": 0.05,  // Optional: Override excursion probability (0 = no anomalies)
+        "mode": "charts" | "agentic"    // Optional: Mode indicator (agentic sets probability to 0)
+    }
+    """
+    global demo_mode_active, demo_task, DEMO_EXCURSION_PROBABILITY
 
     if demo_mode_active:
         return {
@@ -3733,6 +3740,20 @@ async def start_demo_mode():
         }
 
     try:
+        # Store original probability for restoration later
+        original_probability = DEMO_EXCURSION_PROBABILITY
+
+        # Check if mode is "agentic" - if so, set probability to 0
+        mode = request.get("mode", "charts")
+        logger.info(f"Demo start request - mode: {mode}, request body: {request}")
+
+        if mode == "agentic":
+            DEMO_EXCURSION_PROBABILITY = 0.0
+            logger.info("Agentic AI mode: Setting excursion probability to 0 (manual pattern injection only)")
+        elif "excursion_probability" in request:
+            DEMO_EXCURSION_PROBABILITY = float(request["excursion_probability"])
+            logger.info(f"Overriding excursion probability to {DEMO_EXCURSION_PROBABILITY}")
+
         # ========== LOAD REAL PROCESS CONTEXT IDs ==========
         await load_process_context_ids()
         # ===================================================
@@ -3751,14 +3772,19 @@ async def start_demo_mode():
         # Create and start the demo task
         demo_task = asyncio.create_task(demo_data_generator())
 
-        logger.info("Demo mode started successfully with pattern-based anomaly generation")
+        log_msg = f"Demo mode started successfully with excursion probability: {DEMO_EXCURSION_PROBABILITY}"
+        if mode == "agentic":
+            log_msg += " (Agentic AI mode - anomalies disabled for manual pattern injection)"
+        logger.info(log_msg)
 
         return {
             "status": "started",
             "message": "Demo mode started successfully",
+            "mode": mode,
             "reset_stats": reset_stats,
             "interval_seconds": DEMO_INTERVAL_SECONDS,
             "excursion_probability": DEMO_EXCURSION_PROBABILITY,
+            "original_probability": original_probability,
             "equipment_ids": ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "ETCH_02", "LITHO_01", "LITHO_02"]
         }
 
@@ -3771,7 +3797,11 @@ async def start_demo_mode():
 @app.post("/demo/stop")
 async def stop_demo_mode():
     """Stop demo mode data generation and cleanup recent alerts"""
-    global demo_mode_active, demo_task
+    global demo_mode_active, demo_task, DEMO_EXCURSION_PROBABILITY
+
+    # Restore original excursion probability from environment variable
+    original_prob = float(os.getenv("DEMO_EXCURSION_PROBABILITY", "0.05"))
+    DEMO_EXCURSION_PROBABILITY = original_prob
 
     if not demo_mode_active:
         return {
@@ -4158,3 +4188,86 @@ async def reset_demo_to_healthy_state():
     except Exception as e:
         logger.error(f"Error during demo reset: {e}")
         raise HTTPException(status_code=500, detail=f"Demo reset failed: {str(e)}")
+
+
+# ===========================
+# AI AGENT SYSTEM CONTROL ENDPOINTS
+# ===========================
+
+@app.get("/ai-agents/status")
+async def get_ai_agents_status():
+    """Get current AI agent system status"""
+    return {
+        "enabled": USE_AI_AGENTS,
+        "agents": ["Monitoring", "Investigation", "RCA", "Supervisor"],
+        "model": "anthropic.claude-3-haiku-20240307-v1:0",
+        "description": "Multi-agent system for yield defect detection and quality control"
+    }
+
+
+@app.post("/ai-agents/toggle")
+async def toggle_ai_agents(enabled: bool):
+    """
+    Enable or disable AI agent system
+
+    Args:
+        enabled: True to enable AI agents, False to disable
+
+    Returns:
+        Status confirmation
+    """
+    global USE_AI_AGENTS
+
+    previous_state = USE_AI_AGENTS
+    USE_AI_AGENTS = enabled
+
+    logger.info(f"🤖 AI Multi-Agent System: {'ENABLED' if USE_AI_AGENTS else 'DISABLED'} (toggled via API from {previous_state})")
+
+    return {
+        "status": "success",
+        "enabled": USE_AI_AGENTS,
+        "previous_state": previous_state,
+        "message": f"AI agents {'enabled' if USE_AI_AGENTS else 'disabled'}",
+        "agents_affected": ["Monitoring", "Investigation", "RCA", "Supervisor"]
+    }
+
+
+# ============================================================================
+# Collections Data Endpoints
+# ============================================================================
+
+@app.get("/collections/{collection_name}/latest")
+async def get_latest_collection_documents(
+    collection_name: str,
+    limit: int = Query(default=1, ge=1, le=10, description="Number of documents to fetch (1-10)")
+):
+    """
+    Fetch latest N documents from a specified MongoDB collection.
+
+    Args:
+        collection_name: Name of the collection (e.g., 'historical_knowledge', 'wafer_defects')
+        limit: Number of documents to return (default 3, max 10)
+
+    Returns:
+        List of latest documents from the collection
+    """
+    try:
+        with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
+            collection = mdb_connector.db[collection_name]
+
+            # Fetch latest documents sorted by _id descending (newest first)
+            cursor = collection.find().sort("_id", -1).limit(limit)
+            documents = list(cursor)
+
+            # Convert ObjectIds to strings for JSON serialization
+            formatted_docs = [convert_objectids(doc) for doc in documents]
+
+            return {
+                "collection": collection_name,
+                "count": len(formatted_docs),
+                "limit": limit,
+                "documents": formatted_docs
+            }
+    except Exception as e:
+        logger.error(f"Error fetching latest documents from {collection_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching documents: {str(e)}")

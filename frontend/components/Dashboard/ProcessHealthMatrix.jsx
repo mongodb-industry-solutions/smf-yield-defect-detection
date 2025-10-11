@@ -9,7 +9,7 @@ import IconButton from '@leafygreen-ui/icon-button';
 import QueryTransparencyCard from '@/components/common/QueryTransparencyCard';
 import styles from './ProcessHealthMatrix.module.css';
 
-const ProcessHealthMatrix = () => {
+const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
   const [equipmentData, setEquipmentData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [lastRefresh, setLastRefresh] = useState(new Date());
@@ -151,9 +151,32 @@ const ProcessHealthMatrix = () => {
     );
   }
 
+  // Collapsed view - vertical strip
+  if (isCollapsed) {
+    return (
+      <div className={styles.collapsedView}>
+        <IconButton
+          className={styles.toggleButton}
+          onClick={onToggle}
+          aria-label="Expand Equipment Health Matrix"
+        >
+          <Icon glyph="ChevronRight" />
+        </IconButton>
+        <div className={styles.verticalLabel}>Equipment Health</div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.container}>
       <Card className={styles.card}>
+        <IconButton
+          className={styles.collapseButton}
+          onClick={onToggle}
+          aria-label="Collapse Equipment Health Matrix"
+        >
+          <Icon glyph="ChevronLeft" />
+        </IconButton>
         <div className={styles.header}>
           <div className={styles.headerContent}>
             <div className={styles.titleRow}>

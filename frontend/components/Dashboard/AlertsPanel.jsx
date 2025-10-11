@@ -12,7 +12,7 @@ import AlertAnalysisModal from './AlertAnalysisModal';
 import QueryTransparencyCard from '@/components/common/QueryTransparencyCard';
 import styles from './AlertsPanel.module.css';
 
-const AlertsPanel = () => {
+const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onToggle = () => {} }) => {
   const { alerts: dataAlerts, refresh } = useDashboardData();
   const [alerts, setAlerts] = useState([]);
   const [expandedAlerts, setExpandedAlerts] = useState(new Set());
@@ -240,9 +240,37 @@ const AlertsPanel = () => {
     }
   ];
 
+  // Collapsed view - vertical strip
+  if (isCollapsed) {
+    return (
+      <div className={styles.collapsedView}>
+        <IconButton
+          className={styles.toggleButton}
+          onClick={onToggle}
+          aria-label="Expand Alerts Panel"
+        >
+          <Icon glyph="ChevronLeft" />
+        </IconButton>
+        <div className={styles.verticalLabel}>Active Alerts</div>
+        {alerts.length > 0 && (
+          <Badge variant="red" className={styles.collapsedBadge}>
+            {alerts.length}
+          </Badge>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className={styles.container}>
       <Card className={styles.card}>
+        <IconButton
+          className={styles.collapseButton}
+          onClick={onToggle}
+          aria-label="Collapse Alerts Panel"
+        >
+          <Icon glyph="ChevronRight" />
+        </IconButton>
         <div className={styles.header}>
           <div className={styles.headerTop}>
             <div className={styles.titleRow}>
@@ -426,6 +454,7 @@ const AlertsPanel = () => {
         isOpen={isModalOpen}
         onClose={closeModal}
         onAlertFixed={handleAlertFixed}
+        aiEnabled={aiEnabled}
       />
     </div>
   );

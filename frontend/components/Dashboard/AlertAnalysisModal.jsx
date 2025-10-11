@@ -11,7 +11,7 @@ import { H2, H3, Body, Description } from '@leafygreen-ui/typography';
 import Code from '@leafygreen-ui/code';
 import styles from './AlertAnalysisModal.module.css';
 
-const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
+const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed, aiEnabled = true }) => {
   const [activeTab, setActiveTab] = useState(0); // Start with Overview tab
   const [isFixing, setIsFixing] = useState(false);
   const [fixStatus, setFixStatus] = useState(null);
@@ -361,6 +361,7 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
             </div>
           </Tab>
 
+          {aiEnabled && (
           <Tab name="Analysis">
             <div className={styles.tabContent}>
               {/* NEW: Excursion Trigger Section */}
@@ -938,6 +939,7 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed }) => {
               )}
             </div>
           </Tab>
+          )}
 
           <Tab name="Actions">
             <div style={{ padding: '20px' }}>

@@ -1,0 +1,56 @@
+{
+    "collection": "process_context",
+    "count": 1,
+    "limit": 1,
+    "documents": [
+        {
+            "_id": "SB_2025_050",
+            "context_type": "slurry_batch",
+            "context_id": "SB_2025_050",
+            "slurry_details": {
+                "manufacturer": "PureFlow",
+                "composition": "Alumina-based",
+                "particle_size_nm": 102,
+                "ph_level": 9.6,
+                "manufacture_date": "2025-06-24T21:07:37.177704Z",
+                "expiry_date": "2025-11-10T21:07:37.177705Z",
+                "qc_status": "passed",
+                "large_particle_count": 6
+            },
+            "usage_history": [
+                {
+                    "timestamp": "2025-09-08T21:07:37.177707Z",
+                    "equipment_id": "CMP_TOOL_01",
+                    "wafers_processed": 33,
+                    "issues_reported": false
+                },
+                {
+                    "timestamp": "2025-09-07T21:07:37.177710Z",
+                    "equipment_id": "CMP_TOOL_01",
+                    "wafers_processed": 29,
+                    "issues_reported": false
+                },
+                {
+                    "timestamp": "2025-09-07T21:07:37.177712Z",
+                    "equipment_id": "CMP_TOOL_02",
+                    "wafers_processed": 49,
+                    "issues_reported": false
+                },
+                {
+                    "timestamp": "2025-08-26T21:07:37.177714Z",
+                    "equipment_id": "CMP_TOOL_01",
+                    "wafers_processed": 48,
+                    "issues_reported": false
+                },
+                {
+                    "timestamp": "2025-08-21T21:07:37.177716Z",
+                    "equipment_id": "CMP_TOOL_01",
+                    "wafers_processed": 39,
+                    "issues_reported": false
+                }
+            ],
+            "known_issues": [],
+            "is_problematic": false
+        }
+    ]
+}

@@ -1,0 +1,45 @@
+{
+  "_id": "RCA_20241025_011",
+  "document_type": "rca_report",
+  "title": "RCA: PVD Particle Contamination - October 2024",
+  "incident_date": "2024-10-25T21:07:37.180816Z",
+  "created_date": "2024-10-31T21:07:37.180816Z",
+  "content": "\nRoot Cause Analysis Report\n==========================\n\nExecutive Summary:\nA particle contamination issue was detected on PVD equipment resulting in 12.3% yield loss across 232 wafers. The incident was resolved within 4 hours.\n\nTimeline:\n- Detection: Automated monitoring detected anomaly\n- Investigation: Engineering team identified Slurry line contamination from improper cleaning\n- Resolution: Corrective actions implemented\n- Validation: Process returned to baseline\n\nRoot Cause:\nSlurry line contamination from improper cleaning\n\nContributing Factors:\n• Environmental control system failure\n• Extended run time without preventive maintenance\n• Slurry batch quality variation\n\nCorrectiveActions:\n• Replace pad conditioning disk\n• Flush and clean slurry delivery lines\n\nPreventive Measures:\n• Update preventive maintenance schedule\n• Implement additional monitoring parameters\n• Review and update operating procedures\n• Conduct training for operators\n\nImpact Assessment:\n- Wafers Affected: 232\n- Yield Loss: 12.3%\n- Estimated Cost Impact: $285,360\n- Resolution Time: 4 hours\n\nLessons Learned:\nEarly detection through enhanced monitoring could have reduced impact by 50%. Recommend implementing real-time particle monitoring with tighter control limits.\n\nRecommendations:\n1. Increase monitoring frequency for critical parameters\n2. Establish tighter control limits for particle counts\n3. Implement predictive maintenance based on tool usage\n4. Regular training updates for operational staff\n            ",
+  "metadata": {
+    "process_area": "PVD",
+    "defect_type": "particle_contamination",
+    "severity": "medium",
+    "resolution_time_hours": 4,
+    "cost_impact_usd": 285360.00000000006,
+    "effectiveness_score": 0.82
+  },
+  "findings": {
+    "root_cause": "Slurry line contamination from improper cleaning",
+    "contributing_factors": [
+      "Environmental control system failure",
+      "Extended run time without preventive maintenance",
+      "Slurry batch quality variation"
+    ],
+    "corrective_actions": [
+      "Replace pad conditioning disk",
+      "Flush and clean slurry delivery lines"
+    ],
+    "preventive_measures": [
+      "Update PM schedule",
+      "Enhance monitoring parameters",
+      "Implement predictive analytics"
+    ]
+  },
+  "tags": [
+    "pvd",
+    "particle_contamination",
+    "particle",
+    "contamination",
+    "yield_loss"
+  ],
+  "author": "John Smith",
+  "related_incidents": [
+    "INC_2024_810",
+    "INC_2024_312"
+  ]
+}

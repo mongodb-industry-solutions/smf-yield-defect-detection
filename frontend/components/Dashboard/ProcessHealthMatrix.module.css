@@ -432,6 +432,61 @@
   }
 }
 
+/* Collapsed View Styles */
+.collapsedView {
+  height: 100%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  padding: 12px 0;
+  position: relative;
+  border-radius: 0 12px 12px 0;
+}
+
+.verticalLabel {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  color: #1e2d3d;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 2px;
+  margin-top: 60px;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+
+.toggleButton {
+  background: rgba(0, 104, 74, 0.1) !important;
+  color: #00684A !important;
+}
+
+.toggleButton:hover {
+  background: rgba(0, 104, 74, 0.2) !important;
+}
+
+.collapseButton {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  background: rgba(0, 104, 74, 0.1) !important;
+}
+
+.collapseButton:hover {
+  background: rgba(0, 104, 74, 0.2) !important;
+}
+
+.card {
+  position: relative;
+}
+
 /* Responsive Design */
 @media (max-width: 1200px) {
   .matrixGrid {

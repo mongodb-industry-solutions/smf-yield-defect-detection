@@ -1,0 +1,250 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Unified Single Card */
+.unifiedCard {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Header Section - Inside the card with buttons */
+.headerSection {
+  background: linear-gradient(135deg, var(--color-primary-dark2) 0%, #00a35c 100%);
+  padding: 12px 16px;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.05);
+}
+
+.headerContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.rightSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.headerTitle {
+  color: white;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.headerDescription {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.75);
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.headerSubtitle {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+}
+
+.compactButtonsGrid {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+/* Compact Button - Works on green background */
+.compactButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 180ms ease;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.compactButton:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.compactButton.active {
+  background: white;
+  border-color: white;
+  border-width: 2px;
+  padding: 5px 9px; /* Adjust for thicker border */
+}
+
+.compactButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.compactIcon {
+  color: white;
+  display: flex;
+  align-items: center;
+}
+
+.compactButton.active .compactIcon {
+  color: var(--color-primary-dark2);
+}
+
+.compactLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: white;
+}
+
+.compactButton.active .compactLabel {
+  color: var(--color-primary-dark2);
+}
+
+/* Highlighted button state for agent selection */
+.compactButton.highlighted {
+  border-color: #FFB51D;
+  border-width: 2px;
+  box-shadow: 0 0 16px rgba(255, 181, 29, 0.35);
+  animation: highlightPulse 2s ease-in-out infinite;
+}
+
+@keyframes highlightPulse {
+  0%, 100% {
+    box-shadow: 0 0 16px rgba(255, 181, 29, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 24px rgba(255, 181, 29, 0.5);
+  }
+}
+
+/* Data Display Section */
+.dataSection {
+  padding: 12px 16px;
+  background: white;
+}
+
+.dataSectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.dataSubtitle {
+  font-size: 11px;
+  color: #6b778c;
+  margin-top: 4px;
+}
+
+.loadingText {
+  text-align: center;
+  color: #6b778c;
+  padding: 16px;
+  font-size: 12px;
+}
+
+.errorMessage {
+  padding: 16px;
+  background: #ffebee;
+  border-radius: 6px;
+  border: 1px solid #ef5350;
+  color: #c62828;
+  font-size: 13px;
+}
+
+.documentsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.documentBlock {
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.documentHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: rgba(247, 249, 251, 0.6);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.codeBlock {
+  margin: 0 !important;
+  border-radius: 0 !important;
+  max-height: 350px;
+  overflow-y: auto;
+  font-size: 11px;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+  .compactButtonsGrid {
+    gap: 8px;
+  }
+
+  .compactButton {
+    padding: 7px 12px;
+    font-size: 11px;
+  }
+
+  .compactIcon {
+    font-size: 14px;
+  }
+
+  .compactLabel {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 768px) {
+  .headerSection {
+    padding: 16px 20px;
+  }
+
+  .headerTitle {
+    font-size: 16px;
+  }
+
+  .buttonsSection {
+    padding: 12px 16px;
+  }
+
+  .compactButtonsGrid {
+    gap: 6px;
+  }
+
+  .compactButton {
+    padding: 6px 10px;
+  }
+
+  .compactIcon {
+    font-size: 13px;
+  }
+
+  .compactLabel {
+    font-size: 10px;
+  }
+
+  .dataSection {
+    padding: 16px;
+  }
+}

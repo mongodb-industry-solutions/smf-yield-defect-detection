@@ -1,0 +1,750 @@
+{
+    "collection": "alerts",
+    "count": 1,
+    "limit": 1,
+    "documents": [
+        {
+            "_id": "68e7aef8e5f7d3f8cd22fa92",
+            "alert_id": "ALT-20251009181752-68e7aef8e5f7d3f8cd22fa91",
+            "alert_type": "excursion",
+            "severity": "critical",
+            "status": "open",
+            "title": "Particle Excursion on ETCH_01",
+            "description": "Particle Excursion: 2893",
+            "timestamp": "2025-10-09T18:17:52.992000",
+            "acknowledged_at": null,
+            "resolved_at": null,
+            "closed_at": null,
+            "equipment_id": "ETCH_01",
+            "lot_id": "LOT_2025_006",
+            "wafer_id": "W_006_09",
+            "source_data": {
+                "equipment_id": "ETCH_01",
+                "timestamp": "2025-10-09T11:59:07.621000",
+                "excursion_type": "particle_excursion",
+                "value": 2893,
+                "metrics": {
+                    "particle_count": 2893,
+                    "rf_power": 1204.1,
+                    "chamber_pressure": 36.3,
+                    "temperature": 70.5,
+                    "flow_rate": 156.9,
+                    "temp_drift": 0.5
+                },
+                "metadata": {
+                    "lot_id": "LOT_2025_006",
+                    "wafer_id": "W_006_09",
+                    "recipe_id": "RECIPE_02",
+                    "slurry_batch": "SB_2025_014",
+                    "operator_id": "OP_176"
+                },
+                "description": "Particle Excursion: 2893"
+            },
+            "assigned_to": null,
+            "resolution_notes": null,
+            "estimated_impact": "Production line stoppage likely",
+            "auto_generated": true,
+            "notifications_sent": [
+                {
+                    "timestamp": "2025-10-09T18:17:54.016000",
+                    "type": "initial",
+                    "severity": "critical"
+                }
+            ],
+            "escalation_level": 0,
+            "rca_analysis": {
+                "alert_id": "68e7aef8e5f7d3f8cd22fa92",
+                "generated_at": "2025-10-09T12:48:39.965000",
+                "identified_patterns": [
+                    {
+                        "pattern_type": "particle_excursion",
+                        "trigger": "Particle count: 2893",
+                        "probable_causes": [
+                            {
+                                "cause": "Degraded slurry filter",
+                                "confidence": 0.9,
+                                "actions": [
+                                    "Check slurry filter condition and replace if necessary",
+                                    "Verify slurry quality from supplier",
+                                    "Review filter replacement schedule"
+                                ],
+                                "supporting_evidence": 1
+                            },
+                            {
+                                "cause": "Chamber contamination",
+                                "confidence": 0.9,
+                                "actions": [
+                                    "Perform chamber wet clean",
+                                    "Check chamber seal integrity",
+                                    "Review previous process run materials"
+                                ],
+                                "supporting_evidence": 2
+                            },
+                            {
+                                "cause": "Worn pad conditioning disk",
+                                "confidence": 0.6,
+                                "actions": [
+                                    "Replace pad conditioning disk",
+                                    "Adjust conditioning parameters",
+                                    "Check pad wear patterns"
+                                ],
+                                "supporting_evidence": 0
+                            }
+                        ]
+                    }
+                ],
+                "recommendations": [
+                    {
+                        "title": "Investigate: Degraded slurry filter",
+                        "confidence": 0.9,
+                        "actions": [
+                            "Check slurry filter condition and replace if necessary",
+                            "Verify slurry quality from supplier",
+                            "Review filter replacement schedule"
+                        ],
+                        "pattern": "particle_excursion",
+                        "priority": "medium"
+                    },
+                    {
+                        "title": "Investigate: Chamber contamination",
+                        "confidence": 0.9,
+                        "actions": [
+                            "Perform chamber wet clean",
+                            "Check chamber seal integrity",
+                            "Review previous process run materials"
+                        ],
+                        "pattern": "particle_excursion",
+                        "priority": "medium"
+                    },
+                    {
+                        "title": "Historical precedent: Root cause not specified",
+                        "confidence": 0.7815209627151489,
+                        "actions": [
+                            "Review similar case: Troubleshooting Guide: Particle Excursion",
+                            "Expected resolution time: None hours",
+                            "Apply lessons learned from previous incident"
+                        ],
+                        "pattern": "historical",
+                        "priority": "medium"
+                    },
+                    {
+                        "title": "Material quality issue: Batch SB_2025_045",
+                        "confidence": 0.7,
+                        "actions": [
+                            "Quarantine remaining wafers from batch SB_2025_045",
+                            "Request quality report from material supplier",
+                            "Consider switching to alternate batch"
+                        ],
+                        "pattern": "batch_correlation",
+                        "priority": "medium"
+                    }
+                ],
+                "similar_historical_cases": [
+                    {
+                        "title": "Troubleshooting Guide: Particle Excursion",
+                        "root_cause": "Root cause not specified",
+                        "resolution_time": null,
+                        "defect_type": "",
+                        "relevance_score": 0.7815209627151489,
+                        "document_type": "troubleshooting_guide",
+                        "semantic_match": true,
+                        "content": "\nTroubleshooting Guide: Particle Excursion\n========================================\n\nQuick Reference Guide for Particle Excursion Issues\n\nCommon Symptoms:\n\u2022 Sudden increase in particle count >1000\n\u2022 Clustered defects on wafer maps\n\u2022 Yield drop >10% within single lot\n\nDiagnostic Steps:\n1. Check slurry filter pressure differential\n2. Verify chamber particle sensor readings\n3. Review recent maintenance activities\n\nPotential Causes and Solutions:\n\nSlurry contamination:\n  \u2192 Solution: Replace slurry b...",
+                        "metadata": {
+                            "issue_type": "particle_excursion",
+                            "applicable_tools": [
+                                "LITHO",
+                                "ETCH"
+                            ],
+                            "urgency_level": "high",
+                            "estimated_mttr_hours": 5
+                        },
+                        "process_area": ""
+                    },
+                    {
+                        "title": "RCA: CMP Particle Contamination - October 2024",
+                        "root_cause": "Chamber contamination from previous process",
+                        "resolution_time": 6,
+                        "defect_type": "particle_contamination",
+                        "relevance_score": 0.7550267577171326,
+                        "document_type": "rca_report",
+                        "semantic_match": true,
+                        "content": "\nRoot Cause Analysis Report\n==========================\n\nExecutive Summary:\nA particle contamination issue was detected on CMP equipment resulting in 12.6% yield loss across 151 wafers. The incident was resolved within 6 hours.\n\nTimeline:\n- Detection: Automated monitoring detected anomaly\n- Investigation: Engineering team identified Chamber contamination from previous process\n- Resolution: Corrective actions implemented\n- Validation: Process returned to baseline\n\nRoot Cause:\nChamber contamination...",
+                        "metadata": {
+                            "process_area": "CMP",
+                            "defect_type": "particle_contamination",
+                            "severity": "medium",
+                            "resolution_time_hours": 6,
+                            "cost_impact_usd": 190260.0,
+                            "effectiveness_score": 0.77
+                        },
+                        "process_area": "CMP"
+                    },
+                    {
+                        "title": "RCA: ETCH Particle Contamination - May 2025",
+                        "root_cause": "Slurry line contamination from improper cleaning",
+                        "resolution_time": 6,
+                        "defect_type": "particle_contamination",
+                        "relevance_score": 0.7523257732391357,
+                        "document_type": "rca_report",
+                        "semantic_match": true,
+                        "content": "\nRoot Cause Analysis Report\n==========================\n\nExecutive Summary:\nA particle contamination issue was detected on ETCH equipment resulting in 10.3% yield loss across 255 wafers. The incident was resolved within 6 hours.\n\nTimeline:\n- Detection: Automated monitoring detected anomaly\n- Investigation: Engineering team identified Slurry line contamination from improper cleaning\n- Resolution: Corrective actions implemented\n- Validation: Process returned to baseline\n\nRoot Cause:\nSlurry line con...",
+                        "metadata": {
+                            "process_area": "ETCH",
+                            "defect_type": "particle_contamination",
+                            "severity": "medium",
+                            "resolution_time_hours": 6,
+                            "cost_impact_usd": 262650.0,
+                            "effectiveness_score": 0.76
+                        },
+                        "process_area": "ETCH"
+                    }
+                ],
+                "similar_wafer_defects": [
+                    {
+                        "wafer_id": "W_0035",
+                        "lot_id": "LOT_2025_002",
+                        "pattern": "clustered",
+                        "equipment": "ETCH_01",
+                        "yield": 98.56,
+                        "inspection_timestamp": "2025-08-22T01:05:26.061826Z",
+                        "defect_summary": {
+                            "total_dies": 625,
+                            "failed_dies": 9,
+                            "yield_percentage": 98.56,
+                            "defect_pattern": "clustered",
+                            "severity": "low"
+                        },
+                        "similarity_score": 0.8168128728866577,
+                        "thumbnail_base64": "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"
+                    },
+                    {
+                        "wafer_id": "W_0020",
+                        "lot_id": "LOT_2025_001",
+                        "pattern": "clustered",
+                        "equipment": "ETCH_01",
+                        "yield": 97.12,
+                        "inspection_timestamp": "2025-08-17T13:05:26.061826Z",
+                        "defect_summary": {
+                            "total_dies": 625,
+                            "failed_dies": 18,
+                            "yield_percentage": 97.12,
+                            "defect_pattern": "clustered",
+                            "severity": "low"
+                        },
+                        "similarity_score": 0.8167078495025635,
+                        "thumbnail_base64": "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"
+                    },
+                    {
+                        "wafer_id": "W_0065",
+                        "lot_id": "LOT_2025_003",
+                        "pattern": "clustered",
+                        "equipment": "ETCH_01",
+                        "yield": 99.04,
+                        "inspection_timestamp": "2025-08-31T01:05:26.061826Z",
+                        "defect_summary": {
+                            "total_dies": 625,
+                            "failed_dies": 6,
+                            "yield_percentage": 99.04,
+                            "defect_pattern": "clustered",
+                            "severity": "low"
+                        },
+                        "similarity_score": 0.8156639337539673,
+                        "thumbnail_base64": "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"
+                    },
+                    {
+                        "wafer_id": "W_0033",
+                        "lot_id": "LOT_2025_002",
+                        "pattern": "clustered",
+                        "equipment": "ETCH_01",
+                        "yield": 94.88,
+                        "inspection_timestamp": "2025-08-21T11:05:26.061826Z",
+                        "defect_summary": {
+                            "total_dies": 625,
+                            "failed_dies": 32,
+                            "yield_percentage": 94.88,
+                            "defect_pattern": "clustered",
+                            "severity": "low"
+                        },
+                        "similarity_score": 0.8125389814376831,
+                        "thumbnail_base64": "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"
+                    },
+                    {
+                        "wafer_id": "W_0037",
+                        "lot_id": "LOT_2025_002",
+                        "pattern": "clustered",
+                        "equipment": "ETCH_01",
+                        "yield": 95.2,
+                        "inspection_timestamp": "2025-08-22T16:05:26.061826Z",
+                        "defect_summary": {
+                            "total_dies": 625,
+                            "failed_dies": 30,
+                            "yield_percentage": 95.2,
+                            "defect_pattern": "clustered",
+                            "severity": "low"
+                        },
+                        "similarity_score": 0.812279224395752,
+                        "thumbnail_base64": "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"
+                    }
+                ],
+                "confidence_score": 0.856,
+                "suggested_priority": "urgent"
+            },
+            "correlation_analysis": {
+                "alert_id": "68e7aef8e5f7d3f8cd22fa92",
+                "analysis_timestamp": "2025-10-09T12:48:17.086000",
+                "equipment_id": "ETCH_01",
+                "alert_severity": "critical",
+                "affected_wafers": {
+                    "total": 57,
+                    "pre_alert": 22,
+                    "during_alert": 25,
+                    "post_alert": 10
+                },
+                "correlations": {
+                    "temporal": {
+                        "correlation_strength": -0.009,
+                        "yield_impact": -0.18,
+                        "defect_rate_change": -4.1,
+                        "time_lag_hours": null,
+                        "window_statistics": {
+                            "pre_alert": {
+                                "avg_yield": 96.21818181818183,
+                                "std_yield": 2.054979841448653,
+                                "avg_defects": 23.636363636363637,
+                                "wafer_count": 22
+                            },
+                            "alert_window": {
+                                "avg_yield": 96.8704,
+                                "std_yield": 1.6628180417592284,
+                                "avg_defects": 19.56,
+                                "wafer_count": 25
+                            },
+                            "post_alert": {
+                                "avg_yield": 96.4,
+                                "std_yield": 1.6921465657560522,
+                                "avg_defects": 22.5,
+                                "wafer_count": 10
+                            }
+                        }
+                    },
+                    "batch": {
+                        "suspect_batches": [
+                            {
+                                "batch_id": "SB_2025_045",
+                                "yield": 93.28,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "is_problematic": true
+                            },
+                            {
+                                "batch_id": "SB_2025_032",
+                                "yield": 93.92,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "is_problematic": false
+                            },
+                            {
+                                "batch_id": "SB_2025_048",
+                                "yield": 94.0,
+                                "wafer_count": 2,
+                                "dominant_pattern": "clustered",
+                                "is_problematic": true
+                            }
+                        ],
+                        "batch_impact": {
+                            "SB_2025_048": {
+                                "avg_yield": 94.0,
+                                "wafer_count": 2,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 37.5,
+                                "pattern_distribution": {
+                                    "clustered": 2
+                                },
+                                "is_problematic": true
+                            },
+                            "SB_2025_008": {
+                                "avg_yield": 96.32,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 23.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_015": {
+                                "avg_yield": 96.0,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 25.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_024": {
+                                "avg_yield": 97.44,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 16.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_010": {
+                                "avg_yield": 97.44,
+                                "wafer_count": 3,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 16.0,
+                                "pattern_distribution": {
+                                    "clustered": 3
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_026": {
+                                "avg_yield": 96.16,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 24.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_014": {
+                                "avg_yield": 96.0,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 25.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_017": {
+                                "avg_yield": 96.32,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 23.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_042": {
+                                "avg_yield": 94.67,
+                                "wafer_count": 3,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 33.3,
+                                "pattern_distribution": {
+                                    "clustered": 3
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_011": {
+                                "avg_yield": 96.44,
+                                "wafer_count": 4,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 22.2,
+                                "pattern_distribution": {
+                                    "clustered": 4
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_028": {
+                                "avg_yield": 96.64,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 21.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_041": {
+                                "avg_yield": 98.08,
+                                "wafer_count": 2,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 12.0,
+                                "pattern_distribution": {
+                                    "clustered": 2
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_019": {
+                                "avg_yield": 96.8,
+                                "wafer_count": 2,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 20.0,
+                                "pattern_distribution": {
+                                    "clustered": 2
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_045": {
+                                "avg_yield": 93.28,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 42.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": true
+                            },
+                            "SB_2025_012": {
+                                "avg_yield": 98.72,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 8.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_039": {
+                                "avg_yield": 96.43,
+                                "wafer_count": 3,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 22.3,
+                                "pattern_distribution": {
+                                    "clustered": 3
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_027": {
+                                "avg_yield": 98.16,
+                                "wafer_count": 2,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 11.5,
+                                "pattern_distribution": {
+                                    "clustered": 2
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_030": {
+                                "avg_yield": 95.57,
+                                "wafer_count": 3,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 27.7,
+                                "pattern_distribution": {
+                                    "clustered": 3
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_036": {
+                                "avg_yield": 96.75,
+                                "wafer_count": 3,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 20.3,
+                                "pattern_distribution": {
+                                    "clustered": 3
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_035": {
+                                "avg_yield": 97.44,
+                                "wafer_count": 3,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 16.0,
+                                "pattern_distribution": {
+                                    "clustered": 3
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_032": {
+                                "avg_yield": 93.92,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 38.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_018": {
+                                "avg_yield": 94.24,
+                                "wafer_count": 2,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 36.0,
+                                "pattern_distribution": {
+                                    "clustered": 2
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_020": {
+                                "avg_yield": 99.52,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 3.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_037": {
+                                "avg_yield": 97.07,
+                                "wafer_count": 3,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 18.3,
+                                "pattern_distribution": {
+                                    "clustered": 3
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_046": {
+                                "avg_yield": 96.16,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 24.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_034": {
+                                "avg_yield": 97.28,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 17.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_001": {
+                                "avg_yield": 95.52,
+                                "wafer_count": 2,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 28.0,
+                                "pattern_distribution": {
+                                    "clustered": 2
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_038": {
+                                "avg_yield": 97.6,
+                                "wafer_count": 2,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 15.0,
+                                "pattern_distribution": {
+                                    "clustered": 2
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_006": {
+                                "avg_yield": 97.12,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 18.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_031": {
+                                "avg_yield": 96.96,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 19.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_033": {
+                                "avg_yield": 96.32,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 23.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_040": {
+                                "avg_yield": 98.72,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 8.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            },
+                            "SB_2025_029": {
+                                "avg_yield": 99.04,
+                                "wafer_count": 1,
+                                "dominant_pattern": "clustered",
+                                "avg_failed_dies": 6.0,
+                                "pattern_distribution": {
+                                    "clustered": 1
+                                },
+                                "is_problematic": false
+                            }
+                        }
+                    },
+                    "recipe": {
+                        "recipe_impact": {},
+                        "worst_recipe": null
+                    },
+                    "spatial": {
+                        "dominant_patterns": [
+                            {
+                                "pattern": "clustered",
+                                "frequency": 57,
+                                "percentage": 100.0,
+                                "avg_yield": 96.54,
+                                "yield_std": 1.85
+                            }
+                        ],
+                        "pattern_frequency": {
+                            "clustered": {
+                                "frequency": 57,
+                                "percentage": 100.0,
+                                "avg_yield": 96.54,
+                                "yield_std": 1.85
+                            }
+                        }
+                    },
+                    "equipment": {
+                        "maintenance_due": true,
+                        "utilization_rate": 100,
+                        "recent_anomalies": 165,
+                        "data_points": 1553
+                    },
+                    "process_context": {
+                        "problematic_materials": [],
+                        "material_checks": {
+                            "slurry_batch": {
+                                "id": "SB_2025_014",
+                                "context_id": "SB_2025_014",
+                                "is_problematic": false,
+                                "qc_status": "passed",
+                                "large_particle_count": 8
+                            }
+                        },
+                        "correlation_found": false,
+                        "confidence": 0.0
+                    }
+                },
+                "confidence_score": 0.77,
+                "insights": [
+                    "Slurry batch SB_2025_045 shows poor performance with 93.3% yield",
+                    "Dominant defect pattern is 'clustered' occurring in 100.0% of wafers",
+                    "Equipment shows patterns suggesting maintenance may be needed",
+                    "Equipment has experienced 165 anomalies in the past 24 hours"
+                ]
+            },
+            "ai_investigation": {
+                "key_findings": [
+                    "Top 3 Key Findings:",
+                    "Overall Significance:"
+                ],
+                "summary": "1. Top 3 Key Findings:\n\na. Suspect Batches: Three batches were identified as problematic, with 0.0% yield. These include SB_2025_045 (1 wafer), SB_2025_032 (1 wafer), and SB_2025_048 (2 wafers).\n\nb. Spatial Patterns: The affected wafers were clustered, accounting for 96.5% of the average yield. This suggests a localized issue within the manufacturing process.\n\nc. Temporal Correlation: The analysis showed a yield impact of -0.2%, a correlation strength of -0.01, and a defect rate change of \u00b14 defects. However, no time lag was detected, indicating a potential immediate impact on production.\n\n2. Overall Significance:\n\nThe analysis provides valuable insights into the semiconductor manufacturing process, highlighting specific batches and spatial patterns that require immediate attention. The localized nature of the issue and the potential for immediate impact on production suggest that addressing the identified problems could lead to significant improvements in yield and cost savings for the business.",
+                "correlation_confidence": 0.77,
+                "affected_wafers": 57
+            }
+        }
+    ]
+}

@@ -1,0 +1,220 @@
+.container {
+  padding: 24px;
+  background: white;
+  border-radius: 12px;
+  margin-bottom: 16px;
+  border: 1px solid var(--gray-light-2);
+}
+
+.emptyState {
+  padding: 60px 20px;
+  text-align: center;
+  background: var(--gray-light-3);
+  border: 1px dashed var(--gray-light-1);
+}
+
+.emptyIcon {
+  color: var(--gray-base);
+  margin-bottom: 12px;
+}
+
+.emptyText {
+  color: var(--gray-dark-1);
+  font-size: 14px;
+}
+
+.header {
+  margin-bottom: 24px;
+  padding-bottom: 20px;
+  border-bottom: 2px solid rgba(0, 104, 74, 0.12);
+}
+
+.titleRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.headerIcon {
+  color: #00684A;
+  flex-shrink: 0;
+}
+
+.title {
+  color: var(--gray-dark-3);
+  margin: 0 0 6px 0;
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.purpose {
+  color: var(--gray-dark-1);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.section {
+  margin-bottom: 24px;
+}
+
+.sectionTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--gray-dark-2);
+  margin-bottom: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.features {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.featureItem {
+  display: inline-block;
+}
+
+.featureBadge {
+  font-weight: 500;
+  font-size: 12px;
+  padding: 8px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.collections {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.collectionChip {
+  background: rgba(0, 104, 74, 0.08);
+  color: #00684A;
+  padding: 8px 14px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 104, 74, 0.2);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.collectionChip code {
+  font-family: 'Source Code Pro', 'Monaco', 'Courier New', monospace;
+  font-weight: 500;
+  font-size: 12px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.metric {
+  background: var(--gray-light-3);
+  padding: 16px;
+  border-radius: 8px;
+  border-left: 4px solid #00684A;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.metricIcon {
+  color: #00684A;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.metricContent {
+  flex: 1;
+}
+
+.metricLabel {
+  font-size: 11px;
+  color: var(--gray-dark-1);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-weight: 600;
+}
+
+.metricValue {
+  font-size: 18px;
+  font-weight: 600;
+  color: #00684A;
+}
+
+.dataFlow {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.flowStep {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.stepNumber {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #00684A;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.stepText {
+  flex: 1;
+  font-size: 13px;
+  color: var(--gray-dark-2);
+  line-height: 1.7;
+  padding-top: 4px;
+}
+
+.valueBox {
+  background: linear-gradient(135deg, #00684A 0%, #00a35c 100%);
+  color: white;
+  padding: 20px;
+  border-radius: 8px;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-top: 24px;
+}
+
+.valueIcon {
+  color: white;
+  flex-shrink: 0;
+}
+
+.valueLabel {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  opacity: 0.9;
+  font-weight: 600;
+}
+
+.valueText {
+  font-size: 14px;
+  line-height: 1.6;
+  color: white;
+}

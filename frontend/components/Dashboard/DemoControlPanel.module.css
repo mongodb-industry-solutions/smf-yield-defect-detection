@@ -82,13 +82,36 @@
   height: 32px !important;
 }
 
-/* Right Section - Excursion Injection */
+/* Right Section - AI Toggle & Excursion Injection */
 .rightSection {
   display: flex;
   align-items: center;
   gap: 12px;
   flex: 1;
   justify-content: flex-end;
+}
+
+/* AI Toggle Container */
+.aiToggleContainer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(0, 104, 74, 0.05);
+  border-radius: 6px;
+}
+
+.aiLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+  white-space: nowrap;
+}
+
+.divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(0, 104, 74, 0.15);
 }
 
 .injectionControls {
