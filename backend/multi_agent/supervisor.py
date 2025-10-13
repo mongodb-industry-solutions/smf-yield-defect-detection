@@ -43,38 +43,38 @@ async def supervisor_synthesis_agent(
     equipment_id = alert_context.get('equipment_id', 'Unknown')
     excursion_type = alert_context.get('excursion_type', 'Unknown')
 
-    logger.info(f"🎯 [SUPERVISOR] Starting synthesis for {equipment_id}")
-    logger.info(f"   Aggregating outputs from 3 worker agents...")
+    logger.info(f"🟢 [SUPERVISOR] Starting synthesis for {equipment_id}")
+    logger.info(f"🟢    Aggregating outputs from 3 worker agents...")
 
     # Extract key information from each agent
     monitoring_confidence = monitoring_result.get('monitoring_decision', {}).get('confidence', 0)
     monitoring_pattern = monitoring_result.get('monitoring_decision', {}).get('pattern_detected', 'unknown')
     monitoring_reasoning = monitoring_result.get('monitoring_decision', {}).get('reasoning', 'N/A')
 
-    logger.info(f"   📊 Monitoring Agent Output:")
-    logger.info(f"      Pattern: {monitoring_pattern}, Confidence: {monitoring_confidence:.0%}")
-    logger.info(f"      Reasoning: {monitoring_reasoning[:100]}...")
+    logger.info(f"🟢    📊 Monitoring Agent Output:")
+    logger.info(f"🟢       Pattern: {monitoring_pattern}, Confidence: {monitoring_confidence:.0%}")
+    logger.info(f"🟢       Reasoning: {monitoring_reasoning[:100]}...")
 
     key_findings = investigation_result.get('key_findings', [])
     correlation_confidence = investigation_result.get('correlation_results', {}).get('confidence_score', 0)
     affected_wafers = investigation_result.get('correlation_results', {}).get('affected_wafers', {}).get('total', 0)
     investigation_summary = investigation_result.get('investigation_summary', 'No investigation data')
 
-    logger.info(f"   🔬 Investigation Agent Output:")
-    logger.info(f"      Affected Wafers: {affected_wafers}, Correlation Confidence: {correlation_confidence:.0%}")
-    logger.info(f"      Key Findings: {len(key_findings)}")
+    logger.info(f"🟢    🔬 Investigation Agent Output:")
+    logger.info(f"🟢       Affected Wafers: {affected_wafers}, Correlation Confidence: {correlation_confidence:.0%}")
+    logger.info(f"🟢       Key Findings: {len(key_findings)}")
     for i, finding in enumerate(key_findings[:3], 1):
-        logger.info(f"         {i}. {finding[:80]}...")
+        logger.info(f"🟢          {i}. {finding[:80]}...")
 
     validated_causes = rca_result.get('validated_causes', [])
     rca_validation = rca_result.get('rca_validation', 'No RCA validation')
     rca_recommendations = rca_result.get('rca_patterns', {}).get('recommendations', [])
 
-    logger.info(f"   🔍 RCA Agent Output:")
-    logger.info(f"      Validated Causes: {len(validated_causes)}")
+    logger.info(f"🟢    🔍 RCA Agent Output:")
+    logger.info(f"🟢       Validated Causes: {len(validated_causes)}")
     for i, cause in enumerate(validated_causes, 1):
-        logger.info(f"         {i}. {cause}")
-    logger.info(f"      Recommendations: {len(rca_recommendations)}")
+        logger.info(f"🟢          {i}. {cause}")
+    logger.info(f"🟢       Recommendations: {len(rca_recommendations)}")
 
     # Build comprehensive context for supervisor
     findings_text = "\n".join([f"  • {f}" for f in key_findings[:3]]) if key_findings else "  No findings"
@@ -137,21 +137,21 @@ Generate a concise quality control report with:
 
 Keep it actionable and specific. Focus on what engineers should DO, not just what happened."""
 
-    logger.info(f"   🤖 Calling Claude for supervisor synthesis...")
-    logger.info(f"   📝 Prompt includes: {len(prompt)} characters")
+    logger.info(f"🟢    🤖 Calling Claude for supervisor synthesis...")
+    logger.info(f"🟢    📝 Prompt includes: {len(prompt)} characters")
 
     try:
         synthesis_response = call_claude(prompt, temperature=0.2, max_tokens=600)
 
-        logger.info(f"   ✅ Supervisor synthesis complete")
-        logger.info(f"   📋 Generated comprehensive quality control report ({len(synthesis_response)} chars)")
+        logger.info(f"🟢    ✅ Supervisor synthesis complete")
+        logger.info(f"🟢    📋 Generated comprehensive quality control report ({len(synthesis_response)} chars)")
 
         # Log first few lines of synthesis
         synthesis_lines = synthesis_response.split('\n')
-        logger.info(f"   📄 Synthesis Preview:")
+        logger.info(f"🟢    📄 Synthesis Preview:")
         for i, line in enumerate(synthesis_lines[:5], 1):
             if line.strip():
-                logger.info(f"      {line[:100]}...")
+                logger.info(f"🟢       {line[:100]}...")
 
         # Extract risk level from response (simple heuristic)
         risk_level = "Medium"  # Default
@@ -169,10 +169,10 @@ Keep it actionable and specific. Focus on what engineers should DO, not just wha
             0.8 * 0.3  # RCA weight (assume 80% if causes found)
         ) if validated_causes else (monitoring_confidence * 0.5 + correlation_confidence * 0.5)
 
-        logger.info(f"   🎯 Final Results:")
-        logger.info(f"      Risk Level: {risk_level}")
-        logger.info(f"      Overall Confidence: {overall_confidence:.0%}")
-        logger.info(f"      Aggregated: {len(key_findings)} findings, {len(validated_causes)} causes, {len(rca_recommendations)} recommendations")
+        logger.info(f"🟢    🎯 Final Results:")
+        logger.info(f"🟢       Risk Level: {risk_level}")
+        logger.info(f"🟢       Overall Confidence: {overall_confidence:.0%}")
+        logger.info(f"🟢       Aggregated: {len(key_findings)} findings, {len(validated_causes)} causes, {len(rca_recommendations)} recommendations")
 
         return {
             "supervisor_synthesis": synthesis_response,
@@ -198,7 +198,7 @@ Keep it actionable and specific. Focus on what engineers should DO, not just wha
         }
 
     except Exception as e:
-        logger.error(f"   ❌ Supervisor synthesis error: {e}")
+        logger.error(f"🟢    ❌ Supervisor synthesis error: {e}")
         return {
             "supervisor_synthesis": f"Synthesis failed: {str(e)}",
             "risk_level": "Unknown",

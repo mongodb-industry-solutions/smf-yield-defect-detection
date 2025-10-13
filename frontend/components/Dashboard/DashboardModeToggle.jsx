@@ -11,11 +11,12 @@ const DashboardModeToggle = ({ mode, onModeChange }) => {
         size="default"
         value={mode}
         onChange={(value) => onModeChange(value)}
+        aria-controls="dashboard-content"
       >
-        <SegmentedControlOption value="normal">
+        <SegmentedControlOption value="normal" aria-controls="dashboard-content">
           Charts
         </SegmentedControlOption>
-        <SegmentedControlOption value="agentic">
+        <SegmentedControlOption value="agentic" aria-controls="dashboard-content">
           Agentic AI
         </SegmentedControlOption>
       </SegmentedControl>

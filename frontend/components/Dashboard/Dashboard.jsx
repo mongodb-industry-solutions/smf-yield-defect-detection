@@ -18,7 +18,7 @@ import LiveRFPowerMonitor from './LiveRFPowerMonitor';
 import LiveWaferImageMapCompact from './LiveWaferImageMapCompact';
 import EquipmentMetricsChart from './EquipmentMetricsChart';
 import { useDashboardData } from '@/contexts/DashboardDataProvider';
-import { aiAgentAPI } from '@/lib/api';
+import { aiAgentAPI, alertAPI } from '@/lib/api';
 import styles from './Dashboard.module.css';
 
 // Agent-Collection mapping
@@ -29,14 +29,23 @@ const AGENT_COLLECTION_MAP = {
   4: ['wafer_defects', 'historical_knowledge', 'process_context'] // Supervisor Agent
 };
 
-const Dashboard = () => {
+const Dashboard = ({ onModeChange }) => {
   const { refresh } = useDashboardData();
   const [dashboardMode, setDashboardMode] = useState('normal'); // 'normal' or 'agentic'
   const [aiEnabled, setAiEnabled] = useState(true);
+
+  // Propagate mode changes to parent
+  const handleModeChange = (newMode) => {
+    setDashboardMode(newMode);
+    if (onModeChange) {
+      onModeChange(newMode);
+    }
+  };
   const [isMatrixCollapsed, setIsMatrixCollapsed] = useState(false);
   const [isAlertsCollapsed, setIsAlertsCollapsed] = useState(false);
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [clickedCollection, setClickedCollection] = useState(null);
+  const [selectedAlertId, setSelectedAlertId] = useState(null); // Global alert selection
 
   // Find agents that use a specific collection
   const getAgentsUsingCollection = (collectionName) => {
@@ -75,7 +84,7 @@ const Dashboard = () => {
           {/* Dashboard Mode Toggle - Replaces MongoDBConsolePanel */}
           <DashboardModeToggle
             mode={dashboardMode}
-            onModeChange={setDashboardMode}
+            onModeChange={handleModeChange}
           />
 
           {/* Demo Control Panel */}
@@ -98,14 +107,10 @@ const Dashboard = () => {
             </>
           ) : (
             <>
-              {/* Agentic Mode: AI Workflow Pipeline */}
-              <AgentWorkflowBar
-                selectedAgent={selectedAgent}
-                onAgentSelect={setSelectedAgent}
-              />
-
-              <AgentDetailPanel
-                selectedAgent={selectedAgent}
+              {/* Agentic Data Layer - MongoDB Collections */}
+              <AgenticWorkflowView
+                highlightedCollections={selectedAgent ? AGENT_COLLECTION_MAP[selectedAgent] : []}
+                onCollectionClick={setClickedCollection}
               />
 
               {clickedCollection && (
@@ -117,9 +122,18 @@ const Dashboard = () => {
                 </Card>
               )}
 
-              <AgenticWorkflowView
-                highlightedCollections={selectedAgent ? AGENT_COLLECTION_MAP[selectedAgent] : []}
-                onCollectionClick={setClickedCollection}
+              {/* Agentic Mode: AI Workflow Pipeline */}
+              <AgentWorkflowBar
+                selectedAgent={selectedAgent}
+                onAgentSelect={setSelectedAgent}
+                selectedAlertId={selectedAlertId}
+                onAlertSelect={setSelectedAlertId}
+              />
+
+              {/* Agent Detail Panel */}
+              <AgentDetailPanel
+                selectedAgent={selectedAgent}
+                selectedAlertId={selectedAlertId}
               />
             </>
           )}

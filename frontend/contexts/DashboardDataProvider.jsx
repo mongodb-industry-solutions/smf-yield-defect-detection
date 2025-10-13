@@ -13,7 +13,7 @@ export const useDashboardData = () => {
   return context;
 };
 
-export const DashboardDataProvider = ({ children }) => {
+export const DashboardDataProvider = ({ children, mode = 'normal' }) => {
   // State for alerts only
   const [data, setData] = useState({
     alerts: [],
@@ -24,15 +24,21 @@ export const DashboardDataProvider = ({ children }) => {
 
   // Fetch all dashboard data
   const fetchAllData = async () => {
-    console.log('Fetching dashboard data...');
+    console.log(`Fetching dashboard data (mode: ${mode})...`);
     const startTime = Date.now();
 
     try {
-      // Fetch both alerts and equipment status in parallel
-      const [alertsData, equipmentData] = await Promise.all([
-        alertAPI.getAlerts(null, 20),
-        equipmentAPI.getEquipmentStatus()
-      ]);
+      // Always fetch alerts
+      const promises = [alertAPI.getAlerts(null, 20)];
+
+      // Only fetch equipment status in normal mode (skip in agentic mode)
+      if (mode === 'normal') {
+        promises.push(equipmentAPI.getEquipmentStatus());
+      }
+
+      const results = await Promise.all(promises);
+      const alertsData = results[0];
+      const equipmentData = results[1] || null;
 
       const fetchTime = Date.now() - startTime;
       console.log(`Data fetched in ${fetchTime}ms`);
@@ -69,15 +75,15 @@ export const DashboardDataProvider = ({ children }) => {
     }
   };
 
-  // Initial fetch on mount
+  // Initial fetch on mount and when mode changes
   useEffect(() => {
     fetchAllData();
 
-    // Refresh data every 30 seconds
-    const interval = setInterval(fetchAllData, 30000);
+    // Refresh data every 60 seconds (increased from 30s)
+    const interval = setInterval(fetchAllData, 60000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [mode]);
 
   // Provide refresh function for manual updates
   const refresh = () => {

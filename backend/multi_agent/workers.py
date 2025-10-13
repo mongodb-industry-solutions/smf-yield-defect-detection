@@ -95,8 +95,8 @@ async def monitoring_agent_tool(state: dict) -> dict:
     Returns:
         Updated state with monitoring_decision and statistical_context
     """
-    logger.info(f"🔍 [MONITORING AGENT] Starting analysis for alert {state['alert_id']}")
-    logger.info(f"   Equipment: {state['equipment_id']}, Type: {state['excursion_type']}")
+    logger.info(f"🔵 [MONITORING AGENT] Starting analysis for alert {state['alert_id']}")
+    logger.info(f"🔵    Equipment: {state['equipment_id']}, Type: {state['excursion_type']}")
 
     current_metrics = state.get('metrics', {})
     equipment_id = state['equipment_id']
@@ -117,7 +117,7 @@ async def monitoring_agent_tool(state: dict) -> dict:
     else:
         stats['deviation_pct'] = 0
 
-    logger.info(f"   📈 Current vs Average: {stats.get('deviation_pct', 0):+.1f}% "
+    logger.info(f"🔵    📈 Current vs Average: {stats.get('deviation_pct', 0):+.1f}% "
                f"({stats.get('deviation_sigma', 0):.1f}σ)")
 
     # Build LLM prompt with statistical context
@@ -176,7 +176,7 @@ Valid pattern_detected values: "drift", "spike", "oscillation", "normal_variatio
 
     try:
         # Call Claude via simple Bedrock client (uses your existing AWS SSO session)
-        logger.info(f"   🤖 Invoking Claude Haiku for decision...")
+        logger.info(f"🔵    🤖 Invoking Claude Haiku for decision...")
 
         response = call_claude(prompt, temperature=0.2, max_tokens=300)
         decision = json.loads(response)
@@ -184,12 +184,12 @@ Valid pattern_detected values: "drift", "spike", "oscillation", "normal_variatio
         # Validate response
         required_fields = ["create_alert", "reasoning", "confidence"]
         if not all(field in decision for field in required_fields):
-            logger.error(f"   ❌ Invalid LLM response, missing required fields")
+            logger.error(f"🔵    ❌ Invalid LLM response, missing required fields")
             raise ValueError(f"Missing required fields in LLM response: {decision}")
 
-        logger.info(f"   ✅ Decision: {'CREATE ALERT' if decision['create_alert'] else 'FILTER'}")
-        logger.info(f"   📊 Confidence: {decision['confidence']:.2f}, Pattern: {decision.get('pattern_detected', 'unknown')}")
-        logger.info(f"   💡 Reasoning: {decision['reasoning']}")
+        logger.info(f"🔵    ✅ Decision: {'CREATE ALERT' if decision['create_alert'] else 'FILTER'}")
+        logger.info(f"🔵    📊 Confidence: {decision['confidence']:.2f}, Pattern: {decision.get('pattern_detected', 'unknown')}")
+        logger.info(f"🔵    💡 Reasoning: {decision['reasoning']}")
 
         # Return updated state
         return {
@@ -199,8 +199,8 @@ Valid pattern_detected values: "drift", "spike", "oscillation", "normal_variatio
         }
 
     except json.JSONDecodeError as e:
-        logger.error(f"   ❌ Failed to parse LLM response as JSON: {e}")
-        logger.error(f"   Raw response: {response}")
+        logger.error(f"🔵    ❌ Failed to parse LLM response as JSON: {e}")
+        logger.error(f"🔵    Raw response: {response}")
         # Fail-safe: create alert on error
         return {
             "monitoring_decision": {
@@ -214,7 +214,7 @@ Valid pattern_detected values: "drift", "spike", "oscillation", "normal_variatio
         }
 
     except Exception as e:
-        logger.error(f"   ❌ Monitoring agent error: {e}")
+        logger.error(f"🔵    ❌ Monitoring agent error: {e}")
         # Fail-safe: create alert on error
         return {
             "monitoring_decision": {
@@ -248,21 +248,22 @@ async def investigation_agent_tool(state: dict) -> dict:
     Returns:
         Updated state with correlation_results, investigation_summary, and key_findings
     """
-    logger.info(f"🔬 [INVESTIGATION AGENT] Starting correlation analysis for alert {state['alert_id']}")
-    logger.info(f"   Equipment: {state.get('equipment_id')}, Excursion: {state.get('excursion_type')}")
+    logger.info(f"🟠 [INVESTIGATION AGENT] Starting correlation analysis for alert {state['alert_id']}")
+    logger.info(f"🟠    Equipment: {state.get('equipment_id')}, Excursion: {state.get('excursion_type')}")
 
     alert_id = state['alert_id']
-    logger.info(f"   🔑 Using alert_id (ObjectId): {alert_id}, type: {type(alert_id)}")
+    logger.info(f"🟠    🔑 Using alert_id (ObjectId): {alert_id}, type: {type(alert_id)}")
 
     try:
         # Import CorrelationEngine (reuse existing service!)
         from services.correlation_engine import CorrelationEngine
 
-        logger.info(f"   🔄 Initializing CorrelationEngine...")
+        logger.info(f"🟠    🔄 Initializing CorrelationEngine...")
+        logger.info(f"📊    Querying wafer_defects, process_context, alerts collections...")
 
         # Initialize engine and run analysis
         engine = CorrelationEngine()
-        logger.info(f"   🔍 Running correlation analysis with ObjectId: {alert_id}...")
+        logger.info(f"🟠    🔍 Running correlation analysis with ObjectId: {alert_id}...")
 
         correlation_data = await engine.analyze_alert(alert_id)
 
@@ -271,8 +272,8 @@ async def investigation_agent_tool(state: dict) -> dict:
         affected_wafers_data = correlation_data.get('affected_wafers', {})
         affected_total = affected_wafers_data.get('total', 0)
 
-        logger.info(f"   📊 Correlation complete: {confidence:.0%} confidence, {affected_total} wafers affected")
-        logger.info(f"   📈 Wafer breakdown: Pre={affected_wafers_data.get('pre_alert', 0)}, "
+        logger.info(f"🟠    📊 Correlation complete: {confidence:.0%} confidence, {affected_total} wafers affected")
+        logger.info(f"🟠    📈 Wafer breakdown: Pre={affected_wafers_data.get('pre_alert', 0)}, "
                    f"During={affected_wafers_data.get('during_alert', 0)}, "
                    f"Post={affected_wafers_data.get('post_alert', 0)}")
 
@@ -284,11 +285,11 @@ async def investigation_agent_tool(state: dict) -> dict:
         process_context = correlations.get('process_context', {})
 
         # Log detailed correlation findings
-        logger.info(f"   🔍 Temporal: {temporal.get('yield_impact', 0):.1f}% yield drop, "
+        logger.info(f"🟠    🔍 Temporal: {temporal.get('yield_impact', 0):.1f}% yield drop, "
                    f"{temporal.get('correlation_strength', 0):.2f} strength")
-        logger.info(f"   🧪 Batch: {len(batch.get('suspect_batches', []))} suspect batches")
-        logger.info(f"   📐 Spatial: {len(spatial.get('dominant_patterns', []))} dominant patterns")
-        logger.info(f"   ⚠️  Problematic materials: {len(process_context.get('problematic_materials', []))}")
+        logger.info(f"🟠    🧪 Batch: {len(batch.get('suspect_batches', []))} suspect batches")
+        logger.info(f"🟠    📐 Spatial: {len(spatial.get('dominant_patterns', []))} dominant patterns")
+        logger.info(f"🟠    ⚠️  Problematic materials: {len(process_context.get('problematic_materials', []))}")
 
         # Build concise summary for LLM
         prompt = f"""Analyze semiconductor manufacturing correlation data and provide key findings.
@@ -325,12 +326,12 @@ Provide:
 Be concise, technical, and focus on actionable insights."""
 
         # Call Claude for interpretation
-        logger.info(f"   🤖 Invoking Claude Haiku for interpretation...")
-        logger.info(f"   📝 Prompt length: {len(prompt)} chars")
+        logger.info(f"🟠    🤖 Invoking Claude Haiku for interpretation...")
+        logger.info(f"🟠    📝 Prompt length: {len(prompt)} chars")
 
         response = call_claude(prompt, temperature=0.2, max_tokens=400)
 
-        logger.info(f"   ✅ LLM response received ({len(response)} chars)")
+        logger.info(f"🟠    ✅ LLM response received ({len(response)} chars)")
 
         # Parse response to extract key findings
         lines = response.strip().split('\n')
@@ -347,12 +348,12 @@ Be concise, technical, and focus on actionable insights."""
         # Take top 3 findings
         key_findings = key_findings[:3]
 
-        logger.info(f"   ✅ Investigation complete")
-        logger.info(f"   📋 Key findings extracted: {len(key_findings)}")
+        logger.info(f"🟠    ✅ Investigation complete")
+        logger.info(f"🟠    📋 Key findings extracted: {len(key_findings)}")
         for i, finding in enumerate(key_findings, 1):
-            logger.info(f"      {i}. {finding[:100]}{'...' if len(finding) > 100 else ''}")
+            logger.info(f"🟠       {i}. {finding[:100]}{'...' if len(finding) > 100 else ''}")
 
-        logger.info(f"   🎯 Next stage: RCA")
+        logger.info(f"🟠    🎯 Next stage: RCA")
 
         # Return updated state
         return {
@@ -364,7 +365,7 @@ Be concise, technical, and focus on actionable insights."""
 
     except ValueError as e:
         # Alert not found error
-        logger.error(f"   ❌ Alert not found: {e}")
+        logger.error(f"🟠    ❌ Alert not found: {e}")
         return {
             "correlation_results": {},
             "investigation_summary": f"Alert {alert_id} not found in database",
@@ -373,7 +374,7 @@ Be concise, technical, and focus on actionable insights."""
         }
 
     except Exception as e:
-        logger.error(f"   ❌ Investigation agent error: {e}")
+        logger.error(f"🟠    ❌ Investigation agent error: {e}")
         # Return minimal results, allow workflow to continue
         return {
             "correlation_results": {},
@@ -398,25 +399,26 @@ async def rca_agent_tool(state: dict) -> dict:
     equipment_id = state.get('equipment_id', 'Unknown')
     excursion_type = state.get('excursion_type', 'Unknown')
 
-    logger.info(f"🔍 [RCA AGENT] Starting root cause analysis for alert {alert_id}")
-    logger.info(f"   Equipment: {equipment_id}, Excursion: {excursion_type}")
+    logger.info(f"🟣 [RCA AGENT] Starting root cause analysis for alert {alert_id}")
+    logger.info(f"🟣    Equipment: {equipment_id}, Excursion: {excursion_type}")
 
     try:
         from services.rca_generator import RCAGenerator
 
-        logger.info(f"   🔄 Initializing RCAGenerator...")
+        logger.info(f"🟣    🔄 Initializing RCAGenerator...")
+        logger.info(f"📊    Querying historical_knowledge collection...")
         rca_gen = RCAGenerator()
 
-        logger.info(f"   🔍 Running pattern-based RCA analysis...")
+        logger.info(f"🟣    🔍 Running pattern-based RCA analysis...")
         rca_data = await rca_gen.generate_rca_hints(alert_id)
 
         # Extract top recommendations
         recommendations = rca_data.get('recommendations', [])
-        logger.info(f"   📋 Generated {len(recommendations)} RCA recommendations")
+        logger.info(f"🟣    📋 Generated {len(recommendations)} RCA recommendations")
 
         # Log top recommendations
         for i, rec in enumerate(recommendations[:3], 1):
-            logger.info(f"      {i}. {rec.get('title', 'Unknown')} "
+            logger.info(f"🟣       {i}. {rec.get('title', 'Unknown')} "
                        f"(confidence: {rec.get('confidence', 0):.0%})")
 
         # Get investigation summary for validation context
@@ -450,11 +452,11 @@ Your task:
 
 Respond in 3-4 sentences. Be concise and specific."""
 
-        logger.info(f"   🤖 Calling Claude for RCA validation...")
+        logger.info(f"🟣    🤖 Calling Claude for RCA validation...")
         validation_response = call_claude(prompt, temperature=0.3, max_tokens=300)
 
-        logger.info(f"   ✅ RCA validation complete")
-        logger.info(f"   📝 Validation: {validation_response[:150]}...")
+        logger.info(f"🟣    ✅ RCA validation complete")
+        logger.info(f"🟣    📝 Validation: {validation_response[:150]}...")
 
         # Extract validated causes (high confidence recommendations)
         validated_causes = [
@@ -463,11 +465,11 @@ Respond in 3-4 sentences. Be concise and specific."""
             if rec.get('confidence', 0) > 0.5
         ]
 
-        logger.info(f"   ✅ {len(validated_causes)} high-confidence root causes identified")
+        logger.info(f"🟣    ✅ {len(validated_causes)} high-confidence root causes identified")
         for i, cause in enumerate(validated_causes, 1):
-            logger.info(f"      {i}. {cause}")
+            logger.info(f"🟣       {i}. {cause}")
 
-        logger.info(f"   🎯 Next stage: Complete")
+        logger.info(f"🟣    🎯 Next stage: Supervisor")
 
         # Return updated state
         return {
@@ -479,7 +481,7 @@ Respond in 3-4 sentences. Be concise and specific."""
 
     except ValueError as e:
         # Alert not found error
-        logger.error(f"   ❌ Alert not found: {e}")
+        logger.error(f"🟣    ❌ Alert not found: {e}")
         return {
             "rca_patterns": {},
             "rca_validation": f"Alert {alert_id} not found in database",
@@ -488,7 +490,7 @@ Respond in 3-4 sentences. Be concise and specific."""
         }
 
     except Exception as e:
-        logger.error(f"   ❌ RCA agent error: {e}")
+        logger.error(f"🟣    ❌ RCA agent error: {e}")
         # Return minimal results
         return {
             "rca_patterns": {},

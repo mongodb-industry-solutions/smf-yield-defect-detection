@@ -1,11 +1,12 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Card from '@leafygreen-ui/card';
 import Badge from '@leafygreen-ui/badge';
 import Icon from '@leafygreen-ui/icon';
 import { H3, Body, Label, Description } from '@leafygreen-ui/typography';
 import styles from './AgentDetailPanel.module.css';
+import { alertAPI } from '@/lib/api';
 
 const AGENT_DETAILS = {
   1: {
@@ -106,7 +107,45 @@ const FEATURE_COLORS = {
   document: "#00684A"
 };
 
-const AgentDetailPanel = ({ selectedAgent }) => {
+const AgentDetailPanel = ({ selectedAgent, selectedAlertId }) => {
+  const [agentData, setAgentData] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Fetch real agent data when alert is selected
+  useEffect(() => {
+    console.log('[AgentDetailPanel] useEffect triggered - selectedAlertId:', selectedAlertId, 'selectedAgent:', selectedAgent);
+
+    if (!selectedAlertId || !selectedAgent) {
+      console.log('[AgentDetailPanel] Missing selectedAlertId or selectedAgent, clearing agentData');
+      setAgentData(null);
+      return;
+    }
+
+    const fetchAgentData = async () => {
+      setLoading(true);
+      setError(null);
+      console.log('[AgentDetailPanel] Fetching agent data for alert:', selectedAlertId, 'agent:', selectedAgent);
+
+      try {
+        const response = await alertAPI.getAgentDetails(selectedAlertId);
+        console.log('[AgentDetailPanel] API response:', response);
+
+        const agent = response.agents?.find(a => a.id === selectedAgent);
+        console.log('[AgentDetailPanel] Found agent data:', agent);
+
+        setAgentData(agent);
+      } catch (err) {
+        console.error('[AgentDetailPanel] Error fetching agent data:', err);
+        setError('Failed to load agent execution data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAgentData();
+  }, [selectedAlertId, selectedAgent]);
+
   if (!selectedAgent) {
     return (
       <Card className={styles.emptyState}>
@@ -171,24 +210,6 @@ const AgentDetailPanel = ({ selectedAgent }) => {
         </div>
       </div>
 
-      {/* Key Metrics */}
-      <div className={styles.section}>
-        <Label className={styles.sectionTitle}>
-          <Icon glyph="Charts" size="small" /> Performance Metrics
-        </Label>
-        <div className={styles.metrics}>
-          {agent.metrics.map((metric, idx) => (
-            <div key={idx} className={styles.metric}>
-              <Icon glyph={metric.icon} className={styles.metricIcon} />
-              <div className={styles.metricContent}>
-                <Label className={styles.metricLabel}>{metric.label}</Label>
-                <Body className={styles.metricValue}>{metric.value}</Body>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
       {/* Data Flow */}
       <div className={styles.section}>
         <Label className={styles.sectionTitle}>
@@ -204,9 +225,182 @@ const AgentDetailPanel = ({ selectedAgent }) => {
         </div>
       </div>
 
+      {/* Real-Time Agent Execution Data (All Agents) */}
+      {selectedAgent && (
+        <div className={styles.section}>
+          <Label className={styles.sectionTitle}>
+            <Icon glyph="ActivityFeed" size="small" /> Live Agent Output
+          </Label>
+
+          {loading && <Body className={styles.loadingText}>Loading agent data...</Body>}
+          {error && <Body className={styles.errorText}>{error}</Body>}
+          {!loading && !error && !agentData && selectedAlertId && (
+            <Body className={styles.errorText}>
+              ⚠️ No {AGENT_DETAILS[selectedAgent]?.name} data for this alert. The agent may have failed during execution. Try selecting a different alert or inject a new excursion pattern.
+            </Body>
+          )}
+
+          {/* MONITORING AGENT OUTPUT */}
+          {agentData && selectedAgent === 1 && (
+            <div className={styles.agentOutput}>
+              <div className={styles.outputRow}>
+                <Label className={styles.outputLabel}>Decision:</Label>
+                <Badge variant={agentData.output.decision === 'CREATE ALERT' ? 'red' : 'green'}>
+                  {agentData.output.decision}
+                </Badge>
+              </div>
+              <div className={styles.outputRow}>
+                <Label className={styles.outputLabel}>Confidence:</Label>
+                <Body>{(agentData.output.confidence * 100).toFixed(0)}%</Body>
+              </div>
+              <div className={styles.outputRow}>
+                <Label className={styles.outputLabel}>Pattern Detected:</Label>
+                <Badge variant="blue">{agentData.output.pattern}</Badge>
+              </div>
+              <div className={styles.outputRow}>
+                <Label className={styles.outputLabel}>Reasoning:</Label>
+                <Body className={styles.reasoningText}>{agentData.output.reasoning}</Body>
+              </div>
+              {agentData.output.statistical_context && (
+                <>
+                  <div className={styles.outputRow}>
+                    <Label className={styles.outputLabel}>Deviation:</Label>
+                    <Body>{agentData.output.statistical_context.deviation_sigma?.toFixed(1)}σ ({agentData.output.statistical_context.deviation_pct > 0 ? '+' : ''}{agentData.output.statistical_context.deviation_pct?.toFixed(1)}%)</Body>
+                  </div>
+                  <div className={styles.outputRow}>
+                    <Label className={styles.outputLabel}>Historical Context:</Label>
+                    <Body>Avg: {agentData.output.statistical_context.avg_particles?.toFixed(0)}, Min: {agentData.output.statistical_context.min_particles}, Max: {agentData.output.statistical_context.max_particles} ({agentData.output.statistical_context.readings_count} readings)</Body>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* INVESTIGATION AGENT OUTPUT */}
+          {agentData && selectedAgent === 2 && (
+            <div className={styles.agentOutput}>
+              <div className={styles.outputRow}>
+                <Label className={styles.outputLabel}>Correlation Confidence:</Label>
+                <Body>{(agentData.output.correlation_confidence * 100).toFixed(0)}%</Body>
+              </div>
+              <div className={styles.outputRow}>
+                <Label className={styles.outputLabel}>Affected Wafers:</Label>
+                <Body>{agentData.output.affected_wafers}</Body>
+              </div>
+              <div className={styles.outputRow}>
+                <Label className={styles.outputLabel}>Key Findings:</Label>
+                <div className={styles.findingsList}>
+                  {agentData.output.key_findings?.map((finding, idx) => (
+                    <Body key={idx} className={styles.findingItem}>• {finding}</Body>
+                  ))}
+                </div>
+              </div>
+              {agentData.output.summary && (
+                <div className={styles.outputRow}>
+                  <Label className={styles.outputLabel}>Summary:</Label>
+                  <Body className={styles.reasoningText}>{agentData.output.summary}</Body>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* RCA AGENT OUTPUT */}
+          {agentData && selectedAgent === 3 && (
+            <div className={styles.agentOutput}>
+              <div className={styles.outputRow}>
+                <Label className={styles.outputLabel}>Confidence:</Label>
+                <Body>{(agentData.output.confidence * 100).toFixed(0)}%</Body>
+              </div>
+              <div className={styles.outputRow}>
+                <Label className={styles.outputLabel}>Validated Root Causes:</Label>
+                <div className={styles.findingsList}>
+                  {agentData.output.validated_causes?.map((cause, idx) => (
+                    <Body key={idx} className={styles.findingItem}>• {cause}</Body>
+                  ))}
+                </div>
+              </div>
+              <div className={styles.outputRow}>
+                <Label className={styles.outputLabel}>Recommendations:</Label>
+                <div className={styles.recommendationsList}>
+                  {agentData.output.recommendations?.map((rec, idx) => (
+                    <div key={idx} className={styles.recommendationItem}>
+                      <Badge variant={rec.priority === 'urgent' ? 'red' : rec.priority === 'high' ? 'yellow' : 'blue'}>
+                        {rec.confidence ? `${(rec.confidence * 100).toFixed(0)}%` : 'N/A'}
+                      </Badge>
+                      <Body className={styles.recTitle}>{rec.title}</Body>
+                      {rec.actions && (
+                        <div className={styles.actionsList}>
+                          {rec.actions.map((action, aidx) => (
+                            <Body key={aidx} className={styles.actionItem}>→ {action}</Body>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {agentData.output.validation && (
+                <div className={styles.outputRow}>
+                  <Label className={styles.outputLabel}>Validation:</Label>
+                  <Body className={styles.reasoningText}>{agentData.output.validation}</Body>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SUPERVISOR AGENT OUTPUT */}
+          {agentData && selectedAgent === 4 && (
+            <div className={styles.agentOutput}>
+              <div className={styles.outputRow}>
+                <Label className={styles.outputLabel}>Risk Level:</Label>
+                <Badge variant={
+                  agentData.output.risk_level === 'Critical' ? 'red' :
+                  agentData.output.risk_level === 'High' ? 'yellow' :
+                  agentData.output.risk_level === 'Medium' ? 'blue' : 'green'
+                }>
+                  {agentData.output.risk_level}
+                </Badge>
+              </div>
+              <div className={styles.outputRow}>
+                <Label className={styles.outputLabel}>Overall Confidence:</Label>
+                <Body>{(agentData.output.overall_confidence * 100).toFixed(0)}%</Body>
+              </div>
+              {agentData.output.synthesis && (
+                <div className={styles.outputRow}>
+                  <Label className={styles.outputLabel}>Executive Summary:</Label>
+                  <Body className={styles.reasoningText} style={{ whiteSpace: 'pre-wrap' }}>{agentData.output.synthesis}</Body>
+                </div>
+              )}
+              {agentData.output.agent_summary && (
+                <div className={styles.outputRow}>
+                  <Label className={styles.outputLabel}>Agent Summary:</Label>
+                  <div className={styles.findingsList}>
+                    {agentData.output.agent_summary.monitoring && (
+                      <Body className={styles.findingItem}>
+                        🔵 Monitoring: {agentData.output.agent_summary.monitoring.pattern} ({(agentData.output.agent_summary.monitoring.confidence * 100).toFixed(0)}%)
+                      </Body>
+                    )}
+                    {agentData.output.agent_summary.investigation && (
+                      <Body className={styles.findingItem}>
+                        🟠 Investigation: {agentData.output.agent_summary.investigation.affected_wafers} wafers, {agentData.output.agent_summary.investigation.key_findings_count} findings
+                      </Body>
+                    )}
+                    {agentData.output.agent_summary.rca && (
+                      <Body className={styles.findingItem}>
+                        🟣 RCA: {agentData.output.agent_summary.rca.validated_causes_count} causes, {agentData.output.agent_summary.rca.recommendations_count} recommendations
+                      </Body>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Value Prop */}
       <div className={styles.valueBox}>
-        <Icon glyph="Lightbulb" className={styles.valueIcon} />
+        <Icon glyph="Sparkle" className={styles.valueIcon} />
         <div>
           <Label className={styles.valueLabel}>MongoDB Value</Label>
           <Body className={styles.valueText}>{agent.value}</Body>

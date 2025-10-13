@@ -12,16 +12,42 @@ const LiveWaferImageMapCompact = () => {
 
   // Fetch wafer data with thumbnails
   const fetchWaferData = async () => {
+    const startTime = performance.now();
+    console.log('[LiveWaferImageMapCompact] 🚀 Starting wafer fetch...');
+
     try {
-      const response = await fetch('http://localhost:8000/wafers/latest?limit=3');
+      const fetchStart = performance.now();
+      const response = await fetch('http://localhost:8000/wafers/latest?limit=3&include_visualization=true');
+      const fetchEnd = performance.now();
+      console.log(`[LiveWaferImageMapCompact] ⏱️  Fetch request completed in ${(fetchEnd - fetchStart).toFixed(0)}ms`);
+
+      const parseStart = performance.now();
       const data = await response.json();
+      const parseEnd = performance.now();
+      console.log(`[LiveWaferImageMapCompact] 📦 JSON parsing completed in ${(parseEnd - parseStart).toFixed(0)}ms`);
+      console.log(`[LiveWaferImageMapCompact] 📊 Received ${data.wafers?.length || 0} wafers`);
 
       if (data.wafers && data.wafers.length > 0) {
+        // Log image sizes
+        data.wafers.forEach((wafer, idx) => {
+          const imageSize = wafer?.ink_map?.full_image_base64?.length || 0;
+          console.log(`[LiveWaferImageMapCompact] 🖼️  Wafer ${idx + 1}: ${wafer.wafer_id}, image size: ${(imageSize / 1024).toFixed(1)}KB`);
+        });
+
+        const stateStart = performance.now();
         setWaferData(data.wafers);
-        setIsLoading(false);
+        const stateEnd = performance.now();
+        console.log(`[LiveWaferImageMapCompact] 💾 State update completed in ${(stateEnd - stateStart).toFixed(0)}ms`);
+      } else {
+        console.log('[LiveWaferImageMapCompact] ⚠️  No wafers received');
       }
+
+      setIsLoading(false);
+      const totalTime = performance.now() - startTime;
+      console.log(`[LiveWaferImageMapCompact] ✅ Total fetch cycle completed in ${totalTime.toFixed(0)}ms`);
     } catch (error) {
-      console.error('Error fetching wafer data:', error);
+      const totalTime = performance.now() - startTime;
+      console.error(`[LiveWaferImageMapCompact] ❌ Error after ${totalTime.toFixed(0)}ms:`, error);
       setIsLoading(false);
     }
   };

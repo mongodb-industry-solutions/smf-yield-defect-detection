@@ -218,3 +218,104 @@
   line-height: 1.6;
   color: white;
 }
+
+.loadingText {
+  color: var(--gray-dark-1);
+  font-size: 14px;
+  font-style: italic;
+}
+
+.errorText {
+  color: #C84018;
+  font-size: 14px;
+}
+
+.agentOutput {
+  background: rgba(4, 152, 236, 0.05);
+  border: 1.5px solid rgba(4, 152, 236, 0.2);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.outputRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.outputRow:last-child {
+  margin-bottom: 0;
+}
+
+.outputLabel {
+  min-width: 140px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--gray-dark-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.reasoningText {
+  flex: 1;
+  font-size: 13px;
+  color: var(--gray-dark-2);
+  line-height: 1.6;
+  background: white;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid var(--gray-light-2);
+}
+
+.findingsList {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.findingItem {
+  font-size: 13px;
+  color: var(--gray-dark-2);
+  line-height: 1.5;
+  padding-left: 8px;
+}
+
+.recommendationsList {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.recommendationItem {
+  background: white;
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--gray-light-2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gray-dark-2);
+  margin-top: 4px;
+}
+
+.actionsList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+  padding-left: 12px;
+}
+
+.actionItem {
+  font-size: 12px;
+  color: var(--gray-dark-1);
+  line-height: 1.5;
+}

@@ -1,10 +1,12 @@
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Card from '@leafygreen-ui/card';
 import Badge from '@leafygreen-ui/badge';
 import Icon from '@leafygreen-ui/icon';
+import { Select, Option } from '@leafygreen-ui/select';
 import { Body, Label } from '@leafygreen-ui/typography';
+import { useDashboardData } from '@/contexts/DashboardDataProvider';
 import styles from './AgentWorkflowBar.module.css';
 
 const AGENTS = [
@@ -38,14 +40,48 @@ const AGENTS = [
   }
 ];
 
-const AgentWorkflowBar = ({ selectedAgent, onAgentSelect }) => {
+const AgentWorkflowBar = ({ selectedAgent, onAgentSelect, selectedAlertId, onAlertSelect }) => {
+  // Use alerts from DashboardDataProvider instead of polling separately
+  const { alerts } = useDashboardData();
+
+  // Auto-select the first (newest) alert if no alert is selected
+  useEffect(() => {
+    if (alerts.length > 0 && !selectedAlertId) {
+      const newAlertId = alerts[0]._id || alerts[0].id;
+      onAlertSelect(newAlertId);
+    }
+  }, [alerts, selectedAlertId, onAlertSelect]);
+
   return (
     <Card className={styles.container}>
       <div className={styles.header}>
-        <Label className={styles.title}>
-          AI Workflow Pipeline
-        </Label>
-        <Badge variant="blue">4 Agents</Badge>
+        <div className={styles.headerLeft}>
+          <Label className={styles.title}>AI Workflow Pipeline</Label>
+          <Badge variant="blue">4 Agents</Badge>
+        </div>
+        <div className={styles.alertSelector}>
+          <Select
+            label="Select Alert (applies to all agents)"
+            description="Auto-updates with new alerts"
+            value={selectedAlertId || ''}
+            onChange={(value) => onAlertSelect(value)}
+            disabled={alerts.length === 0}
+            size="small"
+          >
+            {alerts.map((alert, index) => {
+              const isLatest = index === 0;
+              const timestamp = new Date(alert.timestamp);
+              const timeStr = timestamp.toLocaleTimeString();
+              const severityEmoji = alert.severity === 'critical' ? '🔴' : alert.severity === 'high' ? '🟠' : '🟡';
+
+              return (
+                <Option key={alert._id || alert.id} value={alert._id || alert.id}>
+                  {isLatest ? '⭐ ' : ''}{severityEmoji} {alert.equipment_id} - {alert.alert_type} ({timeStr})
+                </Option>
+              );
+            })}
+          </Select>
+        </div>
       </div>
 
       <div className={styles.stepsContainer}>

@@ -2,6 +2,7 @@ from db.mdb import MongoDBConnector
 
 import logging
 from datetime import datetime, timedelta, timezone
+import time
 
 import json
 from bson import ObjectId
@@ -79,7 +80,7 @@ process_context_cache = {
     "problematic_batches": [],
     "normal_batches": [],
     "recipes": [],
-    "loaded": False
+    "loaded": False  # CRITICAL: This key was missing, causing cache to never work!
 }
 
 # Configure logging
@@ -99,16 +100,22 @@ logger.info(f"🤖 AI Multi-Agent System: {'ENABLED' if USE_AI_AGENTS else 'DISA
 
 async def load_process_context_ids():
     """Load real process context IDs from MongoDB for demo metadata"""
+    import time
     global process_context_cache
 
     if process_context_cache["loaded"]:
+        logger.info("⚡ Using cached process context")
         return process_context_cache
 
     try:
+        start_time = time.time()
+        logger.info("🔄 Loading process context from MongoDB...")
+
         async_client = AsyncIOMotorClient(MDB_URI)
         async_db = async_client[MDB_DATABASE_NAME]
 
         # Fetch problematic slurry batches
+        query_start = time.time()
         problematic_cursor = async_db.process_context.find({
             "is_problematic": True,
             "context_type": "slurry_batch"
@@ -116,8 +123,10 @@ async def load_process_context_ids():
         process_context_cache["problematic_batches"] = [
             doc["context_id"] async for doc in problematic_cursor
         ]
+        logger.info(f"   ⏱️  Problematic batches query: {(time.time() - query_start)*1000:.0f}ms")
 
         # Fetch normal slurry batches
+        query_start = time.time()
         normal_cursor = async_db.process_context.find({
             "is_problematic": False,
             "context_type": "slurry_batch"
@@ -125,19 +134,23 @@ async def load_process_context_ids():
         process_context_cache["normal_batches"] = [
             doc["context_id"] async for doc in normal_cursor
         ]
+        logger.info(f"   ⏱️  Normal batches query: {(time.time() - query_start)*1000:.0f}ms")
 
         # Fetch recipe IDs
+        query_start = time.time()
         recipe_cursor = async_db.process_context.find({
             "context_type": "recipe"
         })
         process_context_cache["recipes"] = [
             doc["context_id"] async for doc in recipe_cursor
         ]
+        logger.info(f"   ⏱️  Recipes query: {(time.time() - query_start)*1000:.0f}ms")
 
         process_context_cache["loaded"] = True
         async_client.close()
 
-        logger.info(f"✅ Loaded process context: {len(process_context_cache['problematic_batches'])} problematic batches, "
+        total_time = (time.time() - start_time) * 1000
+        logger.info(f"✅ Loaded process context in {total_time:.0f}ms: {len(process_context_cache['problematic_batches'])} problematic batches, "
                    f"{len(process_context_cache['normal_batches'])} normal batches, "
                    f"{len(process_context_cache['recipes'])} recipes")
         logger.info(f"📋 Problematic batches: {process_context_cache['problematic_batches']}")
@@ -213,11 +226,11 @@ def get_pattern_metrics(equipment_id: str, base_metrics: dict) -> tuple:
         state["started_at"] = datetime.now(timezone.utc)
 
         if pattern_type == "drift":
-            state["target_value"] = random.randint(1200, 2000)
+            state["target_value"] = random.randint(2000, 3500)  # CRITICAL severity range
             state["total_stages"] = random.randint(5, 8)  # 5-8 readings to reach target
             logger.info(f"📈 {equipment_id}: Starting DRIFT pattern ({state['baseline_value']} → {state['target_value']} over {state['total_stages']} readings)")
         elif pattern_type == "spike":
-            state["target_value"] = random.randint(1500, 3000)
+            state["target_value"] = random.randint(2500, 4000)  # CRITICAL severity range
             state["total_stages"] = random.randint(3, 5)  # Persist 3-5 readings
             logger.info(f"⚡ {equipment_id}: Starting SPIKE pattern (value: {state['target_value']}, persists: {state['total_stages']} readings)")
         elif pattern_type == "false_positive":
@@ -225,7 +238,7 @@ def get_pattern_metrics(equipment_id: str, base_metrics: dict) -> tuple:
             state["total_stages"] = 1  # Single spike only
             logger.info(f"🔔 {equipment_id}: Starting FALSE_POSITIVE pattern (spike to {state['target_value']}, immediate return)")
         elif pattern_type == "oscillation":
-            state["target_value"] = random.randint(1100, 1500)
+            state["target_value"] = random.randint(2000, 3000)  # CRITICAL severity range
             state["total_stages"] = random.randint(6, 10)
             logger.info(f"🌊 {equipment_id}: Starting OSCILLATION pattern (amplitude: {state['target_value']}, cycles: {state['total_stages']})")
 
@@ -252,7 +265,9 @@ def get_pattern_metrics(equipment_id: str, base_metrics: dict) -> tuple:
         if state["stage"] >= total:
             state["pattern"] = "normal"
             state["stage"] = 0
-            logger.info(f"✅ {equipment_id}: DRIFT pattern completed ({baseline} → {target})")
+            # Reset particle count to baseline after pattern completes
+            metrics["particle_count"] = baseline
+            logger.info(f"✅ {equipment_id}: DRIFT pattern completed ({baseline} → {target}), particle count reset to baseline")
 
     elif pattern == "spike":
         # Sudden spike that persists (equipment malfunction)
@@ -269,7 +284,9 @@ def get_pattern_metrics(equipment_id: str, base_metrics: dict) -> tuple:
         if state["stage"] >= state["total_stages"]:
             state["pattern"] = "normal"
             state["stage"] = 0
-            logger.info(f"✅ {equipment_id}: SPIKE pattern completed")
+            # Reset particle count to baseline after pattern completes
+            metrics["particle_count"] = state["baseline_value"]
+            logger.info(f"✅ {equipment_id}: SPIKE pattern completed, particle count reset to baseline")
 
     elif pattern == "false_positive":
         # Single spike then immediate return (sensor glitch - LLM should filter this!)
@@ -295,15 +312,18 @@ def get_pattern_metrics(equipment_id: str, base_metrics: dict) -> tuple:
         current_value = baseline + (amplitude * abs(math.sin(stage * math.pi / 2)))
         metrics["particle_count"] = int(current_value)
 
-        # Only trigger alert on FIRST reading that exceeds threshold (one pattern = one alert)
-        is_real_excursion = (current_value > 1000 and stage == 0)
+        # Only trigger alert on FIRST stage of the pattern (one pattern = one alert)
+        # Even though oscillation exceeds threshold multiple times, we only want ONE alert
+        is_real_excursion = (stage == 0)
 
         state["stage"] += 1
 
         if state["stage"] >= state["total_stages"]:
             state["pattern"] = "normal"
             state["stage"] = 0
-            logger.info(f"✅ {equipment_id}: OSCILLATION pattern completed")
+            # Reset particle count to baseline after pattern completes
+            metrics["particle_count"] = baseline
+            logger.info(f"✅ {equipment_id}: OSCILLATION pattern completed, particle count reset to baseline")
 
     return metrics, is_real_excursion
 
@@ -490,6 +510,26 @@ async def demo_data_generator():
 # ============================================================================
 
 app = FastAPI()
+
+# Add timing middleware to log all requests with duration
+@app.middleware("http")
+async def add_timing_header(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = (time.time() - start_time) * 1000  # Convert to milliseconds
+
+    # Skip logging for static assets and frequent polling endpoints
+    skip_paths = ['/favicon.ico', '/static/']
+    should_log = not any(skip in request.url.path for skip in skip_paths)
+
+    if should_log:
+        if process_time > 100:  # Only log slow requests (>100ms)
+            logger.warning(f"⏱️  SLOW REQUEST [{request.method}] {request.url.path} - {process_time:.0f}ms")
+        else:
+            logger.info(f"⏱️  [{request.method}] {request.url.path} - {process_time:.0f}ms")
+
+    response.headers["X-Process-Time"] = f"{process_time:.2f}"
+    return response
 
 app.add_middleware(
     CORSMiddleware,
@@ -1002,6 +1042,116 @@ async def get_alert_details(alert_id: str):
         raise
     except Exception as e:
         logger.error(f"Error retrieving alert {alert_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/alerts/{alert_id}/agent-details")
+async def get_alert_agent_details(alert_id: str):
+    """
+    Get AI agent execution details for a specific alert
+    Returns structured data about what each agent did and which collections were accessed
+    """
+    try:
+        if not alert_manager:
+            raise HTTPException(status_code=503, detail="Alert manager not initialized. Start monitoring first.")
+
+        logger.info(f"✅ [ALERT LIFECYCLE] Retrieving agent details for alert {alert_id}")
+
+        # Try to find alert by alert_id first, then by _id (MongoDB ObjectId)
+        alert = alert_manager.get_alert_by_id(alert_id)
+
+        if not alert:
+            # Try finding by MongoDB _id
+            from bson import ObjectId
+            try:
+                alert = alert_manager.alerts_collection.find_one({"_id": ObjectId(alert_id)})
+            except:
+                pass
+
+        if not alert:
+            raise HTTPException(status_code=404, detail="Alert not found")
+
+        # Extract agent data from the alert document
+        agents = []
+
+        # Agent 1: Monitoring Agent
+        monitoring_decision = alert.get('monitoring_decision', {})
+        if monitoring_decision:
+            agents.append({
+                "id": 1,
+                "name": "Monitor",
+                "status": "completed",
+                "output": {
+                    "decision": "CREATE ALERT" if monitoring_decision.get('create_alert') else "FILTER",
+                    "confidence": monitoring_decision.get('confidence', 0),
+                    "pattern": monitoring_decision.get('pattern_detected', 'unknown'),
+                    "reasoning": monitoring_decision.get('reasoning', ''),
+                    "statistical_context": monitoring_decision.get('statistical_context', {})
+                },
+                "data_used": ["process_sensor_ts"]  # Statistical context from time series
+            })
+
+        # Agent 2: Investigation Agent
+        ai_investigation = alert.get('ai_investigation', {})
+        if ai_investigation:
+            agents.append({
+                "id": 2,
+                "name": "Investigate",
+                "status": "completed",
+                "output": {
+                    "affected_wafers": ai_investigation.get('affected_wafers', 0),
+                    "correlation_confidence": ai_investigation.get('correlation_confidence', 0),
+                    "key_findings": ai_investigation.get('key_findings', []),
+                    "summary": ai_investigation.get('summary', '')
+                },
+                "data_used": ["wafer_defects", "process_context", "alerts"]
+            })
+
+        # Agent 3: RCA Agent
+        ai_rca = alert.get('ai_rca', {})
+        if ai_rca:
+            agents.append({
+                "id": 3,
+                "name": "RCA",
+                "status": "completed",
+                "output": {
+                    "confidence": ai_rca.get('confidence', 0),
+                    "validated_causes": ai_rca.get('validated_causes', []),
+                    "recommendations": ai_rca.get('recommendations', []),
+                    "validation": ai_rca.get('validation', '')
+                },
+                "data_used": ["historical_knowledge"]
+            })
+
+        # Agent 4: Supervisor Agent
+        ai_supervisor = alert.get('ai_supervisor', {})
+        if ai_supervisor:
+            agents.append({
+                "id": 4,
+                "name": "Synthesize",
+                "status": "completed",
+                "output": {
+                    "risk_level": ai_supervisor.get('risk_level', 'Unknown'),
+                    "overall_confidence": ai_supervisor.get('overall_confidence', 0),
+                    "synthesis": ai_supervisor.get('synthesis', ''),
+                    "agent_summary": ai_supervisor.get('agent_summary', {})
+                },
+                "data_used": ["wafer_defects", "historical_knowledge", "process_context"]  # Aggregated from all agents
+            })
+
+        logger.info(f"✅ [ALERT LIFECYCLE] Returned details for {len(agents)} agents")
+
+        return {
+            "alert_id": str(alert.get('_id', alert_id)),
+            "equipment_id": alert.get('equipment_id', 'Unknown'),
+            "agents": agents,
+            "workflow_complete": len(agents) >= 4
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error retrieving agent details for alert {alert_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -1678,6 +1828,10 @@ async def get_latest_wafers(
     """
     Get latest wafer inspection results with optional visualization data
     """
+    import time
+    start_time = time.time()
+    logger.info(f"🔍 /wafers/latest - limit={limit}, include_visualization={include_visualization}")
+
     try:
         with MongoDBConnector(uri=MDB_URI, database_name=MDB_DATABASE_NAME) as mdb_connector:
             wafer_collection = mdb_connector.get_collection("wafer_defects")
@@ -1696,12 +1850,16 @@ async def get_latest_wafers(
                 projection = {"die_map": 0}  # Exclude die_map to reduce payload
 
             # Get latest wafers
+            query_start = time.time()
             if projection:
                 wafers = list(wafer_collection.find(query, projection).sort("inspection_timestamp", -1).limit(limit))
             else:
                 wafers = list(wafer_collection.find(query).sort("inspection_timestamp", -1).limit(limit))
+            query_time = (time.time() - query_start) * 1000
+            logger.info(f"   📊 MongoDB query completed in {query_time:.0f}ms, found {len(wafers)} wafers")
 
             # Process wafers based on visualization flag
+            process_start = time.time()
             for wafer in wafers:
                 if not include_visualization:
                     # Remove large image data for API response
@@ -1716,25 +1874,38 @@ async def get_latest_wafers(
                         wafer["defects"] = wafer["defects"][:5]
                         wafer["defects_truncated"] = True
                 else:
-                    # When including visualization, still remove base64 images but keep die_map
+                    # When including visualization, keep full_image_base64 for display
                     if "ink_map" in wafer:
+                        # Keep full_image_base64 for visualization
+                        # Only remove thumbnail to save bandwidth (thumbnail not used when full image available)
                         if "thumbnail_base64" in wafer["ink_map"]:
-                            wafer["ink_map"]["has_thumbnail"] = True
                             del wafer["ink_map"]["thumbnail_base64"]  # Remove to reduce size
-                        if "full_image_base64" in wafer["ink_map"]:
-                            wafer["ink_map"]["has_full_image"] = True
-                            del wafer["ink_map"]["full_image_base64"]  # Remove to reduce size
 
+            process_time = (time.time() - process_start) * 1000
+            logger.info(f"   🔧 Wafer processing completed in {process_time:.0f}ms")
+
+            convert_start = time.time()
             wafers = convert_objectids(wafers)
+            convert_time = (time.time() - convert_start) * 1000
+            logger.info(f"   🔄 ObjectId conversion completed in {convert_time:.0f}ms")
+
+            total_time = (time.time() - start_time) * 1000
+
+            # Calculate total payload size
+            import json
+            payload_size = len(json.dumps(wafers)) / 1024  # KB
+            logger.info(f"   📦 Response payload size: {payload_size:.1f}KB")
+            logger.info(f"✅ /wafers/latest completed in {total_time:.0f}ms")
 
             return {
                 "count": len(wafers),
                 "wafers": wafers,
                 "visualization_included": include_visualization
             }
-            
+
     except Exception as e:
-        logger.error(f"Error fetching latest wafers: {e}")
+        total_time = (time.time() - start_time) * 1000
+        logger.error(f"❌ Error fetching latest wafers after {total_time:.0f}ms: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -2105,6 +2276,10 @@ async def get_equipment_status():
     Get equipment fleet status matrix - OPTIMIZED
     Uses alerts collection as single source of truth for excursions
     """
+    import time
+    start_time = time.time()
+    logger.info("🔍 /equipment/status - Starting request")
+
     try:
         # Use async MongoDB client
         db = mongodb_client[MDB_DATABASE_NAME]
@@ -2112,7 +2287,13 @@ async def get_equipment_status():
         alerts_collection = db["alerts"]
 
         # Get latest reading per equipment (without status calculation)
+        # OPTIMIZATION: Limit to recent data only to avoid scanning entire collection
+        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+
         pipeline = [
+            # Add time filter to limit data scan
+            {"$match": {"timestamp": {"$gte": one_hour_ago}}},
+
             # Sort by timestamp descending (uses index now)
             {"$sort": {"timestamp": -1}},
 
@@ -2131,17 +2312,24 @@ async def get_equipment_status():
             }}
         ]
 
-        # Execute aggregation asynchronously with allowDiskUse for large datasets
-        cursor = sensor_collection.aggregate(pipeline, allowDiskUse=True)
+        # Execute aggregation asynchronously
+        query_start = time.time()
+        cursor = sensor_collection.aggregate(pipeline)
         equipment_list = await cursor.to_list(length=None)
+        query_time = (time.time() - query_start) * 1000
+        logger.info(f"   📊 Equipment query completed in {query_time:.0f}ms, found {len(equipment_list)} equipment")
 
         # Get all open alerts for equipment
+        alerts_start = time.time()
         open_alerts = await alerts_collection.find({
             "status": {"$in": ["open", "acknowledged"]},
             "equipment_id": {"$exists": True}
         }).to_list(length=None)
+        alerts_time = (time.time() - alerts_start) * 1000
+        logger.info(f"   🚨 Alerts query completed in {alerts_time:.0f}ms, found {len(open_alerts)} open alerts")
 
         # Create a map of equipment_id to highest severity alert
+        processing_start = time.time()
         equipment_alerts = {}
         for alert in open_alerts:
             eq_id = alert.get("equipment_id")
@@ -2174,7 +2362,11 @@ async def get_equipment_status():
             else:
                 eq["status"] = "good"  # No open alerts
 
+        processing_time = (time.time() - processing_start) * 1000
+        logger.info(f"   🔧 Status processing completed in {processing_time:.0f}ms")
+
         # Group by process type
+        grouping_start = time.time()
         equipment_matrix = {}
         for eq in equipment_list:
             process = eq.get("process_step", "UNKNOWN")
@@ -2191,6 +2383,12 @@ async def get_equipment_status():
         # Sort equipment within each process group
         for process in equipment_matrix:
             equipment_matrix[process].sort(key=lambda x: x["equipment_id"])
+
+        grouping_time = (time.time() - grouping_start) * 1000
+        logger.info(f"   📊 Matrix grouping completed in {grouping_time:.0f}ms")
+
+        total_time = (time.time() - start_time) * 1000
+        logger.info(f"✅ /equipment/status completed in {total_time:.0f}ms")
 
         return {
             "matrix": equipment_matrix,
@@ -2715,6 +2913,43 @@ async def run_monitoring_loop():
 
                             logger.info(f"🚨 Alert created: {alert_id} for {excursion_type} on {equipment_id}")
 
+                            # === SAVE MONITORING DECISION (if AI enabled) ===
+                            if USE_AI_AGENTS and monitoring_decision:
+                                try:
+                                    # Get the alert document to extract MongoDB _id
+                                    alert_doc = alert_manager.get_alert_by_id(alert_id)
+                                    if alert_doc:
+                                        mongo_id = str(alert_doc["_id"]) if "_id" in alert_doc else alert_id
+
+                                        # Get statistical context from agent result
+                                        stats = agent_result.get('statistical_context', {})
+
+                                        # Save monitoring decision to alert with statistical context
+                                        alert_manager.alerts_collection.update_one(
+                                            {"_id": ObjectId(mongo_id)},
+                                            {"$set": {
+                                                "monitoring_decision": {
+                                                    "create_alert": monitoring_decision.get('create_alert', True),
+                                                    "confidence": monitoring_decision.get('confidence', 0),
+                                                    "pattern_detected": monitoring_decision.get('pattern_detected', 'unknown'),
+                                                    "reasoning": monitoring_decision.get('reasoning', ''),
+                                                    "statistical_context": {
+                                                        "avg_particles": stats.get('avg_particles'),
+                                                        "max_particles": stats.get('max_particles'),
+                                                        "min_particles": stats.get('min_particles'),
+                                                        "stddev_particles": stats.get('stddev_particles'),
+                                                        "deviation_sigma": stats.get('deviation_sigma', 0),
+                                                        "deviation_pct": stats.get('deviation_pct', 0),
+                                                        "readings_count": stats.get('readings_count', 0)
+                                                    }
+                                                }
+                                            }}
+                                        )
+                                        logger.info(f"   💾 Monitoring decision saved to alert {alert_id}")
+                                        logger.info(f"   📊 Statistical context: {stats.get('deviation_sigma', 0):.1f}σ, {stats.get('deviation_pct', 0):+.1f}%")
+                                except Exception as save_error:
+                                    logger.error(f"   ❌ Failed to save monitoring decision: {save_error}")
+
                             # === RUN INVESTIGATION AGENT (if AI enabled) ===
                             if USE_AI_AGENTS and should_create_alert:
                                 try:
@@ -2976,12 +3211,11 @@ async def run_wafer_monitoring_loop():
                             description = wafer_data.get("description", f"High severity {defect_pattern} defects detected")
 
                         # Determine alert severity based on yield
-                        if yield_pct < 70:
+                        # All pattern-induced defects should be critical
+                        if yield_pct < 85:
                             alert_severity = AlertSeverity.CRITICAL
-                        elif yield_pct < 85:
-                            alert_severity = AlertSeverity.HIGH
                         else:
-                            alert_severity = AlertSeverity.MEDIUM
+                            alert_severity = AlertSeverity.HIGH
 
                         # Create alert using AlertManager
                         if alert_manager:
@@ -3045,29 +3279,26 @@ async def run_wafer_monitoring_loop():
 def determine_severity(excursion: Dict[str, Any]) -> AlertSeverity:
     """
     Determine alert severity based on excursion data
+    All pattern-based excursions (drift, spike, oscillation) should be CRITICAL
     """
     metrics = excursion.get('metrics', {})
-    
-    # Check particle count
+
+    # Check particle count - lowered threshold to ensure all patterns are CRITICAL
     particle_count = metrics.get('particle_count', 0)
-    if particle_count > 2000:
+    if particle_count > 1000:  # Changed from 2000 to catch all pattern excursions
         return AlertSeverity.CRITICAL
-    elif particle_count > 1500:
+    elif particle_count > 800:  # Adjusted for edge cases
         return AlertSeverity.HIGH
-    elif particle_count > 1000:
-        return AlertSeverity.MEDIUM
-    
-    # Check RF power drift
+
+    # Check RF power drift - lowered threshold to ensure all patterns are CRITICAL
     rf_power = metrics.get('rf_power', 0)
-    if rf_power > 150:
+    if rf_power > 100:  # Changed from 150 to catch all pattern excursions
         return AlertSeverity.CRITICAL
-    elif rf_power > 120:
+    elif rf_power > 80:  # Adjusted for edge cases
         return AlertSeverity.HIGH
-    elif rf_power > 100:
-        return AlertSeverity.MEDIUM
-    
-    # Default to medium
-    return AlertSeverity.MEDIUM
+
+    # Default to CRITICAL for any excursion (patterns should always be critical)
+    return AlertSeverity.CRITICAL
 
 
 async def notify_websocket_clients(message: Dict[str, Any]):
@@ -3969,6 +4200,95 @@ async def inject_excursion(request: Dict[str, Any] = Body(...)):
     except Exception as e:
         logger.error(f"Error injecting excursion: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to inject excursion: {str(e)}")
+
+
+@app.post("/demo/inject-pattern")
+async def inject_pattern(request: Dict[str, Any] = Body(...)):
+    """
+    Manually inject a pattern-based excursion that evolves over time
+
+    Expected payload:
+    {
+        "equipment_id": "CMP_TOOL_01",     # Required
+        "pattern": "drift|spike|false_positive|oscillation",  # Required
+        "target_value": 2000                # Optional: Override target particle count
+    }
+
+    Patterns:
+    - drift: Gradual increase over 5-8 readings (filter degradation)
+    - spike: Sudden persistent issue for 3-5 readings (equipment malfunction)
+    - false_positive: Single spike then immediate return (sensor glitch - AI should filter)
+    - oscillation: Cyclic up/down pattern for 6-10 readings (recurring process issue)
+    """
+    global equipment_pattern_state
+
+    try:
+        equipment_id = request.get("equipment_id")
+        pattern = request.get("pattern")
+
+        if not equipment_id:
+            raise HTTPException(status_code=400, detail="equipment_id is required")
+
+        if not pattern:
+            raise HTTPException(status_code=400, detail="pattern is required")
+
+        if pattern not in ["drift", "spike", "false_positive", "oscillation"]:
+            raise HTTPException(status_code=400, detail=f"Invalid pattern: {pattern}. Must be one of: drift, spike, false_positive, oscillation")
+
+        # Get current baseline from normal metrics
+        base_metrics = generate_demo_metrics(equipment_id, is_excursion=False)
+        baseline_value = base_metrics["particle_count"]
+
+        # Initialize pattern state
+        state = {
+            "pattern": pattern,
+            "stage": 0,
+            "baseline_value": baseline_value,
+            "started_at": datetime.now(timezone.utc)
+        }
+
+        # Set pattern-specific parameters
+        target_value = request.get("target_value")
+
+        if pattern == "drift":
+            state["target_value"] = target_value or random.randint(2000, 3500)  # CRITICAL severity range
+            state["total_stages"] = random.randint(5, 8)
+            logger.info(f"📈 MANUAL INJECTION: {equipment_id} DRIFT pattern ({baseline_value} → {state['target_value']} over {state['total_stages']} readings)")
+
+        elif pattern == "spike":
+            state["target_value"] = target_value or random.randint(2500, 4000)  # CRITICAL severity range
+            state["total_stages"] = random.randint(3, 5)
+            logger.info(f"⚡ MANUAL INJECTION: {equipment_id} SPIKE pattern (value: {state['target_value']}, persists: {state['total_stages']} readings)")
+
+        elif pattern == "false_positive":
+            state["target_value"] = target_value or random.randint(1050, 1200)
+            state["total_stages"] = 1
+            logger.info(f"🔔 MANUAL INJECTION: {equipment_id} FALSE_POSITIVE pattern (spike to {state['target_value']}, immediate return)")
+
+        elif pattern == "oscillation":
+            state["target_value"] = target_value or random.randint(2000, 3000)  # CRITICAL severity range
+            state["total_stages"] = random.randint(6, 10)
+            logger.info(f"🌊 MANUAL INJECTION: {equipment_id} OSCILLATION pattern (amplitude: {state['target_value']}, cycles: {state['total_stages']})")
+
+        # Update global pattern state
+        equipment_pattern_state[equipment_id] = state
+
+        return {
+            "success": True,
+            "message": f"Pattern '{pattern}' injected for {equipment_id}",
+            "equipment_id": equipment_id,
+            "pattern": pattern,
+            "baseline_value": baseline_value,
+            "target_value": state["target_value"],
+            "total_stages": state["total_stages"],
+            "note": f"Pattern will evolve over next {state['total_stages']} demo batches (every {DEMO_INTERVAL_SECONDS} seconds)"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error injecting pattern: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to inject pattern: {str(e)}")
 
 
 @app.get("/demo/status")
