@@ -73,6 +73,10 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 cover/
+backend/backup
+
+# Legacy agent system (moved to backup/)
+backend/backup/agent_*.py
 
 # Translations
 *.mo
@@ -229,3 +233,9 @@ backend/verify_historical_context_implementation.py
 backend/migrate_remove_preliminary_context.py
 backend/investigate_rca.py
 .augment
+backend/main.py.bak
+backend/main.py.before_cleanup
+.gitignore
+.gitignore
+backend/main.py.bak2
+.cursor/rules/markdown-files-save.mdc
