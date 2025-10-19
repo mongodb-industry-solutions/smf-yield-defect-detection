@@ -6,11 +6,13 @@ import Badge from '@leafygreen-ui/badge';
 import Icon from '@leafygreen-ui/icon';
 import { H3, Description } from '@leafygreen-ui/typography';
 import QueryTransparencyCard from '@/components/common/QueryTransparencyCard';
+import { useDashboardData } from '@/contexts/DashboardDataProvider';
 import styles from './FabPulseBar.module.css';
 
 const FabPulseBar = () => {
+  const { kpis: preloadedKpis, isPreloaded, isLoading: providerLoading } = useDashboardData();
   const [kpiData, setKpiData] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!isPreloaded);
   const [showQuery, setShowQuery] = useState(false);
   const [queryTime, setQueryTime] = useState(null);
 
@@ -37,6 +39,50 @@ const FabPulseBar = () => {
       setIsLoading(false);
     }
   };
+
+  // Use preloaded KPI data if available
+  useEffect(() => {
+    if (preloadedKpis && isPreloaded) {
+      console.log('✅ FabPulseBar: Using preloaded KPI data');
+      
+      // Transform preloaded data to match expected format
+      const transformedData = {
+        yield: {
+          label: 'Current Yield',
+          value: preloadedKpis.yield?.current || 0,
+          unit: '%',
+          trend: preloadedKpis.yield?.trend || 'up',
+          trendValue: Math.abs(preloadedKpis.yield?.current - preloadedKpis.yield?.average) || 0
+        },
+        alerts: {
+          label: 'Active Alerts',
+          value: preloadedKpis.active_alerts?.total || 0,
+          unit: '',
+          trend: 'up',
+          trendValue: preloadedKpis.active_alerts?.critical || 0
+        },
+        mttr: {
+          label: 'Avg Resolution Time',
+          value: 45, // Placeholder - can calculate from alerts if needed
+          unit: 'min',
+          trend: 'down',
+          trendValue: 5
+        },
+        savings: {
+          label: 'Cost Savings',
+          value: '2.1',
+          unit: 'M',
+          trend: 'up',
+          trendValue: 15
+        }
+      };
+      
+      setKpiData(transformedData);
+      setIsLoading(false);
+      setQueryTime(0); // Instant from cache
+      return;
+    }
+  }, [preloadedKpis, isPreloaded]);
 
   // MongoDB Aggregation Pipeline for KPI Calculation
   const kpiAggregationPipeline = [
@@ -82,14 +128,25 @@ const FabPulseBar = () => {
   ];
 
   useEffect(() => {
-    // Initial fetch
-    fetchKPIData();
+    // If we have preloaded data, skip ONLY the initial fetch
+    // But still set up the auto-refresh interval
+    if (!isPreloaded || !preloadedKpis) {
+      // No preloaded data, do initial fetch
+      console.log('🔄 FabPulseBar: No preloaded data, fetching...');
+      fetchKPIData();
+    } else {
+      console.log('⏭️  FabPulseBar: Skipping initial fetch, using preloaded data');
+    }
 
-    // Set up auto-refresh every 8 seconds
-    const interval = setInterval(fetchKPIData, 8000);
+    // CRITICAL: Set up auto-refresh every 8 seconds regardless of preload
+    // This ensures data keeps updating after initial load
+    const interval = setInterval(() => {
+      console.log('🔄 FabPulseBar: Auto-refreshing KPI data...');
+      fetchKPIData();
+    }, 8000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, []); // Empty deps - run once on mount
 
   const getMetricColor = (metric, value) => {
     if (!metric.thresholds) return 'var(--color-status-good)';

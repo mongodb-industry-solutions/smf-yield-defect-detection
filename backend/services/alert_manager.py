@@ -13,6 +13,9 @@ from bson import ObjectId
 import asyncio
 import os
 
+# Import centralized threshold configuration
+from config.thresholds import get_thresholds, get_active_threshold_mode
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -67,29 +70,10 @@ class AlertManager:
 
         # Note: Call alert_manager.initialize() after creation to set up indexes
         
-        # Alert thresholds and rules
-        self.severity_rules = {
-            "particle_count": {
-                "critical": 2000,
-                "high": 1500,
-                "medium": 1000
-            },
-            "rf_power_drift": {
-                "critical": 150,
-                "high": 120,
-                "medium": 100
-            },
-            "temperature_drift": {
-                "critical": 5,
-                "high": 3,
-                "medium": 2
-            },
-            "yield_threshold": {
-                "critical": 0.80,
-                "high": 0.85,
-                "medium": 0.92
-            }
-        }
+        # Alert thresholds and rules - loaded from centralized configuration
+        self.severity_rules = get_thresholds()
+        threshold_mode = get_active_threshold_mode()
+        logger.info(f"AlertManager using thresholds: {threshold_mode}")
     
     def initialize(self):
         """Initialize collections and indexes (must be called after creation)"""

@@ -4,13 +4,34 @@ import React, { useState, useEffect, useRef } from 'react';
 import Card from '@leafygreen-ui/card';
 import Badge from '@leafygreen-ui/badge';
 import { waferAPI } from '@/lib/api';
+import { useDashboardData } from '@/contexts/DashboardDataProvider';
 import styles from './LiveWaferYieldMap.module.css';
 
 const LiveWaferYieldMap = () => {
+  const { wafers: preloadedWafers, isPreloaded } = useDashboardData();
   const [waferData, setWaferData] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!isPreloaded);
   const [selectedWafer, setSelectedWafer] = useState(0);
   const canvasRef = useRef(null);
+
+  // Fetch die maps for wafers
+  const fetchDieMaps = async (wafers) => {
+    const wafersWithDieMaps = await Promise.all(
+      wafers.slice(0, 5).map(async (wafer) => {
+        try {
+          const vizResponse = await fetch(
+            `http://localhost:8000/wafers/${wafer.wafer_id}/visualization`
+          );
+          const vizData = await vizResponse.json();
+          return { ...wafer, die_map: vizData.die_map };
+        } catch (err) {
+          console.error(`Failed to fetch die_map for ${wafer.wafer_id}`, err);
+          return wafer;
+        }
+      })
+    );
+    return wafersWithDieMaps;
+  };
 
   // Fetch wafer data
   const fetchWaferData = async () => {
@@ -18,20 +39,7 @@ const LiveWaferYieldMap = () => {
       const response = await waferAPI.getLatestWafers(5);
       if (response.wafers && response.wafers.length > 0) {
         // Fetch die_map data for each wafer
-        const wafersWithDieMaps = await Promise.all(
-          response.wafers.map(async (wafer) => {
-            try {
-              const vizResponse = await fetch(
-                `http://localhost:8000/wafers/${wafer.wafer_id}/visualization`
-              );
-              const vizData = await vizResponse.json();
-              return { ...wafer, die_map: vizData.die_map };
-            } catch (err) {
-              console.error(`Failed to fetch die_map for ${wafer.wafer_id}`, err);
-              return wafer;
-            }
-          })
-        );
+        const wafersWithDieMaps = await fetchDieMaps(response.wafers);
         setWaferData(wafersWithDieMaps);
         setIsLoading(false);
       }
@@ -43,10 +51,30 @@ const LiveWaferYieldMap = () => {
 
   // Initial fetch and auto-refresh
   useEffect(() => {
-    fetchWaferData();
-    const interval = setInterval(fetchWaferData, 15000); // Refresh every 15 seconds
+    // Use preloaded data ONLY on initial mount if available
+    // After that, let fetchWaferData handle all updates
+    if (preloadedWafers && isPreloaded && preloadedWafers.length > 0 && !waferData) {
+      console.log('✅ LiveWaferYieldMap: Using preloaded wafer data (one-time)');
+      
+      // Fetch die maps for preloaded wafers
+      fetchDieMaps(preloadedWafers).then(wafersWithMaps => {
+        setWaferData(wafersWithMaps);
+        setIsLoading(false);
+      });
+    } else if (!preloadedWafers || !isPreloaded || preloadedWafers.length === 0) {
+      // No preloaded data, do initial fetch
+      console.log('🔄 LiveWaferYieldMap: No preloaded data, fetching...');
+      fetchWaferData();
+    }
+    
+    // CRITICAL: Set up auto-refresh every 15 seconds regardless of preload
+    // This ensures data keeps updating after initial load
+    const interval = setInterval(() => {
+      console.log('🔄 LiveWaferYieldMap: Auto-refreshing wafer data...');
+      fetchWaferData();
+    }, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, []); // Empty deps - run once on mount, then interval takes over
 
   // Draw wafer map on canvas
   useEffect(() => {

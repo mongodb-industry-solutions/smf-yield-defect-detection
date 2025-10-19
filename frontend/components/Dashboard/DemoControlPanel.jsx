@@ -14,7 +14,7 @@ const DemoControlPanel = () => {
   const [error, setError] = useState(null);
   const [excursionForm, setExcursionForm] = useState({
     equipment_id: 'CMP_TOOL_01',
-    pattern: 'drift' // 'drift', 'spike', 'false_positive', 'oscillation'
+    excursion_type: 'particle' // 'particle', 'rf_power', 'temperature'
   });
   const [injectionSuccess, setInjectionSuccess] = useState(null);
   const [resetLoading, setResetLoading] = useState(false);
@@ -84,25 +84,28 @@ const DemoControlPanel = () => {
     }
   };
 
-  // Handle pattern injection
+  // Handle excursion injection
   const handleInjectExcursion = async () => {
     setLoading(true);
     setError(null);
     setInjectionSuccess(null);
 
     try {
-      const result = await demoAPI.injectPattern({
+      const result = await demoAPI.injectExcursion({
         equipment_id: excursionForm.equipment_id,
-        pattern: excursionForm.pattern
+        excursion_type: excursionForm.excursion_type
       });
 
-      setInjectionSuccess(`${excursionForm.pattern.toUpperCase()} pattern injected! Will evolve over ${result.total_stages} batches.`);
+      const excursionLabel = excursionForm.excursion_type === 'particle' ? 'Particle Count' :
+                             excursionForm.excursion_type === 'rf_power' ? 'RF Power' :
+                             'Temperature';
+      setInjectionSuccess(`${excursionLabel} excursion injected on ${excursionForm.equipment_id}!`);
 
       // Clear success message after 5 seconds
       setTimeout(() => setInjectionSuccess(null), 5000);
     } catch (err) {
-      console.error('Error injecting pattern:', err);
-      setError('Failed to inject pattern');
+      console.error('Error injecting excursion:', err);
+      setError('Failed to inject excursion');
     } finally {
       setLoading(false);
     }
@@ -227,20 +230,18 @@ const DemoControlPanel = () => {
 
             <select
               className={styles.compactSelect}
-              value={excursionForm.pattern}
-              onChange={(e) => setExcursionForm({...excursionForm, pattern: e.target.value})}
+              value={excursionForm.excursion_type}
+              onChange={(e) => setExcursionForm({...excursionForm, excursion_type: e.target.value})}
               disabled={!status?.active}
               title={
-                excursionForm.pattern === 'drift' ? '📈 Gradual increase - filter degradation' :
-                excursionForm.pattern === 'spike' ? '⚡ Sudden persistent - equipment malfunction' :
-                excursionForm.pattern === 'false_positive' ? '🔔 Single spike - tests AI filtering' :
-                '🌊 Cyclic pattern - recurring issue'
+                excursionForm.excursion_type === 'particle' ? '⚠️ Particle count excursion' :
+                excursionForm.excursion_type === 'rf_power' ? '⚡ RF power drift' :
+                '🌡️ Temperature drift'
               }
             >
-              <option value="drift">📈 Drift</option>
-              <option value="spike">⚡ Spike</option>
-              <option value="false_positive">🔔 False+</option>
-              <option value="oscillation">🌊 Oscillation</option>
+              <option value="particle">⚠️ Particle</option>
+              <option value="rf_power">⚡ RF Power</option>
+              <option value="temperature">🌡️ Temperature</option>
             </select>
 
             <Button

@@ -41,12 +41,19 @@ from routers import sensors as sensors_router
 from routers import equipment as equipment_router
 from routers import kpi as kpi_router
 from routers import websockets as websockets_router
+from routers import dashboard as dashboard_router
 
 import os
 from dotenv import load_dotenv
 import asyncio
 
+# Import centralized threshold configuration for startup logging
+from config.thresholds import log_threshold_configuration
+
 load_dotenv()
+
+# Log threshold configuration on startup
+log_threshold_configuration()
 
 # Load configuration
 config = ConfigLoader()
@@ -95,9 +102,6 @@ logger.info(f"🤖 AI Multi-Agent System: {'ENABLED' if USE_AI_AGENTS else 'DISA
 # 
 # Moved functions:
 # - load_process_context_ids()
-# - initialize_pattern_state()
-# - should_create_pattern()
-# - get_pattern_metrics()
 # - generate_demo_metrics()
 # - generate_demo_metadata()
 # - demo_data_generator()
@@ -204,6 +208,10 @@ logger.info("✅ KPI router included")
 app.include_router(websockets_router.router)
 logger.info("✅ WebSocket router included")
 
+# Include Dashboard Preload router (with /api prefix)
+app.include_router(dashboard_router.router, prefix="/api")
+logger.info("✅ Dashboard preload router included")
+
 # ============================================================================
 
 # ============================================================================
@@ -212,41 +220,49 @@ logger.info("✅ WebSocket router included")
 
 def _initialize_core_services():
     """
-    Initialize core monitoring services
+    Initialize core monitoring services with connection reuse
     
     Returns:
         dict: Dictionary containing initialized services
     """
-    logger.info("Initializing core services...")
+    logger.info("=" * 60)
+    logger.info("🚀 Initializing core services with connection pooling...")
+    logger.info("=" * 60)
     
     # Initialize async MongoDB client
+    logger.info("📊 Creating MongoDB async client...")
     mongo_client = AsyncIOMotorClient(MDB_URI)
+    logger.info("   ✅ MongoDB async client created")
     
     # Initialize monitoring services
+    logger.info("🔧 Initializing monitoring services...")
+    
+    logger.info("   📡 Creating ExcursionDetector...")
     excursion_det = ExcursionDetector(
         mongodb_uri=MDB_URI,
         database=MDB_DATABASE_NAME
     )
     
+    logger.info("   🔗 Creating CorrelationEngine (connection pool)...")
     correlation_eng = CorrelationEngine(
         mongodb_uri=MDB_URI,
         database=MDB_DATABASE_NAME
     )
     
+    logger.info("   🔍 Creating RCAGenerator (connection pool)...")
     rca_gen = RCAGenerator(
         mongodb_uri=MDB_URI,
         database=MDB_DATABASE_NAME
     )
     
+    logger.info("   🚨 Creating AlertManager...")
     alert_mgr = AlertManager(
         mongodb_uri=MDB_URI,
         database_name=MDB_DATABASE_NAME
     )
-    
-    # Initialize alert manager (sync setup)
     alert_mgr.initialize()
     
-    # Initialize WaferGenerator for monitoring service
+    logger.info("   🧪 Creating WaferGenerator...")
     s3_bucket_uri = os.getenv("S3_BUCKET_URI")
     wafer_gen = WaferGenerator(
         mongodb_uri=MDB_URI,
@@ -254,20 +270,26 @@ def _initialize_core_services():
         s3_bucket_uri=s3_bucket_uri
     )
     
-    # Initialize MonitoringService with all dependencies
+    logger.info("   📺 Creating MonitoringService with shared service instances...")
     monitoring_svc = MonitoringService(
         alert_manager=alert_mgr,
         ws_manager=ws_manager,
         wafer_generator=wafer_gen,
-        correlation_engine=correlation_eng,
-        rca_generator=rca_gen,
+        correlation_engine=correlation_eng,  # ✅ Passing instance for reuse
+        rca_generator=rca_gen,               # ✅ Passing instance for reuse
         config={
             'mdb_uri': MDB_URI,
             'mdb_database_name': MDB_DATABASE_NAME,
             'use_ai_agents': USE_AI_AGENTS
         }
     )
-    logger.info("✅ MonitoringService initialized")
+    
+    logger.info("=" * 60)
+    logger.info("✅ All core services initialized successfully!")
+    logger.info("   ♻️  Connection reuse enabled for:")
+    logger.info("      - CorrelationEngine → MonitoringService")
+    logger.info("      - RCAGenerator → MonitoringService")
+    logger.info("=" * 60)
     
     return {
         'mongodb_client': mongo_client,
@@ -407,6 +429,13 @@ async def _inject_router_dependencies(services, demo_svc):
     )
     logger.info("✅ WebSocket dependencies injected into router")
     
+    # Inject dependencies into Dashboard Preload router
+    dashboard_router.set_dependencies(
+        async_client=services['mongodb_client'],
+        db_name=MDB_DATABASE_NAME
+    )
+    logger.info("✅ Dashboard preload dependencies injected into router")
+    
     # Initialize Phase 3 services
     await initialize_phase3_services()
     
@@ -461,6 +490,22 @@ async def startup_event():
         await _inject_router_dependencies(services, demo_service_instance)
         
         logger.info("✅ All services and routers initialized successfully")
+        
+        # Step 5: Auto-start demo mode if configured
+        AUTO_START_DEMO = os.getenv("AUTO_START_DEMO", "false").lower() == "true"
+        if AUTO_START_DEMO:
+            logger.info("🎬 AUTO_START_DEMO enabled - starting demo mode...")
+            try:
+                # Pre-load seed data
+                logger.info("📊 Pre-loading seed data...")
+                reset_stats = await demo_service_instance.reset_demo_collections()
+                logger.info(f"   ✅ Seed data loaded: {reset_stats}")
+                
+                # Start demo mode
+                result = await demo_service_instance.start_demo_mode(mode="charts")
+                logger.info(f"   ✅ Demo mode auto-started: {result['status']}")
+            except Exception as e:
+                logger.error(f"   ❌ Failed to auto-start demo mode: {e}")
 
     except Exception as e:
         logger.error(f"❌ Failed to initialize monitoring services on startup: {e}")
@@ -546,23 +591,5 @@ async def initialize_phase3_services():
     except Exception as e:
         logger.warning(f"Phase 3 services not available: {e}")
 
-
-# Demo Mode Endpoints - MOVED TO routers/demo_mode.py
-# ============================================================================
-# All demo mode endpoints have been extracted to demo_mode router
-# See: backend/routers/demo_mode.py
-#
-# Moved endpoints:
-# - POST /demo/start
-# - POST /demo/stop
-# - GET /demo/status
-# - POST /demo/reset
-# - POST /demo/inject-excursion
-# - POST /demo/inject-pattern
-# - POST /alerts/resolve-all
-# ============================================================================
-
-
-# ===========================
 
 

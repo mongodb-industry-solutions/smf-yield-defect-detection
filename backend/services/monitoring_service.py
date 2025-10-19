@@ -13,6 +13,7 @@ All business logic extracted from main.py for better separation of concerns.
 
 import logging
 import asyncio
+import time
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
 
@@ -28,6 +29,15 @@ from multi_agent import create_initial_state
 from multi_agent.workers import monitoring_agent_tool, investigation_agent_tool, rca_agent_tool
 from multi_agent.supervisor import supervisor_synthesis_agent
 from utils import convert_objectids
+
+# Import centralized threshold configuration
+from config.thresholds import (
+    get_thresholds,
+    get_active_threshold_mode,
+    get_particle_count_thresholds,
+    get_rf_power_thresholds,
+    get_temperature_thresholds
+)
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +80,8 @@ class MonitoringService:
         self.alert_manager = alert_manager
         self.ws_manager = ws_manager
         self.wafer_generator = wafer_generator
-        self.correlation_engine = correlation_engine
-        self.rca_generator = rca_generator
+        self.correlation_engine = correlation_engine  # Store instance for reuse
+        self.rca_generator = rca_generator            # Store instance for reuse
         
         # Configuration
         self.mdb_uri = config['mdb_uri']
@@ -81,13 +91,73 @@ class MonitoringService:
         # State management
         self.monitoring_active = False
         
+        # Alert deduplication tracking (equipment_id -> last_alert_timestamp)
+        # Prevents duplicate alerts from demo mode + manual injection collisions
+        self.recent_alerts = {}  # {equipment_id: {"timestamp": datetime, "excursion_type": str}}
+        self.deduplication_window_seconds = 5  # Skip alerts within 5 seconds
+        
         logger.info("✅ MonitoringService initialized")
+        logger.info(f"   🔗 CorrelationEngine: Reusing existing instance (connection pool)")
+        logger.info(f"   🔗 RCAGenerator: Reusing existing instance (connection pool)")
         logger.info(f"   🤖 AI Multi-Agent System: {'ENABLED' if self.use_ai_agents else 'DISABLED'}")
+        logger.info(f"   🔒 Alert Deduplication: {self.deduplication_window_seconds}s window")
     
     def stop_monitoring(self):
         """Stop all monitoring loops by setting the active flag to False."""
         self.monitoring_active = False
         logger.info("🛑 Monitoring service stopped")
+    
+    def _is_duplicate_alert(self, equipment_id: str, excursion_type: str) -> bool:
+        """
+        Check if an alert was recently created for this equipment/excursion.
+        
+        Args:
+            equipment_id: Equipment identifier
+            excursion_type: Type of excursion
+            
+        Returns:
+            True if a duplicate alert was created within deduplication window
+        """
+        if equipment_id not in self.recent_alerts:
+            return False
+        
+        recent = self.recent_alerts[equipment_id]
+        time_diff = (datetime.now(timezone.utc) - recent["timestamp"]).total_seconds()
+        
+        # Check if within deduplication window and same excursion type
+        if time_diff <= self.deduplication_window_seconds and recent["excursion_type"] == excursion_type:
+            logger.info(f"🚫 DUPLICATE ALERT BLOCKED: {excursion_type} on {equipment_id} "
+                       f"(last alert {time_diff:.1f}s ago)")
+            return True
+        
+        return False
+    
+    def _record_alert_creation(self, equipment_id: str, excursion_type: str):
+        """
+        Record that an alert was created for deduplication tracking.
+        
+        Args:
+            equipment_id: Equipment identifier
+            excursion_type: Type of excursion
+        """
+        self.recent_alerts[equipment_id] = {
+            "timestamp": datetime.now(timezone.utc),
+            "excursion_type": excursion_type
+        }
+        
+        # Cleanup old entries (older than 60 seconds)
+        cutoff_time = datetime.now(timezone.utc)
+        to_remove = []
+        for equip_id, info in self.recent_alerts.items():
+            age_seconds = (cutoff_time - info["timestamp"]).total_seconds()
+            if age_seconds > 60:
+                to_remove.append(equip_id)
+        
+        for equip_id in to_remove:
+            del self.recent_alerts[equip_id]
+        
+        if to_remove:
+            logger.debug(f"🧹 Cleaned up {len(to_remove)} old alert tracking entries")
     
     # ============================================================================
     # Helper Methods
@@ -95,7 +165,7 @@ class MonitoringService:
     
     def determine_severity(self, excursion: Dict[str, Any]) -> AlertSeverity:
         """
-        Determine alert severity based on excursion data.
+        Determine alert severity based on excursion data using centralized thresholds.
         All pattern-based excursions (drift, spike, oscillation) should be CRITICAL.
         
         Args:
@@ -105,19 +175,22 @@ class MonitoringService:
             AlertSeverity enum value (CRITICAL, HIGH, MEDIUM, or LOW)
         """
         metrics = excursion.get('metrics', {})
+        thresholds = get_thresholds()
 
-        # Check particle count - lowered threshold to ensure all patterns are CRITICAL
+        # Check particle count using centralized thresholds
         particle_count = metrics.get('particle_count', 0)
-        if particle_count > 1000:  # Changed from 2000 to catch all pattern excursions
+        particle_thresholds = thresholds["particle_count"]
+        if particle_count > particle_thresholds["critical"]:
             return AlertSeverity.CRITICAL
-        elif particle_count > 800:  # Adjusted for edge cases
+        elif particle_count > particle_thresholds["high"]:
             return AlertSeverity.HIGH
 
-        # Check RF power drift - lowered threshold to ensure all patterns are CRITICAL
+        # Check RF power drift using centralized thresholds
         rf_power = metrics.get('rf_power', 0)
-        if rf_power > 100:  # Changed from 150 to catch all pattern excursions
+        rf_thresholds = thresholds["rf_power_drift"]
+        if rf_power > rf_thresholds["critical"]:
             return AlertSeverity.CRITICAL
-        elif rf_power > 80:  # Adjusted for edge cases
+        elif rf_power > rf_thresholds["high"]:
             return AlertSeverity.HIGH
 
         # Default to CRITICAL for any excursion (patterns should always be critical)
@@ -161,18 +234,22 @@ class MonitoringService:
             alert_id: Alert ID to run correlation analysis for
         """
         try:
+            start_time = time.time()
+            logger.info(f"🔍 Starting correlation analysis for alert {alert_id}")
+            
             alert = self.alert_manager.get_alert_by_id(alert_id)
             if not alert:
+                logger.warning(f"⚠️  Alert {alert_id} not found for correlation")
                 return
 
-            # Use existing CorrelationEngine - pass the MongoDB _id as string
-            correlation_engine = CorrelationEngine(self.mdb_uri)
-            # Convert ObjectId to string for the analyze_alert method
+            # Use existing CorrelationEngine instance - NO new connection!
+            logger.debug(f"   ♻️  Reusing CorrelationEngine connection pool")
             mongo_id = str(alert["_id"]) if "_id" in alert else alert_id
-            correlations = await correlation_engine.analyze_alert(mongo_id)
+            correlations = await self.correlation_engine.analyze_alert(mongo_id)
 
-            # NOTE: CorrelationEngine already stores results in 'correlation_analysis' field
-            # No need to duplicate in 'correlation_data' field
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.info(f"✅ Correlation analysis completed for alert {alert_id} in {elapsed_ms:.0f}ms")
+            logger.debug(f"   📊 Found {len(correlations.get('correlations', {}))} correlation types")
 
             # Notify via WebSocket
             await self.notify_websocket_clients({
@@ -181,9 +258,8 @@ class MonitoringService:
                 "correlations": correlations
             })
 
-            logger.info(f"✅ Correlation analysis completed for alert {alert_id}")
         except Exception as e:
-            logger.error(f"Correlation failed for {alert_id}: {e}")
+            logger.error(f"❌ Correlation failed for {alert_id}: {e}", exc_info=True)
     
     async def run_alert_rca(self, alert_id: str, severity: AlertSeverity):
         """
@@ -194,21 +270,26 @@ class MonitoringService:
             severity: Alert severity level
         """
         if severity != AlertSeverity.CRITICAL:
+            logger.debug(f"   ⏭️  Skipping RCA for non-critical alert {alert_id} (severity: {severity.value})")
             return
 
         try:
+            start_time = time.time()
+            logger.info(f"🔍 Starting RCA analysis for critical alert {alert_id}")
+            
             alert = self.alert_manager.get_alert_by_id(alert_id)
             if not alert:
+                logger.warning(f"⚠️  Alert {alert_id} not found for RCA")
                 return
 
-            # Use existing RCAGenerator - pass the MongoDB _id as string
-            rca_gen = RCAGenerator(self.mdb_uri)
-            # Convert ObjectId to string for the generate_rca_hints method
+            # Use existing RCAGenerator instance - NO new connection!
+            logger.debug(f"   ♻️  Reusing RCAGenerator connection pool")
             mongo_id = str(alert["_id"]) if "_id" in alert else alert_id
-            rca_results = await rca_gen.generate_rca_hints(mongo_id)
+            rca_results = await self.rca_generator.generate_rca_hints(mongo_id)
 
-            # NOTE: RCAGenerator already stores results in 'rca_hints' field
-            # No need to duplicate in 'rca_recommendations' field
+            elapsed_ms = (time.time() - start_time) * 1000
+            logger.info(f"✅ RCA analysis completed for alert {alert_id} in {elapsed_ms:.0f}ms")
+            logger.debug(f"   📋 Generated {len(rca_results.get('recommendations', []))} recommendations")
 
             # Notify via WebSocket
             await self.notify_websocket_clients({
@@ -217,9 +298,8 @@ class MonitoringService:
                 "rca": rca_results
             })
 
-            logger.info(f"🔍 RCA analysis completed for critical alert {alert_id}")
         except Exception as e:
-            logger.error(f"RCA failed for {alert_id}: {e}")
+            logger.error(f"❌ RCA failed for {alert_id}: {e}", exc_info=True)
     
     async def generate_delayed_wafer_defect(self, excursion_data: Dict[str, Any], delay_seconds: int = 10):
         """
@@ -308,41 +388,46 @@ class MonitoringService:
                             excursion_value = None
 
                             metrics = sensor_data.get("metrics", {})
+                            equipment_id = sensor_data.get("equipment_id", "")
+                            
+                            # Get centralized thresholds
+                            thresholds = get_thresholds()
+                            particle_thresholds = thresholds["particle_count"]
+                            rf_thresholds = thresholds["rf_power_drift"]
+                            temp_thresholds = thresholds["temperature_drift"]
 
-                            # Check particle count threshold
+                            # Check particle count threshold using centralized config
                             particle_count = metrics.get("particle_count", 0)
-                            if particle_count > 1000:
+                            if particle_count > particle_thresholds["critical"]:
                                 excursion_detected = True
                                 excursion_type = "particle_excursion"
                                 excursion_value = particle_count
-                                logger.warning(f"⚠️ Particle excursion detected: {particle_count} on {sensor_data.get('equipment_id')}")
+                                logger.warning(f"⚠️ Particle excursion detected: {particle_count} on {equipment_id}")
 
-                            # Check RF power drift
+                            # Check RF power drift using centralized baselines and thresholds
                             rf_power = metrics.get("rf_power", 0)
-                            equipment_id = sensor_data.get("equipment_id", "")
-                            if "CMP" in equipment_id and abs(rf_power - 1450) > 100:  # CMP baseline is 1450W, threshold >100W
-                                excursion_detected = True
-                                excursion_type = "rf_power_drift"
-                                excursion_value = rf_power
-                                logger.warning(f"⚠️ RF power drift detected: {rf_power}W on {equipment_id}")
-                            elif "ETCH" in equipment_id and abs(rf_power - 1200) > 100:  # ETCH baseline is 1200W, threshold >100W
-                                excursion_detected = True
-                                excursion_type = "rf_power_drift"
-                                excursion_value = rf_power
-                                logger.warning(f"⚠️ RF power drift detected: {rf_power}W on {equipment_id}")
-                            elif "LITHO" in equipment_id and abs(rf_power - 800) > 100:  # LITHO baseline is 800W, threshold >100W
-                                excursion_detected = True
-                                excursion_type = "rf_power_drift"
-                                excursion_value = rf_power
-                                logger.warning(f"⚠️ RF power drift detected: {rf_power}W on {equipment_id}")
+                            process_step = sensor_data.get("process_step", "")
+                            if process_step in rf_thresholds:
+                                rf_config = rf_thresholds[process_step]
+                                baseline = rf_config["baseline"]
+                                threshold = rf_config["threshold"]
+                                if abs(rf_power - baseline) >= threshold:
+                                    excursion_detected = True
+                                    excursion_type = "rf_power_drift"
+                                    excursion_value = rf_power
+                                    logger.warning(f"⚠️ RF power drift detected: {rf_power}W (baseline {baseline}W) on {equipment_id}")
 
-                            # Check temperature drift
+                            # Check temperature drift using centralized baselines and thresholds
                             temperature = metrics.get("temperature", 0)
-                            if "CMP" in equipment_id and abs(temperature - 65) > 5:
-                                excursion_detected = True
-                                excursion_type = "temperature_drift"
-                                excursion_value = temperature
-                                logger.warning(f"⚠️ Temperature drift detected: {temperature}°C on {equipment_id}")
+                            if process_step in temp_thresholds:
+                                temp_config = temp_thresholds[process_step]
+                                baseline = temp_config["baseline"]
+                                threshold = temp_config["threshold"]
+                                if abs(temperature - baseline) >= threshold:  # Note: >= not > to catch exactly at threshold
+                                    excursion_detected = True
+                                    excursion_type = "temperature_drift"
+                                    excursion_value = temperature
+                                    logger.warning(f"⚠️ Temperature drift detected: {temperature}°C (baseline {baseline}°C) on {equipment_id}")
 
                             # Create alert if excursion detected
                             if excursion_detected and self.alert_manager:
@@ -359,6 +444,12 @@ class MonitoringService:
 
                                 # Determine severity based on excursion type and value
                                 severity = self.determine_severity(excursion)
+
+                                # === DEDUPLICATION CHECK ===
+                                # Skip if same equipment/excursion within 5 seconds
+                                # (Prevents duplicates from demo mode + manual injection collisions)
+                                if self._is_duplicate_alert(equipment_id, excursion_type):
+                                    continue
 
                                 # === AI MULTI-AGENT FILTERING (if enabled) ===
                                 should_create_alert = True
@@ -416,6 +507,9 @@ class MonitoringService:
                                 )
 
                                 logger.info(f"🚨 Alert created: {alert_id} for {excursion_type} on {equipment_id}")
+
+                                # Record alert creation for deduplication tracking
+                                self._record_alert_creation(equipment_id, excursion_type)
 
                                 # === SAVE MONITORING DECISION (if AI enabled) ===
                                 if self.use_ai_agents and monitoring_decision:

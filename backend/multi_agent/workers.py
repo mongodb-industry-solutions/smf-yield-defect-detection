@@ -10,6 +10,9 @@ from typing import Dict, Any
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 from multi_agent.simple_bedrock import call_claude
+from bson import ObjectId
+import time
+from datetime import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -498,3 +501,251 @@ Respond in 3-4 sentences. Be concise and specific."""
             "validated_causes": [],
             "workflow_stage": "complete"
         }
+
+
+async def analyze_scenario_tool(scenario_id: str, db) -> dict:
+    """
+    UPDATED VERSION - NO DEDUPLICATION - Creates NEW alert every time
+    Scenario Analysis Agent Tool (Orchestration Layer)
+    
+    Analyzes pre-seeded failure scenarios using advanced MongoDB aggregations to showcase
+    MongoDB's time series capabilities. Designed for <5 second execution time.
+    
+    Creates ONE alert per scenario (with deduplication) to demonstrate full monitoring flow.
+    
+    Architecture:
+    - Orchestrates modular tool functions from multi_agent.tools
+    - Each responsibility (MongoDB queries, alerts, prompts) is separated
+    - Maintains comprehensive logging for demo purposes
+    
+    Workflow:
+    1. Load metadata (scenario_tools.load_scenario_metadata)
+    2. Check/create alert (alert_tools)
+    3. Run MongoDB analysis (scenario_tools.perform_comprehensive_analysis)
+    4. Generate Claude insights (prompts.build_scenario_analysis_prompt + simple_bedrock)
+    5. Return comprehensive results
+    
+    MongoDB Aggregations Demonstrated (via mongodb_tools):
+    - Multi-facet statistical summary ($facet)
+    - Rolling window analysis ($setWindowFields)
+    - Trend detection (linear regression)
+    - Comparative window analysis (baseline vs anomaly vs recovery)
+    
+    Args:
+        scenario_id: Scenario identifier (gradual_drift, sudden_spike, oscillating_pattern)
+        db: MongoDB database instance
+        
+    Returns:
+        Comprehensive analysis including MongoDB query results, alert info, and Claude insights
+        
+    Reduced from ~450 lines to ~80 lines via tool extraction
+    """
+    # Import modular tools
+    from multi_agent.tools.scenario_tools import (
+        load_scenario_metadata,
+        perform_comprehensive_analysis
+    )
+    from multi_agent.tools.alert_tools import (
+        check_existing_scenario_alert,
+        create_scenario_alert
+    )
+    from multi_agent.prompts.scenario_prompts import (
+        build_scenario_analysis_prompt
+    )
+    
+    logger.info("=" * 80)
+    logger.info(f"🔍 [SCENARIO ANALYZER] Starting comprehensive analysis for: {scenario_id}")
+    logger.info("=" * 80)
+    
+    overall_start = time.time()
+    alert_id = None
+    alert_created = False  # Initialize to False, will be set to True when alert is created
+    
+    try:
+        # ===== Step 1: Load Scenario Metadata =====
+        metadata = await load_scenario_metadata(db, scenario_id)
+        if not metadata:
+            return {"error": f"Scenario {scenario_id} not found"}
+        
+        # ===== Steps 2-5: Execute Comprehensive MongoDB Analysis FIRST =====
+        # Execute MongoDB analysis before alert creation so we can include results in alert
+        analysis_results = await perform_comprehensive_analysis(db, scenario_id)
+        
+        # ===== Step 6: Claude Analysis (Before Alert Creation) =====
+        logger.info(f"\n🧠 [STEP 6] Invoking Claude for insight generation...")
+        logger.info(f"   Model: anthropic.claude-3-haiku-20240307-v1:0")
+        claude_start = time.time()
+        
+        # Build comprehensive prompt using template
+        prompt = build_scenario_analysis_prompt(
+            metadata,
+            analysis_results['statistics'],
+            analysis_results['trend'],
+            analysis_results['comparative']
+        )
+        
+        logger.info(f"   📝 Prompt length: {len(prompt)} characters")
+        
+        claude_response = call_claude(prompt, temperature=0.2, max_tokens=600)
+        claude_analysis = json.loads(claude_response)
+        
+        claude_elapsed = (time.time() - claude_start) * 1000
+        logger.info(f"⚡ [CLAUDE] Analysis completed in {claude_elapsed:.0f}ms")
+        logger.info(f"   🎯 Risk Level: {claude_analysis.get('risk_level', 'UNKNOWN')}")
+        logger.info(f"   📊 Confidence: {claude_analysis.get('confidence', 0):.2f}")
+        logger.info(f"   🔍 Pattern: {claude_analysis.get('pattern_detected', 'unknown')}")
+        
+        # Create comprehensive analysis summary for alert's monitoring_agent_analysis field
+        # This includes BOTH MongoDB results AND Claude's LLM interpretation
+        mongodb_analysis_for_alert = {
+            "statistical_summary": {
+                "avg_particle_count": round(analysis_results['statistics']['overall'].get('avg_particles', 0), 1),
+                "min": int(analysis_results['statistics']['overall'].get('min_particles', 0)),
+                "max": int(analysis_results['statistics']['overall'].get('max_particles', 0)),
+                "stddev": round(analysis_results['statistics']['overall'].get('stddev_particles', 0), 1),
+                "threshold_violations": analysis_results['statistics']['violations'].get('violation_count', 0),
+                "readings_analyzed": analysis_results['statistics']['overall'].get('readings_count', 0)
+            },
+            "trend_analysis": {
+                "direction": analysis_results['trend']['direction'],
+                "change_percentage": round(analysis_results['trend']['change_pct'], 1),
+                "first_period_avg": round(analysis_results['trend']['first_avg'], 1),
+                "last_period_avg": round(analysis_results['trend']['last_avg'], 1)
+            },
+            "comparative_windows": {
+                "baseline_avg": round(analysis_results['comparative']['baseline'].get('avg', 0), 1),
+                "baseline_stddev": round(analysis_results['comparative']['baseline'].get('stddev', 0), 1),
+                "anomaly_avg": round(analysis_results['comparative']['anomaly'].get('avg', 0), 1),
+                "anomaly_max": int(analysis_results['comparative']['anomaly'].get('max', 0)),
+                "deviation_pct": round(analysis_results['comparative']['deviation_pct'], 1)
+            },
+            "execution_metrics": analysis_results['execution_metrics'],
+            # NEW: Add Claude's LLM interpretation
+            "llm_interpretation": {
+                "risk_level": claude_analysis.get('risk_level', 'UNKNOWN'),
+                "confidence": claude_analysis.get('confidence', 0),
+                "pattern_detected": claude_analysis.get('pattern_detected', 'unknown'),
+                "key_insights": claude_analysis.get('key_insights', []),
+                "recommended_actions": claude_analysis.get('recommended_actions', []),
+                "mongodb_showcase": claude_analysis.get('mongodb_showcase', '')
+            }
+        }
+        
+        # ===== Step 1.5: Create New Alert (No Deduplication) =====
+        logger.info(f"\n🚨 [ALERT CREATION] Creating new alert - NO DEDUPLICATION! VERSION 2")
+        logger.info(f"   📋 About to call create_scenario_alert for scenario: {scenario_id}")
+        
+        # Always create new alert with unique ID (no deduplication)
+        # This allows multiple alerts for the same scenario
+        alert_id = await create_scenario_alert(db, scenario_id, metadata, mongodb_analysis_for_alert)
+        alert_created = True
+        
+        logger.info(f"   ✅ New alert created with ID: {alert_id}")
+        logger.info(f"   ✅ alert_created flag set to: {alert_created}")
+        
+        # ===== Final Summary =====
+        overall_elapsed = (time.time() - overall_start) * 1000
+        mongodb_time = analysis_results['execution_metrics']['mongodb_total_ms']
+        
+        # Extract statistics for response building
+        overall = analysis_results['statistics']['overall']
+        violations = analysis_results['statistics']['violations']
+        rolling_result = analysis_results['rolling_windows']['data']
+        trend = analysis_results['trend']
+        comparative = analysis_results['comparative']
+        
+        logger.info(f"\n" + "=" * 80)
+        logger.info(f"📋 [SUMMARY] Analysis Complete")
+        logger.info(f"=" * 80)
+        logger.info(f"   ⏱️  Total Time: {overall_elapsed:.0f}ms")
+        logger.info(f"   🗄️  MongoDB Queries: {mongodb_time:.0f}ms (4 aggregations)")
+        logger.info(f"   🤖 Claude Analysis: {claude_elapsed:.0f}ms")
+        logger.info(f"   📊 Data Points Analyzed: {overall.get('readings_count', 0)}")
+        logger.info(f"   🎯 Risk: {claude_analysis.get('risk_level', 'UNKNOWN')} ({claude_analysis.get('confidence', 0):.0%} confidence)")
+        if alert_created:
+            logger.info(f"   🚨 Alert Created: {alert_id}")
+        else:
+            logger.info(f"   ℹ️  Using Existing Alert: {alert_id}")
+        logger.info("=" * 80 + "\n")
+        
+        # Build comprehensive response
+        return {
+            "scenario_id": scenario_id,
+            "alert_info": {
+                "alert_id": alert_id,
+                "alert_created": alert_created,
+                "message": "New alert created" if alert_created else "Using existing alert (deduplication)"
+            },
+            "scenario_metadata": {
+                "title": metadata['title'],
+                "description": metadata['description'],
+                "equipment_id": metadata['equipment_id'],
+                "duration_minutes": metadata['duration_minutes'],
+                "data_points": metadata['data_points'],
+                "pattern_type": metadata['pattern_type'],
+                "root_cause": metadata['root_cause']
+            },
+            "execution_metrics": {
+                "total_time_ms": round(overall_elapsed, 0),
+                "mongodb_time_ms": round(mongodb_time, 0),
+                "claude_time_ms": round(claude_elapsed, 0),
+                "queries_executed": 4
+            },
+            "mongodb_analysis": {
+                "statistical_summary": {
+                    "avg_particle_count": round(overall.get('avg_particles', 0), 1),
+                    "min": int(overall.get('min_particles', 0)),
+                    "max": int(overall.get('max_particles', 0)),
+                    "stddev": round(overall.get('stddev_particles', 0), 1),
+                    "threshold_violations": violations.get('violation_count', 0),
+                    "readings_analyzed": overall.get('readings_count', 0)
+                },
+                "trend_analysis": {
+                    "direction": trend['direction'],
+                    "change_percentage": round(trend['change_pct'], 1),
+                    "first_period_avg": round(trend['first_avg'], 1),
+                    "last_period_avg": round(trend['last_avg'], 1)
+                },
+                "comparative_windows": {
+                    "baseline": {
+                        "avg": round(comparative['baseline'].get('avg', 0), 1),
+                        "stddev": round(comparative['baseline'].get('stddev', 0), 1)
+                    },
+                    "anomaly": {
+                        "avg": round(comparative['anomaly'].get('avg', 0), 1),
+                        "stddev": round(comparative['anomaly'].get('stddev', 0), 1),
+                        "max": int(comparative['anomaly'].get('max', 0)),
+                        "deviation_from_baseline_pct": round(comparative['deviation_pct'], 1)
+                    },
+                    "recovery": {
+                        "avg": round(comparative['recovery'].get('avg', 0), 1)
+                    }
+                },
+                "rolling_windows": {
+                    "data_points": len(rolling_result),
+                    "sample_data": rolling_result[:10] if rolling_result else []  # First 10 points for visualization
+                }
+            },
+            "agent_analysis": claude_analysis,
+            "mongodb_showcase": {
+                "features_demonstrated": [
+                    "$facet - Parallel aggregation pipelines for multi-dimensional analysis",
+                    "$setWindowFields - Rolling window calculations without client-side processing",
+                    "$group with complex expressions - Trend detection and statistical analysis",
+                    "Time-based $match - Efficient indexed queries on time series data"
+                ],
+                "performance_highlight": f"Analyzed {overall.get('readings_count', 0)} time series data points with 4 complex aggregations in {mongodb_time:.0f}ms",
+                "total_analysis_time": f"{overall_elapsed:.0f}ms (target: <5000ms) ✅"
+            }
+        }
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Failed to parse Claude response: {e}")
+        logger.error(f"   Raw response: {claude_response if 'claude_response' in locals() else 'N/A'}")
+        return {"error": "Failed to parse Claude response", "details": str(e)}
+    
+    except Exception as e:
+        logger.error(f"❌ Scenario analysis error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": "Scenario analysis failed", "details": str(e)}

@@ -84,6 +84,168 @@ def get_demo_service() -> DemoModeService:
     return demo_service
 
 
+@router.get("/api/demo/seed-status")
+async def check_seed_status():
+    """
+    Check if demo seed data exists and is fresh (last 15 minutes)
+    
+    This endpoint checks for a seed marker document in the demo_metadata collection
+    to determine if baseline data has been seeded recently. Used by frontend to
+    determine if initial seeding is needed on app load.
+    
+    Returns:
+        Dict with seed status information:
+        - seeded: bool - True if data is fresh (< 15 minutes old)
+        - last_seed_time: str | None - ISO timestamp of last seed
+        - age_minutes: float | None - Age of seed data in minutes
+        - needs_refresh: bool - True if seed is missing or stale
+    """
+    logger.info("📊 GET /api/demo/seed-status - Checking seed data freshness")
+    
+    try:
+        if not mongodb_client_instance or not mongodb_config:
+            raise HTTPException(status_code=500, detail="MongoDB not configured")
+        
+        db = mongodb_client_instance[mongodb_config["database_name"]]
+        
+        # Check for seed marker document in demo_metadata collection
+        seed_marker = await db.demo_metadata.find_one({"_id": "seed_marker"})
+        
+        if not seed_marker:
+            logger.info("❌ No seed marker found - data needs seeding")
+            return {
+                "seeded": False,
+                "last_seed_time": None,
+                "age_minutes": None,
+                "needs_refresh": True
+            }
+        
+        last_seed_time = seed_marker.get("seeded_at")
+        if not last_seed_time:
+            logger.info("❌ Seed marker exists but missing timestamp - needs seeding")
+            return {
+                "seeded": False,
+                "last_seed_time": None,
+                "age_minutes": None,
+                "needs_refresh": True
+            }
+        
+        # Calculate age of seed data
+        # Ensure both datetimes are timezone-aware
+        now = datetime.now(timezone.utc)
+        if last_seed_time.tzinfo is None:
+            # Make timezone-aware if needed
+            last_seed_time = last_seed_time.replace(tzinfo=timezone.utc)
+        
+        age = now - last_seed_time
+        age_minutes = age.total_seconds() / 60
+        
+        # Check if refresh needed (older than 15 minutes)
+        needs_refresh = age_minutes > 15
+        
+        logger.info(
+            f"✅ Seed status: seeded={not needs_refresh}, "
+            f"age={age_minutes:.1f} minutes"
+        )
+        
+        return {
+            "seeded": not needs_refresh,
+            "last_seed_time": last_seed_time.isoformat(),
+            "age_minutes": round(age_minutes, 1),
+            "needs_refresh": needs_refresh
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Error checking seed status: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to check seed status: {str(e)}"
+        )
+
+
+@router.post("/api/demo/initialize-seed")
+async def initialize_seed():
+    """
+    One-time initialization of demo seed data
+    
+    This endpoint performs a complete seeding of baseline and anomalous data:
+    1. Clears recent demo data (last 1 hour)
+    2. Seeds 1 hour of baseline sensor data (360 readings: 60 min × 6 equipment)
+    3. Seeds 3 anomaly patterns (13 readings total)
+    4. Sets seed marker timestamp in demo_metadata collection
+    
+    NOTE: This does NOT create alerts or wafers - those are generated automatically
+    by the monitoring service when it detects excursions via change streams.
+    
+    Returns:
+        Dict with initialization results:
+        - success: bool - True if seeding completed successfully
+        - seeded_at: str - ISO timestamp when seeding completed
+        - stats: Dict with baseline_readings, anomalous_readings counts
+        - total_time_ms: float - Time taken for seeding operation
+    """
+    logger.info("🌱 POST /api/demo/initialize-seed - Starting one-time seed initialization")
+    
+    try:
+        import time
+        start_time = time.time()
+        
+        service = get_demo_service()
+        
+        # Load process context IDs first (needed for metadata generation)
+        await service.load_process_context_ids()
+        
+        # Call reset_demo_collections which seeds baseline + anomalies
+        # This method already exists in DemoModeService and does exactly what we need:
+        # - Clears recent data (last 1 hour)
+        # - Seeds 60 minutes of baseline data (60 readings per equipment)
+        # - Seeds 3 anomaly patterns
+        reset_stats = await service.reset_demo_collections()
+        
+        logger.info(f"✅ Seed data generated: {reset_stats}")
+        
+        # Set seed marker in database
+        if not mongodb_client_instance or not mongodb_config:
+            raise HTTPException(status_code=500, detail="MongoDB not configured")
+        
+        db = mongodb_client_instance[mongodb_config["database_name"]]
+        seed_time = datetime.now(timezone.utc)
+        
+        await db.demo_metadata.update_one(
+            {"_id": "seed_marker"},
+            {
+                "$set": {
+                    "seeded_at": seed_time,
+                    "seed_stats": reset_stats
+                }
+            },
+            upsert=True
+        )
+        
+        total_time_ms = (time.time() - start_time) * 1000
+        
+        logger.info(
+            f"✅ Seed initialization complete in {total_time_ms:.0f}ms - "
+            f"{reset_stats['baseline_readings']} baseline + {reset_stats['anomalous_readings']} anomalies"
+        )
+        
+        return {
+            "success": True,
+            "seeded_at": seed_time.isoformat(),
+            "stats": reset_stats,
+            "total_time_ms": round(total_time_ms, 0)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error during seed initialization: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Seed initialization failed: {str(e)}"
+        )
+
+
 @router.get("/demo/status")
 async def get_demo_status():
     """
@@ -382,12 +544,15 @@ async def inject_excursion(request: Dict[str, Any] = Body(...)):
     """
     Manually inject an excursion into the sensor data
     
+    AUTO-PAUSES demo mode during injection to prevent collision/duplicate alerts.
+    
     Expected payload:
     {
         "equipment_id": "CMP_TOOL_01",  # Required
         "excursion_type": "particle",   # Optional: "particle", "rf_power", "temperature"
         "particle_count": 2500,          # Optional: Override specific metric
-        "metadata": {...}                # Optional: Override metadata
+        "metadata": {...},               # Optional: Override metadata
+        "auto_resume_demo": false        # Optional: Auto-resume demo after injection (default: false)
     }
     
     Returns information about:
@@ -395,6 +560,7 @@ async def inject_excursion(request: Dict[str, Any] = Body(...)):
     - Equipment ID
     - Excursion type and triggered values
     - Sensor event and timeseries IDs
+    - Demo mode state (paused/resumed)
     - Note about alert/wafer generation timing
     """
     logger.info(f"💉 POST /demo/inject-excursion - Injecting excursion: {request}")
@@ -402,23 +568,47 @@ async def inject_excursion(request: Dict[str, Any] = Body(...)):
     try:
         service = get_demo_service()
         
+        # === STEP 1: Pause demo mode if active to prevent collision ===
+        demo_was_active = service.demo_mode_active
+        auto_resume = request.get("auto_resume_demo", False)  # Default: keep paused for observation
+        
+        logger.info(f"🔍 Demo mode check: active={demo_was_active}, auto_resume={auto_resume}")
+        
+        if demo_was_active:
+            logger.info("⏸️  Pausing demo mode to prevent collision with manual injection...")
+            stop_result = await service.stop_demo_mode()
+            logger.info(f"   ✅ Demo mode paused: {stop_result['status']}")
+            # Wait briefly for demo loop to fully stop
+            await asyncio.sleep(0.5)
+        
         # Get equipment ID (required)
         equipment_id = request.get("equipment_id")
         if not equipment_id:
             logger.error("❌ Missing required parameter: equipment_id")
             raise HTTPException(status_code=400, detail="equipment_id is required")
         
-        # Generate base metrics with excursion
-        metrics = service.generate_demo_metrics(equipment_id, is_excursion=True)
+        # Generate base NORMAL metrics (not excursion to avoid random type selection)
+        metrics = service.generate_demo_metrics(equipment_id, is_excursion=False)
         
         # Apply specific excursion type if requested
         excursion_type = request.get("excursion_type", "particle")
+        logger.info(f"   💉 Injecting {excursion_type} excursion for {equipment_id}")
+        
         if excursion_type == "particle":
             metrics["particle_count"] = request.get("particle_count", random.randint(1500, 3000))
+            logger.info(f"   🔢 Particle count set to: {metrics['particle_count']}")
         elif excursion_type == "rf_power":
-            metrics["rf_power"] = request.get("rf_power", metrics["rf_power"] + random.uniform(100, 200))
+            # Calculate baseline for equipment type
+            equipment_type = equipment_id.split("_")[0]
+            baseline = 1450 if "CMP" in equipment_type else 1200 if "ETCH" in equipment_type else 800
+            metrics["rf_power"] = request.get("rf_power", baseline + random.uniform(120, 200))
+            logger.info(f"   ⚡ RF power set to: {metrics['rf_power']}W (baseline: {baseline}W)")
         elif excursion_type == "temperature":
-            metrics["temperature"] = request.get("temperature", metrics["temperature"] + random.uniform(3, 5))
+            # Calculate baseline for equipment type
+            equipment_type = equipment_id.split("_")[0]
+            baseline = 65 if "CMP" in equipment_type else 70 if "ETCH" in equipment_type else 22
+            metrics["temperature"] = request.get("temperature", baseline + random.uniform(6, 10))
+            logger.info(f"   🌡️  Temperature set to: {metrics['temperature']}°C (baseline: {baseline}°C)")
         
         # Override any specific metrics provided
         for key in ["particle_count", "rf_power", "temperature", "chamber_pressure", "flow_rate"]:
@@ -461,6 +651,18 @@ async def inject_excursion(request: Dict[str, Any] = Body(...)):
                 if abs(metrics["temperature"] - 65) > 2:
                     excursion_details.append(f"Temperature: {metrics['temperature']}")
                 
+                # === STEP 3: Resume demo mode if it was active and auto_resume is enabled ===
+                demo_resume_status = None
+                if demo_was_active and auto_resume:
+                    # Wait for alert creation to complete (~4 seconds for monitoring + AI agent)
+                    logger.info("⏳ Waiting 4 seconds for alert creation before resuming demo mode...")
+                    await asyncio.sleep(4)
+                    
+                    logger.info("▶️  Resuming demo mode...")
+                    resume_result = await service.start_demo_mode(mode="charts")
+                    demo_resume_status = resume_result["status"]
+                    logger.info(f"   ✅ Demo mode resumed: {demo_resume_status}")
+                
                 return {
                     "status": "excursion_injected",
                     "message": f"Excursion injected for {equipment_id}",
@@ -471,6 +673,12 @@ async def inject_excursion(request: Dict[str, Any] = Body(...)):
                     "metadata": metadata,
                     "sensor_events_id": result.get("sensor_events"),
                     "process_sensor_ts_id": result.get("process_sensor_ts"),
+                    "demo_mode": {
+                        "was_active": demo_was_active,
+                        "paused_for_injection": demo_was_active,
+                        "auto_resumed": demo_was_active and auto_resume,
+                        "resume_status": demo_resume_status
+                    },
                     "note": "Alert will be created within 3 seconds, wafer will be generated after 10 seconds"
                 }
             else:
@@ -483,69 +691,26 @@ async def inject_excursion(request: Dict[str, Any] = Body(...)):
             raise HTTPException(status_code=500, detail="MongoDB config not available")
             
     except HTTPException:
+        # Resume demo mode if it was active and an error occurred
+        if 'demo_was_active' in locals() and demo_was_active and 'auto_resume' in locals() and auto_resume:
+            try:
+                logger.warning("⚠️  Error occurred, attempting to resume demo mode...")
+                await service.start_demo_mode(mode="charts")
+            except Exception as resume_error:
+                logger.error(f"❌ Failed to resume demo mode after error: {resume_error}")
         raise
     except Exception as e:
+        # Resume demo mode if it was active and an error occurred
+        if 'demo_was_active' in locals() and demo_was_active and 'auto_resume' in locals() and auto_resume:
+            try:
+                logger.warning("⚠️  Error occurred, attempting to resume demo mode...")
+                await service.start_demo_mode(mode="charts")
+            except Exception as resume_error:
+                logger.error(f"❌ Failed to resume demo mode after error: {resume_error}")
         logger.error(f"❌ Error injecting excursion: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to inject excursion: {str(e)}"
-        )
-
-@router.post("/demo/inject-pattern")
-async def inject_pattern(request: Dict[str, Any] = Body(...)):
-    """
-    Manually inject a pattern-based excursion that evolves over time
-    
-    Expected payload:
-    {
-        "equipment_id": "CMP_TOOL_01",     # Required
-        "pattern": "drift|spike|false_positive|oscillation",  # Required
-        "target_value": 2000                # Optional: Override target particle count
-    }
-    
-    Patterns:
-    - drift: Gradual increase over 5-8 readings (filter degradation)
-    - spike: Sudden persistent issue for 3-5 readings (equipment malfunction)
-    - false_positive: Single spike then immediate return (sensor glitch - AI should filter)
-    - oscillation: Cyclic up/down pattern for 6-10 readings (recurring process issue)
-    
-    Returns information about:
-    - Injection status
-    - Equipment ID and pattern type
-    - Baseline and target values
-    - Total stages
-    - Note about pattern evolution timing
-    """
-    logger.info(f"🌊 POST /demo/inject-pattern - Injecting pattern: {request}")
-    
-    try:
-        service = get_demo_service()
-        
-        equipment_id = request.get("equipment_id")
-        pattern = request.get("pattern")
-        target_value = request.get("target_value")
-        
-        # Inject pattern through service
-        result = service.inject_pattern(
-            equipment_id=equipment_id,
-            pattern=pattern,
-            target_value=target_value
-        )
-        
-        logger.info(f"✅ Pattern injected: {result['pattern']} for {result['equipment_id']}")
-        return result
-        
-    except ValueError as e:
-        # Validation errors from service
-        logger.error(f"❌ Validation error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Error injecting pattern: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to inject pattern: {str(e)}"
         )
 
 @router.post("/alerts/resolve-all")

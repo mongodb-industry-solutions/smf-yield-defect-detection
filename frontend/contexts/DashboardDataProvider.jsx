@@ -13,13 +13,17 @@ export const useDashboardData = () => {
   return context;
 };
 
-export const DashboardDataProvider = ({ children, mode = 'normal' }) => {
-  // State for alerts only
+export const DashboardDataProvider = ({ children, mode = 'normal', preloadedData = null }) => {
+  // State for all dashboard data
   const [data, setData] = useState({
     alerts: [],
     equipmentStatus: [],
-    isLoading: true,
-    lastFetch: null
+    kpis: null,
+    chartData: null,
+    wafers: [],
+    isLoading: !preloadedData, // Not loading if we have preloaded data
+    isPreloaded: !!preloadedData,
+    lastFetch: preloadedData ? Date.now() : null
   });
 
   // Fetch all dashboard data
@@ -63,27 +67,51 @@ export const DashboardDataProvider = ({ children, mode = 'normal' }) => {
       }
 
       // Update state with all data
-      setData({
+      setData(prev => ({
+        ...prev,
         alerts: alertsData?.alerts || [],
         equipmentStatus: equipmentList,
         isLoading: false,
         lastFetch: Date.now()
-      });
+      }));
     } catch (error) {
       console.error('Error fetching dashboard data:', error);
       setData(prev => ({ ...prev, isLoading: false }));
     }
   };
 
-  // Initial fetch on mount and when mode changes
+  // Initialize with preloaded data if available
   useEffect(() => {
-    fetchAllData();
+    if (preloadedData) {
+      console.log('✅ Using preloaded dashboard data');
+      
+      // Transform preloaded data to match expected structure
+      const equipmentList = preloadedData.equipment || [];
+      
+      setData({
+        alerts: preloadedData.alerts || [],
+        equipmentStatus: equipmentList,
+        kpis: preloadedData.kpis || null,
+        chartData: preloadedData.chart_data || null,
+        wafers: preloadedData.wafers || [],
+        isLoading: false,
+        isPreloaded: true,
+        lastFetch: Date.now()
+      });
+    }
+  }, [preloadedData]);
+
+  // Initial fetch on mount and when mode changes (skip if preloaded data exists)
+  useEffect(() => {
+    if (!preloadedData) {
+      fetchAllData();
+    }
 
     // Refresh data every 60 seconds (increased from 30s)
     const interval = setInterval(fetchAllData, 60000);
 
     return () => clearInterval(interval);
-  }, [mode]);
+  }, [mode, preloadedData]);
 
   // Provide refresh function for manual updates
   const refresh = () => {

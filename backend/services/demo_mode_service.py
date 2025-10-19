@@ -21,6 +21,9 @@ from motor.motor_asyncio import AsyncIOMotorClient
 # Import services
 from services.sensor_data_writer import SensorDataWriter
 
+# Import centralized threshold configuration
+from config.thresholds import get_thresholds, get_particle_count_thresholds
+
 # Configure logging
 logger = logging.getLogger(__name__)
 
@@ -31,7 +34,6 @@ class DemoModeService:
     
     Handles:
     - Demo mode state (active, background tasks)
-    - Pattern-based excursion generation (drift, spike, false_positive, oscillation)
     - Sensor data generation with realistic metrics
     - Process context caching from MongoDB
     """
@@ -61,10 +63,6 @@ class DemoModeService:
         self.demo_mode_active = False
         self.demo_task: Optional[asyncio.Task] = None
         
-        # Pattern state for realistic anomaly scenarios
-        # Structure: {equipment_id: {"pattern": "drift", "stage": 3, "baseline_value": 450, ...}}
-        self.equipment_pattern_state: Dict[str, Dict[str, Any]] = {}
-        
         # Process context cache (loaded from MongoDB)
         self.process_context_cache: Dict[str, Any] = {
             "problematic_batches": [],
@@ -80,11 +78,20 @@ class DemoModeService:
             "LITHO_01", "LITHO_02"
         ]
         
+        # Persistent sensor writer (reuse connections across batches)
+        logger.info("   🔗 Initializing persistent SensorDataWriter...")
+        self.sensor_writer = SensorDataWriter(
+            mongodb_uri=self.mongodb_uri,
+            database=self.database_name
+        )
+        logger.info("   ✅ SensorDataWriter connection pool created (will be reused)")
+        
         logger.info(
             f"🎬 DemoModeService initialized - "
             f"Interval: {demo_interval_seconds}s, "
             f"Excursion probability: {demo_excursion_probability}"
         )
+        logger.info(f"   ♻️  SensorDataWriter: Persistent connection pool (avoids per-batch overhead)")
     
     def get_status(self) -> Dict[str, Any]:
         """
@@ -226,201 +233,13 @@ class DemoModeService:
             self.process_context_cache["loaded"] = True
             return self.process_context_cache
     
-    def initialize_pattern_state(self):
-        """Initialize pattern state for realistic demo scenarios with industry-aligned patterns"""
-        self.equipment_pattern_state = {}
-        
-        for eq_id in self.equipment_ids:
-            self.equipment_pattern_state[eq_id] = {
-                "pattern": "normal",
-                "stage": 0,
-                "baseline_value": None,
-                "target_value": None,
-                "started_at": None,
-                "total_stages": 0
-            }
-        
-        logger.info("✅ Initialized pattern-based demo state for realistic anomaly scenarios")
-    
-    def should_create_pattern(self, equipment_id: str) -> bool:
-        """
-        Decide if equipment should start a new pattern based on demo_excursion_probability
-        
-        Args:
-            equipment_id: Equipment identifier
-            
-        Returns:
-            bool: True if should create a new pattern
-        """
-        state = self.equipment_pattern_state.get(equipment_id, {})
-        
-        # Already in a pattern? Continue it
-        if state.get("pattern") != "normal":
-            return False
-        
-        # Use global excursion probability (will be 0 in agentic mode)
-        return random.random() < self.demo_excursion_probability
-    
-    def get_pattern_metrics(self, equipment_id: str, base_metrics: dict) -> tuple:
-        """
-        Generate metrics following realistic industry patterns for monitoring agent validation
-        
-        Patterns based on industry research (NVIDIA NV-Tesseract, semiconductor fab operations):
-        - drift: Gradual increase (filter degradation, contamination buildup)
-        - spike: Sudden persistent issue (equipment malfunction)
-        - false_positive: Single spike returning to normal (sensor glitch, transient)
-        - oscillation: Recurring pattern (cyclic process issue)
-        
-        Args:
-            equipment_id: Equipment identifier
-            base_metrics: Base metrics dict to modify
-            
-        Returns:
-            tuple: (metrics_dict, is_real_excursion_bool)
-        """
-        state = self.equipment_pattern_state.get(equipment_id, {})
-        
-        # Initialize new pattern if needed
-        if state.get("pattern") == "normal" and self.should_create_pattern(equipment_id):
-            # Choose pattern type (aligned with monitoring agent detection capabilities)
-            pattern_type = random.choices(
-                ["drift", "spike", "false_positive", "oscillation"],
-                weights=[30, 25, 35, 10],  # False positive most common (35%) to showcase filtering
-                k=1
-            )[0]
-            
-            state["pattern"] = pattern_type
-            state["stage"] = 0
-            state["baseline_value"] = base_metrics["particle_count"]
-            state["started_at"] = datetime.now(timezone.utc)
-            
-            if pattern_type == "drift":
-                state["target_value"] = random.randint(2000, 3500)  # CRITICAL severity range
-                state["total_stages"] = random.randint(5, 8)  # 5-8 readings to reach target
-                logger.info(
-                    f"📈 {equipment_id}: Starting DRIFT pattern "
-                    f"({state['baseline_value']} → {state['target_value']} over {state['total_stages']} readings)"
-                )
-            elif pattern_type == "spike":
-                state["target_value"] = random.randint(2500, 4000)  # CRITICAL severity range
-                state["total_stages"] = random.randint(3, 5)  # Persist 3-5 readings
-                logger.info(
-                    f"⚡ {equipment_id}: Starting SPIKE pattern "
-                    f"(value: {state['target_value']}, persists: {state['total_stages']} readings)"
-                )
-            elif pattern_type == "false_positive":
-                state["target_value"] = random.randint(1050, 1200)  # Just over threshold
-                state["total_stages"] = 1  # Single spike only
-                logger.info(
-                    f"🔔 {equipment_id}: Starting FALSE_POSITIVE pattern "
-                    f"(spike to {state['target_value']}, immediate return)"
-                )
-            elif pattern_type == "oscillation":
-                state["target_value"] = random.randint(2000, 3000)  # CRITICAL severity range
-                state["total_stages"] = random.randint(6, 10)
-                logger.info(
-                    f"🌊 {equipment_id}: Starting OSCILLATION pattern "
-                    f"(amplitude: {state['target_value']}, cycles: {state['total_stages']})"
-                )
-        
-        # Apply current pattern
-        pattern = state.get("pattern", "normal")
-        metrics = base_metrics.copy()
-        is_real_excursion = False
-        
-        if pattern == "drift":
-            # Gradual linear increase (realistic filter degradation or contamination buildup)
-            stage = state["stage"]
-            total = state["total_stages"]
-            baseline = state["baseline_value"]
-            target = state["target_value"]
-            
-            current_value = baseline + (target - baseline) * (stage / total)
-            metrics["particle_count"] = int(current_value)
-            
-            # Only trigger alert on FIRST reading that exceeds threshold (one pattern = one alert)
-            is_real_excursion = (current_value > 1000 and stage == 0)
-            
-            state["stage"] += 1
-            
-            if state["stage"] >= total:
-                state["pattern"] = "normal"
-                state["stage"] = 0
-                # Reset particle count to baseline after pattern completes
-                metrics["particle_count"] = baseline
-                logger.info(
-                    f"✅ {equipment_id}: DRIFT pattern completed ({baseline} → {target}), "
-                    f"particle count reset to baseline"
-                )
-        
-        elif pattern == "spike":
-            # Sudden spike that persists (equipment malfunction)
-            if state["stage"] == 0:
-                metrics["particle_count"] = state["target_value"]
-            else:
-                metrics["particle_count"] = state["target_value"] + random.randint(-50, 50)
-            
-            # Only trigger alert on FIRST reading of spike (one pattern = one alert)
-            is_real_excursion = (state["stage"] == 0)
-            
-            state["stage"] += 1
-            
-            if state["stage"] >= state["total_stages"]:
-                state["pattern"] = "normal"
-                state["stage"] = 0
-                # Reset particle count to baseline after pattern completes
-                metrics["particle_count"] = state["baseline_value"]
-                logger.info(f"✅ {equipment_id}: SPIKE pattern completed, particle count reset to baseline")
-        
-        elif pattern == "false_positive":
-            # Single spike then immediate return (sensor glitch - LLM should filter this!)
-            if state["stage"] == 0:
-                metrics["particle_count"] = state["target_value"]
-                logger.info(
-                    f"🔔 {equipment_id}: FALSE_POSITIVE spike at {state['target_value']} "
-                    f"(monitoring agent should filter)"
-                )
-                state["stage"] += 1
-            else:
-                # Return to normal immediately
-                metrics["particle_count"] = state["baseline_value"] + random.randint(-20, 20)
-                state["pattern"] = "normal"
-                state["stage"] = 0
-                is_real_excursion = False
-                logger.info(f"✅ {equipment_id}: FALSE_POSITIVE resolved (returned to normal)")
-        
-        elif pattern == "oscillation":
-            # Cyclic up/down pattern (recurring process issue)
-            import math
-            stage = state["stage"]
-            baseline = state["baseline_value"]
-            amplitude = state["target_value"] - baseline
-            
-            current_value = baseline + (amplitude * abs(math.sin(stage * math.pi / 2)))
-            metrics["particle_count"] = int(current_value)
-            
-            # Only trigger alert on FIRST stage of the pattern (one pattern = one alert)
-            # Even though oscillation exceeds threshold multiple times, we only want ONE alert
-            is_real_excursion = (stage == 0)
-            
-            state["stage"] += 1
-            
-            if state["stage"] >= state["total_stages"]:
-                state["pattern"] = "normal"
-                state["stage"] = 0
-                # Reset particle count to baseline after pattern completes
-                metrics["particle_count"] = baseline
-                logger.info(f"✅ {equipment_id}: OSCILLATION pattern completed, particle count reset to baseline")
-        
-        return metrics, is_real_excursion
-    
     def generate_demo_metrics(self, equipment_id: str, is_excursion: bool = False) -> dict:
         """
-        Generate realistic sensor metrics with pattern-based anomalies for monitoring agent validation
+        Generate realistic sensor metrics for equipment monitoring
         
         Args:
             equipment_id: Equipment identifier
-            is_excursion: Whether to generate an excursion (fallback if pattern state not initialized)
+            is_excursion: Whether to generate an excursion
             
         Returns:
             dict: Sensor metrics
@@ -450,25 +269,41 @@ class DemoModeService:
         }
         
         # Determine equipment type (CMP_TOOL_01 -> CMP)
-        equipment_type = equipment_id.split("_")[0]
+        process_step = equipment_id.split("_")[0]  # For threshold lookups: CMP, ETCH, LITHO
+        equipment_type = process_step
         # Map CMP to CMP_TOOL in base_metrics
         if equipment_type == "CMP":
             equipment_type = "CMP_TOOL"
         metrics = base_metrics.get(equipment_type, base_metrics["CMP_TOOL"]).copy()
         
-        # Use pattern-based generation if pattern state exists
-        if equipment_id in self.equipment_pattern_state:
-            metrics, _ = self.get_pattern_metrics(equipment_id, metrics)
-        elif is_excursion:
-            # Fallback to old behavior if pattern state not initialized
+        # Generate excursion if requested
+        if is_excursion:
+            # Use centralized thresholds for excursion generation
+            thresholds = get_thresholds()
             excursion_type = random.choice(["particle_excursion", "rf_power_drift", "temperature_drift"])
             
             if excursion_type == "particle_excursion":
-                metrics["particle_count"] = random.randint(1100, 4000)
+                # Generate above critical threshold
+                particle_critical = thresholds["particle_count"]["critical"]
+                metrics["particle_count"] = random.randint(particle_critical + 100, particle_critical + 2000)
             elif excursion_type == "rf_power_drift":
-                metrics["rf_power"] = metrics["rf_power"] + random.uniform(200, 400)
+                # Use equipment-specific threshold to generate realistic excursion
+                if process_step in thresholds["rf_power_drift"]:
+                    rf_threshold = thresholds["rf_power_drift"][process_step]["threshold"]
+                    baseline_rf = thresholds["rf_power_drift"][process_step]["baseline"]
+                    # Generate drift above threshold (1.5x to 3x threshold)
+                    drift_amount = random.uniform(rf_threshold * 1.5, rf_threshold * 3)
+                    # Apply drift in random direction
+                    metrics["rf_power"] = baseline_rf + (drift_amount * random.choice([-1, 1]))
             elif excursion_type == "temperature_drift":
-                metrics["temperature"] = metrics["temperature"] + random.uniform(5, 10)
+                # Use equipment-specific threshold to generate realistic excursion
+                if process_step in thresholds["temperature_drift"]:
+                    temp_threshold = thresholds["temperature_drift"][process_step]["threshold"]
+                    baseline_temp = thresholds["temperature_drift"][process_step]["baseline"]
+                    # Generate drift above threshold (1.0x to 2x threshold)
+                    drift_amount = random.uniform(temp_threshold, temp_threshold * 2)
+                    # Apply drift in positive direction (temperature usually increases)
+                    metrics["temperature"] = baseline_temp + drift_amount
         
         # Round values to reasonable precision
         metrics["particle_count"] = int(metrics["particle_count"])
@@ -586,10 +421,14 @@ class DemoModeService:
                     if data['metrics']['particle_count'] > 1000:
                         particle_excursion_count += 1
                 
-                # Use bulk write for all equipment data
-                writer = SensorDataWriter(mongodb_uri=self.mongodb_uri, database=self.database_name)
-                result = writer.bulk_write_sensor_data(bulk_data)
-                writer.close()
+                # Use persistent writer - NO new connection created!
+                logger.debug(f"   ♻️  Reusing SensorDataWriter connection pool for {len(bulk_data)} records")
+                batch_start = time.time()
+                
+                result = self.sensor_writer.bulk_write_sensor_data(bulk_data)
+                
+                batch_elapsed_ms = (time.time() - batch_start) * 1000
+                logger.debug(f"   ⏱️  Bulk write completed in {batch_elapsed_ms:.0f}ms (connection reused)")
                 
                 if result["sensor_events"]["inserted"] > 0 or result["process_sensor_ts"]["inserted"] > 0:
                     logger.info(
@@ -832,13 +671,8 @@ class DemoModeService:
             await self.load_process_context_ids()
             # ===================================================
             
-            # ========== RESET & SEED COLLECTIONS ==========
-            reset_stats = await self.reset_demo_collections()
-            logger.info(f"✅ Collections reset: {reset_stats}")
-            # ==============================================
-            
-            # Initialize pattern state for realistic anomaly scenarios
-            self.initialize_pattern_state()
+            # NOTE: Seeding is now handled by separate /api/demo/initialize-seed endpoint
+            # This endpoint only starts continuous data generation
             
             # Set demo mode active flag
             self.demo_mode_active = True
@@ -853,13 +687,13 @@ class DemoModeService:
             
             return {
                 "status": "started",
-                "message": "Demo mode started successfully",
+                "message": "Demo mode started successfully - continuous generation only (no seeding)",
                 "mode": mode,
-                "reset_stats": reset_stats,
                 "interval_seconds": self.demo_interval_seconds,
                 "excursion_probability": self.demo_excursion_probability,
                 "original_probability": original_probability,
-                "equipment_ids": self.equipment_ids
+                "equipment_ids": self.equipment_ids,
+                "note": "Seed data should already exist from /api/demo/initialize-seed"
             }
             
         except Exception as e:
@@ -901,6 +735,8 @@ class DemoModeService:
             self.demo_task = None
             
             logger.info("✅ Demo mode stopped successfully")
+            logger.info("   ℹ️  SensorDataWriter connections kept open for next demo session")
+            logger.info("   💡 Connections will be closed on service shutdown via cleanup()")
             
             return {
                 "status": "stopped",
@@ -912,89 +748,15 @@ class DemoModeService:
             logger.error(f"❌ Error stopping demo mode: {e}", exc_info=True)
             raise Exception(f"Failed to stop demo mode: {str(e)}")
     
-    def inject_pattern(self, equipment_id: str, pattern: str, target_value: Optional[int] = None) -> Dict[str, Any]:
-        """
-        Manually inject a pattern-based excursion that evolves over time
+    def cleanup(self):
+        """Clean up resources on service shutdown"""
+        logger.info("🧹 Cleaning up DemoModeService resources...")
         
-        Args:
-            equipment_id: Equipment identifier
-            pattern: Pattern type ("drift", "spike", "false_positive", "oscillation")
-            target_value: Optional override for target particle count
-            
-        Returns:
-            Dict with injection status and pattern details
-            
-        Raises:
-            ValueError: If equipment_id, pattern is invalid or pattern not in valid list
-        """
-        if not equipment_id:
-            raise ValueError("equipment_id is required")
+        if hasattr(self, 'sensor_writer') and self.sensor_writer:
+            logger.info("   🔌 Closing SensorDataWriter connections...")
+            self.sensor_writer.close()
+            logger.info("   ✅ SensorDataWriter connections closed gracefully")
+        else:
+            logger.debug("   ⏭️  No SensorDataWriter to clean up")
         
-        if not pattern:
-            raise ValueError("pattern is required")
-        
-        valid_patterns = ["drift", "spike", "false_positive", "oscillation"]
-        if pattern not in valid_patterns:
-            raise ValueError(
-                f"Invalid pattern: {pattern}. Must be one of: {', '.join(valid_patterns)}"
-            )
-        
-        # Get current baseline from normal metrics
-        base_metrics = self.generate_demo_metrics(equipment_id, is_excursion=False)
-        baseline_value = base_metrics["particle_count"]
-        
-        # Initialize pattern state
-        state = {
-            "pattern": pattern,
-            "stage": 0,
-            "baseline_value": baseline_value,
-            "started_at": datetime.now(timezone.utc)
-        }
-        
-        # Set pattern-specific parameters
-        if pattern == "drift":
-            state["target_value"] = target_value or random.randint(2000, 3500)  # CRITICAL severity range
-            state["total_stages"] = random.randint(5, 8)
-            logger.info(
-                f"📈 MANUAL INJECTION: {equipment_id} DRIFT pattern "
-                f"({baseline_value} → {state['target_value']} over {state['total_stages']} readings)"
-            )
-        
-        elif pattern == "spike":
-            state["target_value"] = target_value or random.randint(2500, 4000)  # CRITICAL severity range
-            state["total_stages"] = random.randint(3, 5)
-            logger.info(
-                f"⚡ MANUAL INJECTION: {equipment_id} SPIKE pattern "
-                f"(value: {state['target_value']}, persists: {state['total_stages']} readings)"
-            )
-        
-        elif pattern == "false_positive":
-            state["target_value"] = target_value or random.randint(1050, 1200)
-            state["total_stages"] = 1
-            logger.info(
-                f"🔔 MANUAL INJECTION: {equipment_id} FALSE_POSITIVE pattern "
-                f"(spike to {state['target_value']}, immediate return)"
-            )
-        
-        elif pattern == "oscillation":
-            state["target_value"] = target_value or random.randint(2000, 3000)  # CRITICAL severity range
-            state["total_stages"] = random.randint(6, 10)
-            logger.info(
-                f"🌊 MANUAL INJECTION: {equipment_id} OSCILLATION pattern "
-                f"(amplitude: {state['target_value']}, cycles: {state['total_stages']})"
-            )
-        
-        # Update equipment pattern state
-        self.equipment_pattern_state[equipment_id] = state
-        
-        return {
-            "success": True,
-            "message": f"Pattern '{pattern}' injected for {equipment_id}",
-            "equipment_id": equipment_id,
-            "pattern": pattern,
-            "baseline_value": baseline_value,
-            "target_value": state["target_value"],
-            "total_stages": state["total_stages"],
-            "note": f"Pattern will evolve over next {state['total_stages']} demo batches (every {self.demo_interval_seconds} seconds)"
-        }
-
+        logger.info("✅ DemoModeService cleanup complete")

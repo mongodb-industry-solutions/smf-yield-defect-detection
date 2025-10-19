@@ -7,11 +7,13 @@ import Icon from '@leafygreen-ui/icon';
 import Tooltip from '@leafygreen-ui/tooltip';
 import IconButton from '@leafygreen-ui/icon-button';
 import QueryTransparencyCard from '@/components/common/QueryTransparencyCard';
+import { useDashboardData } from '@/contexts/DashboardDataProvider';
 import styles from './ProcessHealthMatrix.module.css';
 
 const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
+  const { equipmentStatus: preloadedEquipment, isPreloaded } = useDashboardData();
   const [equipmentData, setEquipmentData] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!isPreloaded);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [showQuery, setShowQuery] = useState(false);
 
@@ -29,14 +31,52 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
   };
 
   useEffect(() => {
-    // Initial fetch
-    fetchEquipmentStatus();
+    // Use preloaded data ONLY on initial mount if available
+    // After that, let fetchEquipmentStatus handle all updates
+    if (preloadedEquipment && isPreloaded && preloadedEquipment.length > 0 && !equipmentData) {
+      console.log('✅ ProcessHealthMatrix: Using preloaded equipment data (one-time)');
+      
+      // Transform preloaded equipment data to match expected format
+      // Group by process type
+      const matrix = {
+        CMP: [],
+        ETCH: [],
+        LITHO: []
+      };
 
-    // Set up auto-refresh every 10 seconds
-    const interval = setInterval(fetchEquipmentStatus, 10000);
+      preloadedEquipment.forEach(eq => {
+        const processType = eq.equipment_id.split('_')[0]; // Extract CMP, ETCH, LITHO
+        if (matrix[processType]) {
+          matrix[processType].push({
+            equipment_id: eq.equipment_id,
+            status: eq.status,
+            metrics: eq.last_reading || {},
+            last_update: eq.last_reading?.timestamp,
+            process_step: processType
+          });
+        }
+      });
+
+      setEquipmentData({ matrix, timestamp: new Date().toISOString() });
+      setIsLoading(false);
+      setLastRefresh(new Date());
+    }
+    
+    // If no preloaded data, do initial fetch
+    if (!isPreloaded || !preloadedEquipment || preloadedEquipment.length === 0) {
+      console.log('🔄 ProcessHealthMatrix: No preloaded data, fetching...');
+      fetchEquipmentStatus();
+    }
+
+    // CRITICAL: Set up auto-refresh every 10 seconds regardless of preload
+    // This ensures data keeps updating after initial load
+    const interval = setInterval(() => {
+      console.log('🔄 ProcessHealthMatrix: Auto-refreshing equipment status...');
+      fetchEquipmentStatus();
+    }, 10000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, []); // Empty deps - run once on mount, then interval takes over
 
   const calculateStatus = (metrics) => {
     if (!metrics) return 'unknown';
