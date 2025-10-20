@@ -5,7 +5,7 @@ This service encapsulates all real-time monitoring logic including:
 - Sensor event monitoring via MongoDB change streams
 - Wafer defect monitoring via MongoDB change streams
 - Excursion detection and alert creation
-- AI multi-agent integration (monitoring, investigation, RCA, supervisor)
+- Traditional correlation and RCA analysis
 - WebSocket notifications for real-time updates
 
 All business logic extracted from main.py for better separation of concerns.
@@ -25,9 +25,6 @@ from services.websocket_manager import WebSocketManager, ConnectionType
 from services.wafer_generator import WaferGenerator
 from services.correlation_engine import CorrelationEngine
 from services.rca_generator import RCAGenerator
-from multi_agent import create_initial_state
-from multi_agent.workers import monitoring_agent_tool, investigation_agent_tool, rca_agent_tool
-from multi_agent.supervisor import supervisor_synthesis_agent
 from utils import convert_objectids
 
 # Import centralized threshold configuration
@@ -45,12 +42,12 @@ logger = logging.getLogger(__name__)
 class MonitoringService:
     """
     Service for managing real-time monitoring of sensor events and wafer defects.
-    
+
     Responsibilities:
     - Monitor sensor_events collection for excursions
     - Monitor wafer_defects collection for high-severity wafers
     - Create alerts based on detection rules
-    - Run AI multi-agent analysis pipeline (if enabled)
+    - Trigger traditional correlation and RCA analysis
     - Send WebSocket notifications for real-time updates
     """
     
@@ -451,49 +448,6 @@ class MonitoringService:
                                 if self._is_duplicate_alert(equipment_id, excursion_type):
                                     continue
 
-                                # === AI MULTI-AGENT FILTERING (if enabled) ===
-                                should_create_alert = True
-                                monitoring_decision = None
-
-                                if self.use_ai_agents:
-                                    try:
-                                        logger.info(f"🤖 Running AI Monitoring Agent for {equipment_id}")
-
-                                        # Create initial state for monitoring agent
-                                        temp_alert_id = str(ObjectId())
-                                        agent_state = create_initial_state(
-                                            alert_id=temp_alert_id,
-                                            equipment_id=equipment_id,
-                                            excursion_type=excursion_type,
-                                            severity=severity.value,
-                                            metrics=metrics,
-                                            metadata=sensor_data.get("metadata", {})
-                                        )
-
-                                        # Run monitoring agent (filters false positives)
-                                        agent_result = await monitoring_agent_tool(agent_state)
-                                        monitoring_decision = agent_result.get("monitoring_decision", {})
-
-                                        # Check agent's decision
-                                        should_create_alert = monitoring_decision.get("create_alert", True)
-
-                                        if not should_create_alert:
-                                            logger.info(f"🚫 Alert FILTERED by AI Agent: {monitoring_decision.get('reasoning')}")
-                                            logger.info(f"   Confidence: {monitoring_decision.get('confidence'):.2f}, Pattern: {monitoring_decision.get('pattern_detected')}")
-                                        else:
-                                            logger.info(f"✅ Alert APPROVED by AI Agent: {monitoring_decision.get('reasoning')}")
-                                            logger.info(f"   Confidence: {monitoring_decision.get('confidence'):.2f}, Pattern: {monitoring_decision.get('pattern_detected')}")
-
-                                    except Exception as agent_error:
-                                        logger.error(f"⚠️ AI Agent error (fail-safe: creating alert): {agent_error}")
-                                        should_create_alert = True  # Fail-safe: create alert on error
-
-                                # Create alert only if not filtered
-                                if not should_create_alert:
-                                    # Log filtered alert but don't create it
-                                    logger.info(f"📊 Excursion detected but FILTERED: {excursion_type} on {equipment_id}")
-                                    continue
-
                                 # Create alert
                                 alert_id = self.alert_manager.create_alert(
                                     alert_type=AlertType.EXCURSION,
@@ -510,164 +464,6 @@ class MonitoringService:
 
                                 # Record alert creation for deduplication tracking
                                 self._record_alert_creation(equipment_id, excursion_type)
-
-                                # === SAVE MONITORING DECISION (if AI enabled) ===
-                                if self.use_ai_agents and monitoring_decision:
-                                    try:
-                                        # Get the alert document to extract MongoDB _id
-                                        alert_doc = self.alert_manager.get_alert_by_id(alert_id)
-                                        if alert_doc:
-                                            mongo_id = str(alert_doc["_id"]) if "_id" in alert_doc else alert_id
-
-                                            # Get statistical context from agent result
-                                            stats = agent_result.get('statistical_context', {})
-
-                                            # Save monitoring decision to alert with statistical context
-                                            self.alert_manager.alerts_collection.update_one(
-                                                {"_id": ObjectId(mongo_id)},
-                                                {"$set": {
-                                                    "monitoring_decision": {
-                                                        "create_alert": monitoring_decision.get('create_alert', True),
-                                                        "confidence": monitoring_decision.get('confidence', 0),
-                                                        "pattern_detected": monitoring_decision.get('pattern_detected', 'unknown'),
-                                                        "reasoning": monitoring_decision.get('reasoning', ''),
-                                                        "statistical_context": {
-                                                            "avg_particles": stats.get('avg_particles'),
-                                                            "max_particles": stats.get('max_particles'),
-                                                            "min_particles": stats.get('min_particles'),
-                                                            "stddev_particles": stats.get('stddev_particles'),
-                                                            "deviation_sigma": stats.get('deviation_sigma', 0),
-                                                            "deviation_pct": stats.get('deviation_pct', 0),
-                                                            "readings_count": stats.get('readings_count', 0)
-                                                        }
-                                                    }
-                                                }}
-                                            )
-                                            logger.info(f"   💾 Monitoring decision saved to alert {alert_id}")
-                                            logger.info(f"   📊 Statistical context: {stats.get('deviation_sigma', 0):.1f}σ, {stats.get('deviation_pct', 0):+.1f}%")
-                                    except Exception as save_error:
-                                        logger.error(f"   ❌ Failed to save monitoring decision: {save_error}")
-
-                                # === RUN INVESTIGATION AGENT (if AI enabled) ===
-                                if self.use_ai_agents and should_create_alert:
-                                    try:
-                                        # Small delay to ensure alert is committed to MongoDB
-                                        await asyncio.sleep(0.1)
-
-                                        logger.info(f"🔬 Running Investigation Agent for alert {alert_id}")
-
-                                        # Get the alert to extract MongoDB _id (same approach as run_alert_correlation)
-                                        alert_doc = self.alert_manager.get_alert_by_id(alert_id)
-                                        if not alert_doc:
-                                            logger.error(f"   ❌ Alert {alert_id} not found in DB after creation")
-                                            raise ValueError(f"Alert {alert_id} not found")
-
-                                        # Extract MongoDB _id (the actual ObjectId used by CorrelationEngine)
-                                        mongo_id = str(alert_doc["_id"]) if "_id" in alert_doc else alert_id
-                                        logger.info(f"   🔑 Using MongoDB _id: {mongo_id} (from alert {alert_id})")
-
-                                        # Update state with MongoDB _id for correlation engine
-                                        agent_state['alert_id'] = mongo_id
-
-                                        # Run investigation agent
-                                        investigation_result = await investigation_agent_tool(agent_state)
-
-                                        # Log investigation results
-                                        key_findings = investigation_result.get('key_findings', [])
-                                        logger.info(f"   ✅ Investigation complete: {len(key_findings)} key findings")
-
-                                        # Update alert with investigation results in MongoDB
-                                        if key_findings:
-                                            self.alert_manager.alerts_collection.update_one(
-                                                {"_id": ObjectId(mongo_id)},  # Use mongo_id, not alert_id!
-                                                {"$set": {
-                                                    "ai_investigation": {
-                                                        "key_findings": key_findings,
-                                                        "summary": investigation_result.get('investigation_summary'),
-                                                        "correlation_confidence": investigation_result.get('correlation_results', {}).get('confidence_score', 0),
-                                                        "affected_wafers": investigation_result.get('correlation_results', {}).get('affected_wafers', {}).get('total', 0)
-                                                    }
-                                                }}
-                                            )
-                                            logger.info(f"   💾 Investigation results saved to alert {alert_id} (MongoDB _id: {mongo_id})")
-
-                                        # === RUN RCA AGENT (nested in investigation success) ===
-                                        try:
-                                            logger.info(f"🔍 Running RCA Agent for alert {alert_id}")
-
-                                            # Update state with investigation results for RCA context
-                                            agent_state['investigation_summary'] = investigation_result.get('investigation_summary', '')
-                                            agent_state['key_findings'] = investigation_result.get('key_findings', [])
-                                            agent_state['correlation_results'] = investigation_result.get('correlation_results', {})
-
-                                            # Run RCA agent
-                                            rca_result = await rca_agent_tool(agent_state)
-
-                                            # Log RCA results
-                                            validated_causes = rca_result.get('validated_causes', [])
-                                            logger.info(f"   ✅ RCA complete: {len(validated_causes)} validated root causes")
-
-                                            # Update alert with RCA results in MongoDB
-                                            if validated_causes:
-                                                self.alert_manager.alerts_collection.update_one(
-                                                    {"_id": ObjectId(mongo_id)},
-                                                    {"$set": {
-                                                        "ai_rca": {
-                                                            "validated_causes": validated_causes,
-                                                            "validation": rca_result.get('rca_validation'),
-                                                            "recommendations": rca_result.get('rca_patterns', {}).get('recommendations', []),
-                                                            "confidence": rca_result.get('rca_patterns', {}).get('overall_confidence', 0)
-                                                        }
-                                                    }}
-                                                )
-                                                logger.info(f"   💾 RCA results saved to alert {alert_id} (MongoDB _id: {mongo_id})")
-
-                                            # === RUN SUPERVISOR SYNTHESIS (aggregates all agent outputs) ===
-                                            try:
-                                                logger.info(f"🎯 Running Supervisor Synthesis for alert {alert_id}")
-
-                                                # Aggregate all agent results
-                                                supervisor_result = await supervisor_synthesis_agent(
-                                                    monitoring_result=agent_result,
-                                                    investigation_result=investigation_result,
-                                                    rca_result=rca_result,
-                                                    alert_context={
-                                                        'equipment_id': equipment_id,
-                                                        'excursion_type': excursion_type,
-                                                        'alert_id': alert_id
-                                                    }
-                                                )
-
-                                                # Log supervisor results
-                                                risk_level = supervisor_result.get('risk_level', 'Unknown')
-                                                overall_confidence = supervisor_result.get('overall_confidence', 0)
-                                                logger.info(f"   ✅ Supervisor synthesis complete")
-                                                logger.info(f"   🎯 Risk Level: {risk_level}, Overall Confidence: {overall_confidence:.0%}")
-
-                                                # Update alert with supervisor synthesis
-                                                supervisor_synthesis = supervisor_result.get('supervisor_synthesis', '')
-                                                if supervisor_synthesis:
-                                                    self.alert_manager.alerts_collection.update_one(
-                                                        {"_id": ObjectId(mongo_id)},
-                                                        {"$set": {
-                                                            "ai_supervisor": {
-                                                                "synthesis": supervisor_synthesis,
-                                                                "risk_level": risk_level,
-                                                                "overall_confidence": overall_confidence,
-                                                                "agent_summary": supervisor_result.get('agent_outputs', {})
-                                                            }
-                                                        }}
-                                                    )
-                                                    logger.info(f"   💾 Supervisor synthesis saved to alert {alert_id} (MongoDB _id: {mongo_id})")
-
-                                            except Exception as supervisor_error:
-                                                logger.error(f"⚠️ Supervisor Synthesis error: {supervisor_error}")
-
-                                        except Exception as rca_error:
-                                            logger.error(f"⚠️ RCA Agent error: {rca_error}")
-
-                                    except Exception as investigation_error:
-                                        logger.error(f"⚠️ Investigation Agent error: {investigation_error}")
 
                                 # Notify WebSocket clients
                                 await self.notify_websocket_clients({

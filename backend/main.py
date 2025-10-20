@@ -378,9 +378,9 @@ async def _inject_router_dependencies(services, demo_svc):
     )
     logger.info("✅ Wafers dependencies injected into router")
     
-    # Inject dependencies into AI agents router
-    ai_agents_router.set_dependencies(use_ai_agents=USE_AI_AGENTS)
-    logger.info("✅ AI Agents dependencies injected into router")
+    # Inject dependencies into AI agents router (controls auto-excursions)
+    ai_agents_router.set_dependencies(enable_auto_excursions=USE_AI_AGENTS)
+    logger.info("✅ Auto-excursion dependencies injected into router")
     
     # Inject dependencies into monitoring router
     monitoring_router.set_dependencies(

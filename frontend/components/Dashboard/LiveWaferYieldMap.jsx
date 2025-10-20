@@ -67,12 +67,13 @@ const LiveWaferYieldMap = () => {
       fetchWaferData();
     }
     
-    // CRITICAL: Set up auto-refresh every 15 seconds regardless of preload
+    // CRITICAL: Set up auto-refresh every 20 seconds regardless of preload
     // This ensures data keeps updating after initial load
+    // Increased from 15s to 20s (33% reduction in polling frequency)
     const interval = setInterval(() => {
       console.log('🔄 LiveWaferYieldMap: Auto-refreshing wafer data...');
       fetchWaferData();
-    }, 15000);
+    }, 20000);
     return () => clearInterval(interval);
   }, []); // Empty deps - run once on mount, then interval takes over
 

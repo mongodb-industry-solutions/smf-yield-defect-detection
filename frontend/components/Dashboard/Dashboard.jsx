@@ -43,9 +43,26 @@ const Dashboard = ({ onModeChange }) => {
   };
   const [isMatrixCollapsed, setIsMatrixCollapsed] = useState(false);
   const [isAlertsCollapsed, setIsAlertsCollapsed] = useState(false);
+
+  // Auto-collapse panels when switching to Agentic AI mode
+  useEffect(() => {
+    if (dashboardMode === 'agentic') {
+      setIsMatrixCollapsed(true);
+      setIsAlertsCollapsed(true);
+    } else {
+      setIsMatrixCollapsed(false);
+      setIsAlertsCollapsed(false);
+    }
+  }, [dashboardMode]);
   const [selectedAgent, setSelectedAgent] = useState(null);
   const [clickedCollection, setClickedCollection] = useState(null);
   const [selectedAlertId, setSelectedAlertId] = useState(null); // Global alert selection
+
+  // Handler for when AI analysis completes and creates an alert
+  const handleAnalysisComplete = (alertId) => {
+    console.log('📋 Analysis complete, setting alert ID:', alertId);
+    setSelectedAlertId(alertId);
+  };
 
   // Find agents that use a specific collection
   const getAgentsUsingCollection = (collectionName) => {
@@ -88,7 +105,10 @@ const Dashboard = ({ onModeChange }) => {
           />
 
           {/* Demo Control Panel */}
-          <DemoControlPanel />
+          <DemoControlPanel
+            dashboardMode={dashboardMode}
+            onAnalysisComplete={handleAnalysisComplete}
+          />
 
           {/* Conditional Content Based on Mode */}
           {dashboardMode === 'normal' ? (
@@ -127,7 +147,6 @@ const Dashboard = ({ onModeChange }) => {
                 selectedAgent={selectedAgent}
                 onAgentSelect={setSelectedAgent}
                 selectedAlertId={selectedAlertId}
-                onAlertSelect={setSelectedAlertId}
               />
 
               {/* Agent Detail Panel */}

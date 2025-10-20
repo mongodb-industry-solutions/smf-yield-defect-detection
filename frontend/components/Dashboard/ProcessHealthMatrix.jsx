@@ -7,6 +7,7 @@ import Icon from '@leafygreen-ui/icon';
 import Tooltip from '@leafygreen-ui/tooltip';
 import IconButton from '@leafygreen-ui/icon-button';
 import QueryTransparencyCard from '@/components/common/QueryTransparencyCard';
+import EquipmentDetailsPanel from './EquipmentDetailsPanel';
 import { useDashboardData } from '@/contexts/DashboardDataProvider';
 import styles from './ProcessHealthMatrix.module.css';
 
@@ -16,6 +17,7 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
   const [isLoading, setIsLoading] = useState(!isPreloaded);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [showQuery, setShowQuery] = useState(false);
+  const [selectedEquipment, setSelectedEquipment] = useState(null);
 
   const fetchEquipmentStatus = async () => {
     try {
@@ -282,6 +284,7 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
                           <div
                             className={`${styles.equipmentCard} ${styles[eq.status]}`}
                             style={{ animationDelay: `${index * 0.05}s` }}
+                            onClick={() => setSelectedEquipment(eq.equipment_id)}
                           >
                             <div className={styles.equipmentHeader}>
                               <span
@@ -385,6 +388,13 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
           </div>
         </div>
       </Card>
+
+      {/* Equipment Details Panel */}
+      <EquipmentDetailsPanel
+        equipmentId={selectedEquipment}
+        isOpen={!!selectedEquipment}
+        onClose={() => setSelectedEquipment(null)}
+      />
     </div>
   );
 };

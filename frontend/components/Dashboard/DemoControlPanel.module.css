@@ -217,3 +217,202 @@
 .panel {
   display: none;
 }
+
+/* ========================================
+   AGENTIC AI MODE STYLES
+   ======================================== */
+
+.agenticContainer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+/* Scenario Selection Section */
+.scenarioSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 0 0 auto;
+}
+
+.scenarioLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+  white-space: nowrap;
+  padding: 6px 10px;
+  background: rgba(0, 104, 74, 0.08);
+  border-radius: 6px;
+}
+
+.scenarioSelect {
+  padding: 8px 12px;
+  border: 2px solid #00684a;
+  border-radius: 6px;
+  background: white;
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 180px;
+  height: 36px;
+  transition: all 0.2s;
+  cursor: pointer;
+  color: #1e2d3d;
+}
+
+.scenarioSelect:hover:not(:disabled) {
+  border-color: #00a76a;
+  box-shadow: 0 0 0 3px rgba(0, 104, 74, 0.1);
+}
+
+.scenarioSelect:focus {
+  outline: none;
+  border-color: #00a76a;
+  box-shadow: 0 0 0 3px rgba(0, 104, 74, 0.15);
+}
+
+.scenarioSelect:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #F9FAFB;
+}
+
+/* Analysis Section */
+.analysisSection {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.runAnalysisButton {
+  padding: 8px 20px !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  height: 36px !important;
+  min-width: 120px;
+}
+
+/* Pipeline Progress */
+.pipelineProgress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+}
+
+.progressBar {
+  width: 100%;
+  height: 8px;
+  background: rgba(0, 104, 74, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progressFill {
+  height: 100%;
+  background: linear-gradient(90deg, #00684a 0%, #00a76a 100%);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.progressFill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    transparent 100%
+  );
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.agentStatus {
+  font-size: 12px;
+  font-weight: 600;
+  color: #00684a;
+  white-space: nowrap;
+}
+
+/* Analysis Complete */
+.analysisComplete {
+  padding: 8px 14px;
+  background: rgba(0, 237, 100, 0.1);
+  border: 1px solid rgba(0, 104, 74, 0.3);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #00684a;
+  animation: fadeInScale 0.3s ease;
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Pipeline Error */
+.pipelineError {
+  padding: 8px 14px;
+  background: rgba(220, 56, 45, 0.1);
+  border: 1px solid rgba(220, 56, 45, 0.3);
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #DC382D;
+  animation: fadeInScale 0.3s ease;
+}
+
+.compactReset {
+  padding: 6px 14px !important;
+  font-size: 13px !important;
+  height: 32px !important;
+}
+
+/* Responsive adjustments for Agentic AI mode */
+@media (max-width: 1200px) {
+  .agenticContainer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .scenarioSection {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .scenarioSelect {
+    width: 100%;
+  }
+
+  .analysisSection {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pipelineProgress {
+    min-width: 100%;
+  }
+}

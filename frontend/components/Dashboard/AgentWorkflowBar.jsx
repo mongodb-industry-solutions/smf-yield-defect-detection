@@ -4,9 +4,8 @@ import React, { useState, useEffect } from 'react';
 import Card from '@leafygreen-ui/card';
 import Badge from '@leafygreen-ui/badge';
 import Icon from '@leafygreen-ui/icon';
-import { Select, Option } from '@leafygreen-ui/select';
 import { Body, Label } from '@leafygreen-ui/typography';
-import { useDashboardData } from '@/contexts/DashboardDataProvider';
+import { alertAPI } from '@/lib/api';
 import styles from './AgentWorkflowBar.module.css';
 
 const AGENTS = [
@@ -40,17 +39,42 @@ const AGENTS = [
   }
 ];
 
-const AgentWorkflowBar = ({ selectedAgent, onAgentSelect, selectedAlertId, onAlertSelect }) => {
-  // Use alerts from DashboardDataProvider instead of polling separately
-  const { alerts } = useDashboardData();
+const AgentWorkflowBar = ({ selectedAgent, onAgentSelect, selectedAlertId }) => {
+  const [alertInfo, setAlertInfo] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  // Auto-select the first (newest) alert if no alert is selected
+  // Fetch alert details when selectedAlertId changes
   useEffect(() => {
-    if (alerts.length > 0 && !selectedAlertId) {
-      const newAlertId = alerts[0]._id || alerts[0].id;
-      onAlertSelect(newAlertId);
+    if (!selectedAlertId) {
+      setAlertInfo(null);
+      return;
     }
-  }, [alerts, selectedAlertId, onAlertSelect]);
+
+    const fetchAlertInfo = async () => {
+      setLoading(true);
+      try {
+        const alert = await alertAPI.getById(selectedAlertId);
+        setAlertInfo(alert);
+      } catch (error) {
+        console.error('Error fetching alert info:', error);
+        setAlertInfo(null);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAlertInfo();
+  }, [selectedAlertId]);
+
+  // Helper to get severity badge variant
+  const getSeverityBadgeVariant = (severity) => {
+    switch (severity) {
+      case 'critical': return 'red';
+      case 'high': return 'yellow';
+      case 'medium': return 'blue';
+      default: return 'lightgray';
+    }
+  };
 
   return (
     <Card className={styles.container}>
@@ -59,28 +83,31 @@ const AgentWorkflowBar = ({ selectedAgent, onAgentSelect, selectedAlertId, onAle
           <Label className={styles.title}>AI Workflow Pipeline</Label>
           <Badge variant="blue">4 Agents</Badge>
         </div>
-        <div className={styles.alertSelector}>
-          <Select
-            label="Select Alert (applies to all agents)"
-            description="Auto-updates with new alerts"
-            value={selectedAlertId || ''}
-            onChange={(value) => onAlertSelect(value)}
-            disabled={alerts.length === 0}
-            size="small"
-          >
-            {alerts.map((alert, index) => {
-              const isLatest = index === 0;
-              const timestamp = new Date(alert.timestamp);
-              const timeStr = timestamp.toLocaleTimeString();
-              const severityEmoji = alert.severity === 'critical' ? '🔴' : alert.severity === 'high' ? '🟠' : '🟡';
 
-              return (
-                <Option key={alert._id || alert.id} value={alert._id || alert.id}>
-                  {isLatest ? '⭐ ' : ''}{severityEmoji} {alert.equipment_id} - {alert.alert_type} ({timeStr})
-                </Option>
-              );
-            })}
-          </Select>
+        {/* Alert Info Display */}
+        <div className={styles.alertInfo}>
+          {loading && (
+            <Body className={styles.loadingText}>Loading alert...</Body>
+          )}
+
+          {!loading && !alertInfo && (
+            <Body className={styles.noAlertText}>No analysis running</Body>
+          )}
+
+          {!loading && alertInfo && (
+            <div className={styles.alertDetails}>
+              <Badge variant={getSeverityBadgeVariant(alertInfo.severity)}>
+                {alertInfo.severity.toUpperCase()}
+              </Badge>
+              <span className={styles.alertEquipment}>{alertInfo.equipment_id}</span>
+              <span className={styles.alertSeparator}>•</span>
+              <span className={styles.alertType}>{alertInfo.alert_type}</span>
+              <span className={styles.alertSeparator}>•</span>
+              <span className={styles.alertTime}>
+                {new Date(alertInfo.timestamp).toLocaleTimeString()}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
