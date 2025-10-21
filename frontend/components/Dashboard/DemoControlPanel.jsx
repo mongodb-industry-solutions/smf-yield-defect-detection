@@ -4,7 +4,9 @@ import React, { useState, useEffect } from 'react';
 import Card from '@leafygreen-ui/card';
 import Button from '@leafygreen-ui/button';
 import Toggle from '@leafygreen-ui/toggle';
-import { demoAPI, aiAgentAPI } from '@/lib/api';
+import Select from '@leafygreen-ui/select';
+import { Option } from '@leafygreen-ui/select';
+import { demoAPI, aiAgentAPI, alertAPI } from '@/lib/api';
 import styles from './DemoControlPanel.module.css';
 
 const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
@@ -33,6 +35,12 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [pipelineError, setPipelineError] = useState(null);
 
+  // Previously Analyzed Alerts State
+  const [analyzedAlerts, setAnalyzedAlerts] = useState([]);
+  const [selectedAlertId, setSelectedAlertId] = useState('');
+  const [loadingAnalyzedAlerts, setLoadingAnalyzedAlerts] = useState(false);
+  const [loadingAlertData, setLoadingAlertData] = useState(false);
+
   // Fetch status function
   const fetchStatus = async () => {
     try {
@@ -55,10 +63,65 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     }
   };
 
+  // Fetch previously analyzed alerts
+  const fetchAnalyzedAlerts = async () => {
+    setLoadingAnalyzedAlerts(true);
+    try {
+      const data = await alertAPI.getAnalyzedAlerts(50);
+      setAnalyzedAlerts(data.alerts || []);
+      console.log('📊 Loaded analyzed alerts:', data.alerts?.length);
+    } catch (err) {
+      console.error('Error fetching analyzed alerts:', err);
+    } finally {
+      setLoadingAnalyzedAlerts(false);
+    }
+  };
+
+  // Handle alert selection and load its data
+  const handleAlertSelection = async (alertId) => {
+    if (!alertId) {
+      setSelectedAlertId('');
+      setAlertId(null);
+      setAnalysisComplete(false);
+      return;
+    }
+
+    setSelectedAlertId(alertId);
+    setLoadingAlertData(true);
+    setPipelineError(null);
+
+    try {
+      console.log('📥 Loading alert data for:', alertId);
+
+      // Fetch alert details to get agent analysis
+      const agentDetails = await alertAPI.getAgentDetails(alertId);
+      console.log('📊 Agent details loaded:', agentDetails);
+
+      // Set alert ID and mark analysis as complete
+      setAlertId(alertId);
+      setAnalysisComplete(true);
+      setCurrentAgent(null);
+      setProgressPercent(100);
+
+      // Notify parent component that analysis data is loaded
+      if (onAnalysisComplete) {
+        onAnalysisComplete(alertId);
+      }
+
+      console.log('✅ Alert analysis loaded successfully');
+    } catch (err) {
+      console.error('❌ Error loading alert data:', err);
+      setPipelineError('Failed to load alert analysis data');
+    } finally {
+      setLoadingAlertData(false);
+    }
+  };
+
   // Fetch status on mount (no polling needed)
   useEffect(() => {
     fetchStatus(); // Initial fetch
     fetchAutoExcursionsStatus(); // Fetch auto-excursions status
+    fetchAnalyzedAlerts(); // Fetch previously analyzed alerts
   }, []);
 
   // Handle Start/Stop toggle
@@ -178,9 +241,10 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
       );
       if (!monitoringResponse.ok) throw new Error('Monitoring Agent failed');
       const monitoringData = await monitoringResponse.json();
-      const newAlertId = monitoringData.alert_id;
+      const newAlertId = monitoringData.alert_info.alert_id;
       setAlertId(newAlertId);
       console.log(`✅ Agent 1 complete. Alert ID: ${newAlertId}`);
+      console.log('📊 Monitoring Data Structure:', JSON.stringify(monitoringData, null, 2));
 
       // Notify parent Dashboard about the created alert
       if (onAnalysisComplete) {
@@ -191,9 +255,27 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
       console.log('🤖 Running Agent 2: Investigation Agent...');
       setCurrentAgent(2);
       setProgressPercent(50);
+
+      // Build investigation payload from monitoring output
+      // Safe access to nested properties with fallbacks
+      const llmInterpretation = monitoringData.mongodb_analysis?.llm_interpretation || monitoringData.output?.llm_interpretation;
+      const investigationPayload = {
+        alert_id: newAlertId,
+        scenario_id: selectedScenario,
+        equipment_id: monitoringData.scenario_metadata?.equipment_id || 'CMP_TOOL_01',
+        excursion_type: 'particle',
+        risk_level: llmInterpretation?.risk_level || 'HIGH',
+        pattern_detected: llmInterpretation?.pattern_detected || 'drift'
+      };
+      console.log('📤 Investigation Payload:', investigationPayload);
+
       const investigationResponse = await fetch(
-        `http://localhost:8000/ai-agents/agent-2-investigation/${newAlertId}`,
-        { method: 'POST' }
+        `http://localhost:8000/ai-agents/investigate`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(investigationPayload)
+        }
       );
       if (!investigationResponse.ok) throw new Error('Investigation Agent failed');
       console.log('✅ Agent 2 complete');
@@ -203,7 +285,7 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
       setCurrentAgent(3);
       setProgressPercent(75);
       const rcaResponse = await fetch(
-        `http://localhost:8000/ai-agents/agent-3-rca/${newAlertId}`,
+        `http://localhost:8000/ai-agents/rca/${newAlertId}`,
         { method: 'POST' }
       );
       if (!rcaResponse.ok) throw new Error('RCA Agent failed');
@@ -214,7 +296,7 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
       setCurrentAgent(4);
       setProgressPercent(100);
       const supervisorResponse = await fetch(
-        `http://localhost:8000/ai-agents/agent-4-supervisor/${newAlertId}`,
+        `http://localhost:8000/ai-agents/supervisor/${newAlertId}`,
         { method: 'POST' }
       );
       if (!supervisorResponse.ok) throw new Error('Supervisor Agent failed');
@@ -238,19 +320,46 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     return (
       <Card className={styles.compactPanel}>
         <div className={styles.agenticContainer}>
-          {/* Left: Scenario Selection */}
+          {/* Left: Scenario Selection & Previously Analyzed Alerts */}
           <div className={styles.scenarioSection}>
-            <span className={styles.scenarioLabel}>🤖 AI Analysis Scenario</span>
-            <select
-              className={styles.scenarioSelect}
-              value={selectedScenario}
-              onChange={(e) => setSelectedScenario(e.target.value)}
-              disabled={pipelineRunning}
-            >
-              <option value="gradual_drift">Gradual Drift Pattern</option>
-              <option value="sudden_spike">Sudden Spike Event</option>
-              <option value="oscillating_pattern">Oscillating Pattern</option>
-            </select>
+            <div style={{ marginBottom: '12px' }}>
+              <span className={styles.scenarioLabel}>🤖 AI Analysis Scenario</span>
+              <select
+                className={styles.scenarioSelect}
+                value={selectedScenario}
+                onChange={(e) => setSelectedScenario(e.target.value)}
+                disabled={pipelineRunning || loadingAlertData}
+              >
+                <option value="gradual_drift">Gradual Drift Pattern</option>
+                <option value="sudden_spike">Sudden Spike Event</option>
+                <option value="oscillating_pattern">Oscillating Pattern</option>
+              </select>
+            </div>
+
+            {/* Previously Analyzed Alerts Selector */}
+            <div>
+              <span className={styles.scenarioLabel}>📂 Load Previous Analysis</span>
+              <select
+                className={styles.scenarioSelect}
+                value={selectedAlertId}
+                onChange={(e) => handleAlertSelection(e.target.value)}
+                disabled={pipelineRunning || loadingAlertData || loadingAnalyzedAlerts}
+              >
+                <option value="">
+                  {loadingAnalyzedAlerts ? 'Loading...' : 'Select a previous alert...'}
+                </option>
+                {analyzedAlerts.map((alert) => (
+                  <option key={alert.alert_id} value={alert.alert_id}>
+                    {alert.alert_id} | {alert.equipment_id} • {alert.severity?.toUpperCase()} • {new Date(alert.timestamp).toLocaleString()}
+                  </option>
+                ))}
+              </select>
+              {loadingAlertData && (
+                <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
+                  Loading alert analysis...
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right: Run Analysis Button & Progress */}

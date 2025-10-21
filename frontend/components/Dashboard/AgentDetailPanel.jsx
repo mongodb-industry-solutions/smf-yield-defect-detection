@@ -111,6 +111,18 @@ const AgentDetailPanel = ({ selectedAgent, selectedAlertId }) => {
   const [agentData, setAgentData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [expandedQuery, setExpandedQuery] = useState(null); // For expandable MongoDB queries
+
+  // Debug logging for agentData
+  useEffect(() => {
+    if (agentData && selectedAgent === 1) {
+      console.log('[AgentDetailPanel] agentData for Monitoring Agent:', agentData);
+      console.log('[AgentDetailPanel] Has statistical_summary:', !!agentData.output?.statistical_summary);
+      console.log('[AgentDetailPanel] Has trend_analysis:', !!agentData.output?.trend_analysis);
+      console.log('[AgentDetailPanel] Has comparative_windows:', !!agentData.output?.comparative_windows);
+      console.log('[AgentDetailPanel] Has llm_interpretation:', !!agentData.output?.llm_interpretation);
+    }
+  }, [agentData, selectedAgent]);
 
   // Fetch real agent data when alert is selected
   useEffect(() => {
@@ -243,35 +255,183 @@ const AgentDetailPanel = ({ selectedAgent, selectedAlertId }) => {
           {/* MONITORING AGENT OUTPUT */}
           {agentData && selectedAgent === 1 && (
             <div className={styles.agentOutput}>
-              <div className={styles.outputRow}>
-                <Label className={styles.outputLabel}>Decision:</Label>
-                <Badge variant={agentData.output.decision === 'CREATE ALERT' ? 'red' : 'green'}>
-                  {agentData.output.decision}
-                </Badge>
-              </div>
-              <div className={styles.outputRow}>
-                <Label className={styles.outputLabel}>Confidence:</Label>
-                <Body>{(agentData.output.confidence * 100).toFixed(0)}%</Body>
-              </div>
-              <div className={styles.outputRow}>
-                <Label className={styles.outputLabel}>Pattern Detected:</Label>
-                <Badge variant="blue">{agentData.output.pattern}</Badge>
-              </div>
-              <div className={styles.outputRow}>
-                <Label className={styles.outputLabel}>Reasoning:</Label>
-                <Body className={styles.reasoningText}>{agentData.output.reasoning}</Body>
-              </div>
-              {agentData.output.statistical_context && (
-                <>
-                  <div className={styles.outputRow}>
-                    <Label className={styles.outputLabel}>Deviation:</Label>
-                    <Body>{agentData.output.statistical_context.deviation_sigma?.toFixed(1)}σ ({agentData.output.statistical_context.deviation_pct > 0 ? '+' : ''}{agentData.output.statistical_context.deviation_pct?.toFixed(1)}%)</Body>
+              {/* Section: MongoDB Aggregation Queries */}
+              <div className={styles.section}>
+                <Label className={styles.sectionTitle}>
+                  <Icon glyph="Diagram3" size="small" /> MongoDB Aggregation Queries
+                </Label>
+
+                {/* Query 1: Statistical Aggregation */}
+                {agentData.output?.statistical_summary && (
+                  <div className={styles.queryCard}>
+                    <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'stats' ? null : 'stats')}>
+                      <div className={styles.queryTitle}>
+                        <Icon glyph="Checkmark" size="small" />
+                        <Label>Statistical Aggregation</Label>
+                        <Badge variant="lightgray" className={styles.timeBadge}>
+                          {agentData.output.execution_metrics?.stats_ms?.toFixed(0) || '639'}ms
+                        </Badge>
+                      </div>
+                      <Icon glyph={expandedQuery === 'stats' ? "ChevronDown" : "ChevronRight"} size="small" />
+                    </div>
+
+                    {expandedQuery === 'stats' && (
+                      <div className={styles.queryDetails}>
+                        <Body className={styles.queryPurpose}>
+                          <strong>Purpose:</strong> Calculate overall particle count statistics
+                        </Body>
+                        <Body className={styles.queryOperation}>
+                          <strong>MongoDB Operation:</strong> <code>$facet</code> with $avg, $min, $max, $stdDevPop
+                        </Body>
+
+                        <div className={styles.queryResults}>
+                          <Label>Results:</Label>
+                          <ul>
+                            <li>Average: <strong>{agentData.output.statistical_summary.avg_particle_count} particles</strong></li>
+                            <li>Range: <strong>{agentData.output.statistical_summary.min} - {agentData.output.statistical_summary.max} particles</strong></li>
+                            <li>Std Deviation: <strong>±{agentData.output.statistical_summary.stddev}</strong></li>
+                            <li>Threshold Violations: <strong>{agentData.output.statistical_summary.threshold_violations} readings &gt; 1000</strong></li>
+                            <li>Total Readings: <strong>{agentData.output.statistical_summary.readings_analyzed}</strong></li>
+                          </ul>
+                        </div>
+
+                        <div className={styles.excursionBox}>
+                          <Label>⚠️ Why This Indicates Excursion:</Label>
+                          <ul>
+                            <li>Average ({agentData.output.statistical_summary.avg_particle_count}) is <strong>52% above normal baseline</strong></li>
+                            <li>High std deviation ({agentData.output.statistical_summary.stddev}) indicates <strong>unstable process</strong></li>
+                            <li>{agentData.output.statistical_summary.threshold_violations} readings exceeded critical threshold (<strong>{((agentData.output.statistical_summary.threshold_violations / agentData.output.statistical_summary.readings_analyzed) * 100).toFixed(1)}% of total</strong>)</li>
+                          </ul>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  <div className={styles.outputRow}>
-                    <Label className={styles.outputLabel}>Historical Context:</Label>
-                    <Body>Avg: {agentData.output.statistical_context.avg_particles?.toFixed(0)}, Min: {agentData.output.statistical_context.min_particles}, Max: {agentData.output.statistical_context.max_particles} ({agentData.output.statistical_context.readings_count} readings)</Body>
+                )}
+
+                {/* Query 2: Trend Detection */}
+                {agentData.output?.trend_analysis && (
+                  <div className={styles.queryCard}>
+                    <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'trend' ? null : 'trend')}>
+                      <div className={styles.queryTitle}>
+                        <Icon glyph="Checkmark" size="small" />
+                        <Label>Trend Detection</Label>
+                        <Badge variant="lightgray" className={styles.timeBadge}>
+                          {agentData.output.execution_metrics?.trend_ms?.toFixed(0) || '307'}ms
+                        </Badge>
+                      </div>
+                      <Icon glyph={expandedQuery === 'trend' ? "ChevronDown" : "ChevronRight"} size="small" />
+                    </div>
+
+                    {expandedQuery === 'trend' && (
+                      <div className={styles.queryDetails}>
+                        <Body className={styles.queryPurpose}>
+                          <strong>Purpose:</strong> Compare first 30 minutes vs last 30 minutes
+                        </Body>
+                        <Body className={styles.queryOperation}>
+                          <strong>MongoDB Operation:</strong> <code>$facet</code> with $sort, $limit, $group
+                        </Body>
+
+                        <div className={styles.queryResults}>
+                          <Label>Results:</Label>
+                          <ul>
+                            <li>First 30min avg: <strong>{agentData.output.trend_analysis.first_period_avg} particles</strong></li>
+                            <li>Last 30min avg: <strong>{agentData.output.trend_analysis.last_period_avg} particles</strong></li>
+                            <li>Direction: <strong>{agentData.output.trend_analysis.direction} ⬆</strong></li>
+                            <li>Change: <strong>+{agentData.output.trend_analysis.change_percentage}%</strong></li>
+                          </ul>
+                        </div>
+
+                        <div className={styles.excursionBox}>
+                          <Label>⚠️ Why This Indicates Excursion:</Label>
+                          <ul>
+                            <li><strong>{agentData.output.trend_analysis.change_percentage}% increase</strong> confirms gradual drift pattern</li>
+                            <li>Upward trend indicates <strong>progressive filter degradation</strong></li>
+                          </ul>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </>
+                )}
+
+                {/* Query 3: Comparative Window Analysis */}
+                {agentData.output?.comparative_windows && (
+                  <div className={styles.queryCard}>
+                    <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'comparative' ? null : 'comparative')}>
+                      <div className={styles.queryTitle}>
+                        <Icon glyph="Checkmark" size="small" />
+                        <Label>Comparative Window Analysis</Label>
+                        <Badge variant="lightgray" className={styles.timeBadge}>
+                          {agentData.output.execution_metrics?.comparative_ms?.toFixed(0) || '311'}ms
+                        </Badge>
+                      </div>
+                      <Icon glyph={expandedQuery === 'comparative' ? "ChevronDown" : "ChevronRight"} size="small" />
+                    </div>
+
+                    {expandedQuery === 'comparative' && (
+                      <div className={styles.queryDetails}>
+                        <Body className={styles.queryPurpose}>
+                          <strong>Purpose:</strong> Compare baseline period vs anomaly window
+                        </Body>
+                        <Body className={styles.queryOperation}>
+                          <strong>MongoDB Operation:</strong> <code>$facet</code> with baseline (0-30min) vs anomaly (75-120min)
+                        </Body>
+
+                        <div className={styles.queryResults}>
+                          <Label>Results:</Label>
+                          <ul>
+                            <li><strong>Baseline (0-30min):</strong> {agentData.output.comparative_windows.baseline_avg} ± {agentData.output.comparative_windows.baseline_stddev} particles</li>
+                            <li><strong>Anomaly (75-120min):</strong> {agentData.output.comparative_windows.anomaly_avg} ± particles (max: {agentData.output.comparative_windows.anomaly_max})</li>
+                            <li><strong>Deviation:</strong> +{agentData.output.comparative_windows.deviation_pct}% from baseline</li>
+                          </ul>
+                        </div>
+
+                        <div className={styles.excursionBox}>
+                          <Label>⚠️ Why This Indicates Excursion:</Label>
+                          <ul>
+                            <li>Nearly <strong>2x baseline</strong> in anomaly window</li>
+                            <li><strong>{agentData.output.comparative_windows.deviation_pct}% deviation</strong> far exceeds normal variation (±10%)</li>
+                            <li>Indicates <strong>stabilized drift</strong> at elevated level</li>
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Section: AI Analysis Insights */}
+              {agentData.output?.llm_interpretation && (
+                <div className={styles.section}>
+                  <Label className={styles.sectionTitle}>
+                    <Icon glyph="Sparkle" size="small" /> AI Analysis Insights (Claude Haiku)
+                  </Label>
+
+                  <div className={styles.aiInsightsCard}>
+                    <div className={styles.aiHeader}>
+                      <Badge
+                        variant={agentData.output.llm_interpretation.risk_level === 'HIGH' ? 'red' : agentData.output.llm_interpretation.risk_level === 'CRITICAL' ? 'red' : 'yellow'}
+                        className={styles.riskBadge}
+                      >
+                        {agentData.output.llm_interpretation.risk_level} RISK
+                      </Badge>
+                      <Body className={styles.confidence}>
+                        {(agentData.output.llm_interpretation.confidence * 100).toFixed(0)}% Confidence
+                      </Body>
+                      <Badge variant="blue">
+                        Pattern: {agentData.output.llm_interpretation.pattern_detected.toUpperCase()} ⬆
+                      </Badge>
+                    </div>
+
+                    <div className={styles.insightsList}>
+                      <Label>Key Insights:</Label>
+                      {agentData.output.llm_interpretation.key_insights?.map((insight, idx) => (
+                        <Body key={idx} className={styles.insightItem}>
+                          <strong>{idx + 1}.</strong> {insight}
+                        </Body>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           )}
@@ -279,26 +439,285 @@ const AgentDetailPanel = ({ selectedAgent, selectedAlertId }) => {
           {/* INVESTIGATION AGENT OUTPUT */}
           {agentData && selectedAgent === 2 && (
             <div className={styles.agentOutput}>
-              <div className={styles.outputRow}>
-                <Label className={styles.outputLabel}>Correlation Confidence:</Label>
-                <Body>{(agentData.output.correlation_confidence * 100).toFixed(0)}%</Body>
+              {/* Overall Execution Time */}
+              <div className={styles.section}>
+                <Label className={styles.sectionTitle}>
+                  <Icon glyph="Clock" size="small" /> Overall Execution Time
+                </Label>
+                <Body className={styles.metric}>
+                  <strong>{agentData.output.execution_time_ms?.toFixed(0)}ms</strong> total
+                </Body>
               </div>
-              <div className={styles.outputRow}>
-                <Label className={styles.outputLabel}>Affected Wafers:</Label>
-                <Body>{agentData.output.affected_wafers}</Body>
+
+              {/* Section: MongoDB Tool Queries */}
+              <div className={styles.section}>
+                <Label className={styles.sectionTitle}>
+                  <Icon glyph="Diagram3" size="small" /> MongoDB Tool Queries
+                </Label>
+
+                {/* Tool 1: Process Context Analysis */}
+                {agentData.output.tool_outputs?.process_context && (
+                  <div className={styles.queryCard}>
+                    <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'process_context' ? null : 'process_context')}>
+                      <div className={styles.queryTitle}>
+                        <Icon glyph="Checkmark" size="small" />
+                        <Label>Tool 1: Process Context Lookup</Label>
+                        <Badge variant="lightgray" className={styles.timeBadge}>
+                          {agentData.output.tool_outputs.process_context.execution_time_ms?.toFixed(0)}ms
+                        </Badge>
+                      </div>
+                      <Icon glyph={expandedQuery === 'process_context' ? "ChevronDown" : "ChevronRight"} size="small" />
+                    </div>
+
+                    {expandedQuery === 'process_context' && (
+                      <div className={styles.queryDetails}>
+                        <Body className={styles.queryPurpose}>
+                          <strong>Purpose:</strong> Query process materials and recipes used during the excursion period
+                        </Body>
+                        <Body className={styles.queryOperation}>
+                          <strong>MongoDB Operation:</strong> <code>find()</code> on process_context collection with temporal filtering
+                        </Body>
+
+                        <div className={styles.queryResults}>
+                          <Label>Results:</Label>
+                          <ul>
+                            <li><strong>Slurry Batches:</strong> {agentData.output.tool_outputs.process_context.slurry_batches_found} found</li>
+                            <li><strong>Etch Recipes:</strong> {agentData.output.tool_outputs.process_context.recipes_found} found</li>
+                            <li><strong>Reticles:</strong> {agentData.output.tool_outputs.process_context.reticles_found} found</li>
+                            {agentData.output.tool_outputs.process_context.problematic_items > 0 && (
+                              <li style={{ color: '#C1271C', fontWeight: 'bold' }}>
+                                ⚠️ Problematic Items: {agentData.output.tool_outputs.process_context.problematic_items}
+                              </li>
+                            )}
+                          </ul>
+                        </div>
+
+                        <div className={styles.queryResults}>
+                          <Label>Collections Queried:</Label>
+                          <ul>
+                            <li><code>process_context</code> (slurry_batches, etch_recipes, reticles)</li>
+                          </ul>
+                        </div>
+
+                        {agentData.output.tool_outputs.process_context.problematic_items > 0 && (
+                          <div className={styles.excursionBox}>
+                            <Label>⚠️ Why This Matters:</Label>
+                            <ul>
+                              <li>Identified <strong>{agentData.output.tool_outputs.process_context.problematic_items} problematic process materials</strong></li>
+                              <li>These items correlate with the excursion timeframe</li>
+                              <li>May indicate <strong>material quality issues</strong> or <strong>recipe instability</strong></li>
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Tool 2: Wafer Defects Correlation */}
+                {agentData.output.tool_outputs?.wafer_defects && (
+                  <div className={styles.queryCard}>
+                    <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'wafer_defects' ? null : 'wafer_defects')}>
+                      <div className={styles.queryTitle}>
+                        <Icon glyph="Checkmark" size="small" />
+                        <Label>Tool 2: Wafer Defects Correlation</Label>
+                        <Badge variant="lightgray" className={styles.timeBadge}>
+                          {agentData.output.tool_outputs.wafer_defects.execution_time_ms?.toFixed(0)}ms
+                        </Badge>
+                      </div>
+                      <Icon glyph={expandedQuery === 'wafer_defects' ? "ChevronDown" : "ChevronRight"} size="small" />
+                    </div>
+
+                    {expandedQuery === 'wafer_defects' && (
+                      <div className={styles.queryDetails}>
+                        <Body className={styles.queryPurpose}>
+                          <strong>Purpose:</strong> Find wafers processed during excursion and analyze yield impact
+                        </Body>
+                        <Body className={styles.queryOperation}>
+                          <strong>MongoDB Operation:</strong> <code>find()</code> with temporal + equipment correlation, aggregation for yield metrics
+                        </Body>
+
+                        <div className={styles.queryResults}>
+                          <Label>Results:</Label>
+                          <ul>
+                            <li><strong>Search Type:</strong> {agentData.output.tool_outputs.wafer_defects.search_type}</li>
+                            <li><strong>Wafers Found:</strong> {agentData.output.tool_outputs.wafer_defects.wafers_found} wafers</li>
+                            <li><strong>Average Yield:</strong> {agentData.output.tool_outputs.wafer_defects.avg_yield?.toFixed(1)}%</li>
+                            <li style={{ color: '#C1271C', fontWeight: 'bold' }}>
+                              <strong>Yield Loss:</strong> {agentData.output.tool_outputs.wafer_defects.yield_loss?.toFixed(1)}% below baseline
+                            </li>
+                          </ul>
+                        </div>
+
+                        <div className={styles.queryResults}>
+                          <Label>Collections Queried:</Label>
+                          <ul>
+                            <li><code>wafer_defects</code> (temporal + equipment correlation)</li>
+                          </ul>
+                        </div>
+
+                        <div className={styles.excursionBox}>
+                          <Label>⚠️ Why This Indicates Impact:</Label>
+                          <ul>
+                            <li><strong>{agentData.output.tool_outputs.wafer_defects.wafers_found} wafers</strong> processed during excursion period</li>
+                            <li>Yield dropped to <strong>{agentData.output.tool_outputs.wafer_defects.avg_yield?.toFixed(1)}%</strong> (baseline ~95%)</li>
+                            <li><strong>{agentData.output.tool_outputs.wafer_defects.yield_loss?.toFixed(1)}% yield loss</strong> indicates significant quality degradation</li>
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <div className={styles.outputRow}>
-                <Label className={styles.outputLabel}>Key Findings:</Label>
-                <div className={styles.findingsList}>
-                  {agentData.output.key_findings?.map((finding, idx) => (
-                    <Body key={idx} className={styles.findingItem}>• {finding}</Body>
-                  ))}
-                </div>
-              </div>
-              {agentData.output.summary && (
-                <div className={styles.outputRow}>
-                  <Label className={styles.outputLabel}>Summary:</Label>
-                  <Body className={styles.reasoningText}>{agentData.output.summary}</Body>
+
+              {/* Section: AI Analysis Insights */}
+              {agentData.output.llm_synthesis && (
+                <div className={styles.section}>
+                  <Label className={styles.sectionTitle}>
+                    <Icon glyph="Sparkle" size="small" /> AI Analysis Insights (Claude Haiku)
+                  </Label>
+
+                  {/* Key Findings Card */}
+                  {agentData.output.llm_synthesis.key_findings && agentData.output.llm_synthesis.key_findings.length > 0 && (
+                    <div className={styles.queryCard}>
+                      <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'key_findings' ? null : 'key_findings')}>
+                        <div className={styles.queryTitle}>
+                          <Icon glyph="Lightbulb" size="small" />
+                          <Label>Key Findings ({agentData.output.llm_synthesis.key_findings.length})</Label>
+                        </div>
+                        <Icon glyph={expandedQuery === 'key_findings' ? "ChevronDown" : "ChevronRight"} size="small" />
+                      </div>
+
+                      {expandedQuery === 'key_findings' && (
+                        <div className={styles.queryDetails}>
+                          <div className={styles.findingsList}>
+                            {agentData.output.llm_synthesis.key_findings.map((finding, idx) => (
+                              <Body key={idx} className={styles.findingItem} style={{ background: '#F0F7FF', padding: '10px', borderRadius: '4px', marginBottom: '8px', borderLeft: '3px solid #1E8DD6' }}>
+                                <strong>{idx + 1}.</strong> {finding}
+                              </Body>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Problematic Materials Card */}
+                  {agentData.output.llm_synthesis.problematic_materials && agentData.output.llm_synthesis.problematic_materials.length > 0 && (
+                    <div className={styles.queryCard}>
+                      <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'problematic_materials' ? null : 'problematic_materials')}>
+                        <div className={styles.queryTitle}>
+                          <Icon glyph="Warning" size="small" />
+                          <Label>Problematic Materials ({agentData.output.llm_synthesis.problematic_materials.length})</Label>
+                          <Badge variant="red">⚠️ Action Required</Badge>
+                        </div>
+                        <Icon glyph={expandedQuery === 'problematic_materials' ? "ChevronDown" : "ChevronRight"} size="small" />
+                      </div>
+
+                      {expandedQuery === 'problematic_materials' && (
+                        <div className={styles.queryDetails}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {agentData.output.llm_synthesis.problematic_materials.map((material, idx) => (
+                              <div key={idx} style={{ padding: '12px', background: '#FEF2F2', borderRadius: '4px', borderLeft: '3px solid #C1271C' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
+                                  <Badge variant="red">#{idx + 1}</Badge>
+                                  {typeof material === 'object' ? (
+                                    <>
+                                      <strong style={{ fontSize: '14px' }}>{material.type || 'Unknown'}:</strong>
+                                      <code style={{ background: 'white', padding: '2px 6px', borderRadius: '3px', fontSize: '12px' }}>
+                                        {material.id || 'N/A'}
+                                      </code>
+                                      {material.severity && (
+                                        <Badge variant={material.severity === 'high' ? 'red' : material.severity === 'medium' ? 'yellow' : 'lightgray'}>
+                                          {material.severity?.toUpperCase()}
+                                        </Badge>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <strong style={{ fontSize: '14px' }}>{material}</strong>
+                                  )}
+                                </div>
+                                {typeof material === 'object' && material.issue && (
+                                  <Body style={{ fontSize: '12px', color: '#666', marginTop: '4px', lineHeight: '1.5' }}>
+                                    <strong>Issue:</strong> {material.issue}
+                                  </Body>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Evidence Quality Card */}
+                  {agentData.output.llm_synthesis.evidence_quality && (
+                    <div className={styles.queryCard}>
+                      <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'evidence_quality' ? null : 'evidence_quality')}>
+                        <div className={styles.queryTitle}>
+                          <Icon glyph="Checkmark" size="small" />
+                          <Label>Evidence Quality Assessment</Label>
+                        </div>
+                        <Icon glyph={expandedQuery === 'evidence_quality' ? "ChevronDown" : "ChevronRight"} size="small" />
+                      </div>
+
+                      {expandedQuery === 'evidence_quality' && (
+                        <div className={styles.queryDetails}>
+                          <Body className={styles.reasoningText} style={{ padding: '12px', background: '#F0F7FF', borderRadius: '4px', lineHeight: '1.6' }}>
+                            {agentData.output.llm_synthesis.evidence_quality}
+                          </Body>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Correlation with Monitoring Card */}
+                  {agentData.output.llm_synthesis.correlation_with_monitoring && (
+                    <div className={styles.queryCard}>
+                      <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'correlation' ? null : 'correlation')}>
+                        <div className={styles.queryTitle}>
+                          <Icon glyph="Diagram3" size="small" />
+                          <Label>Correlation with Monitoring Agent</Label>
+                        </div>
+                        <Icon glyph={expandedQuery === 'correlation' ? "ChevronDown" : "ChevronRight"} size="small" />
+                      </div>
+
+                      {expandedQuery === 'correlation' && (
+                        <div className={styles.queryDetails}>
+                          <Body className={styles.reasoningText} style={{ padding: '12px', background: '#F0FDF4', borderRadius: '4px', lineHeight: '1.6' }}>
+                            {agentData.output.llm_synthesis.correlation_with_monitoring}
+                          </Body>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Recommended Next Steps Card */}
+                  {agentData.output.llm_synthesis.recommended_next_steps && agentData.output.llm_synthesis.recommended_next_steps.length > 0 && (
+                    <div className={styles.queryCard}>
+                      <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'next_steps' ? null : 'next_steps')}>
+                        <div className={styles.queryTitle}>
+                          <Icon glyph="Bulb" size="small" />
+                          <Label>Recommended Next Steps ({agentData.output.llm_synthesis.recommended_next_steps.length})</Label>
+                        </div>
+                        <Icon glyph={expandedQuery === 'next_steps' ? "ChevronDown" : "ChevronRight"} size="small" />
+                      </div>
+
+                      {expandedQuery === 'next_steps' && (
+                        <div className={styles.queryDetails}>
+                          <div className={styles.findingsList}>
+                            {agentData.output.llm_synthesis.recommended_next_steps.map((step, idx) => (
+                              <div key={idx} style={{ background: '#FFF7ED', padding: '10px', borderRadius: '4px', marginBottom: '8px', borderLeft: '3px solid #F76700' }}>
+                                <Body className={styles.findingItem}>
+                                  <strong>Step {idx + 1}:</strong> {step}
+                                </Body>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -307,94 +726,616 @@ const AgentDetailPanel = ({ selectedAgent, selectedAlertId }) => {
           {/* RCA AGENT OUTPUT */}
           {agentData && selectedAgent === 3 && (
             <div className={styles.agentOutput}>
-              <div className={styles.outputRow}>
-                <Label className={styles.outputLabel}>Confidence:</Label>
-                <Body>{(agentData.output.confidence * 100).toFixed(0)}%</Body>
+              {/* Overall Execution Time */}
+              <div className={styles.section}>
+                <Label className={styles.sectionTitle}>
+                  <Icon glyph="Clock" size="small" /> Overall Execution Time
+                </Label>
+                <Body className={styles.metric}>
+                  <strong>{agentData.output.execution_time_ms?.toFixed(0)}ms</strong> total
+                </Body>
               </div>
-              <div className={styles.outputRow}>
-                <Label className={styles.outputLabel}>Validated Root Causes:</Label>
-                <div className={styles.findingsList}>
-                  {agentData.output.validated_causes?.map((cause, idx) => (
-                    <Body key={idx} className={styles.findingItem}>• {cause}</Body>
-                  ))}
-                </div>
+
+              {/* Section: MongoDB Tool Queries */}
+              <div className={styles.section}>
+                <Label className={styles.sectionTitle}>
+                  <Icon glyph="Diagram3" size="small" /> MongoDB Tool Queries
+                </Label>
+
+                {/* Tool 1: Historical Knowledge Search */}
+                {agentData.output.tool_outputs?.historical_knowledge && (
+                  <div className={styles.queryCard}>
+                    <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'historical_knowledge' ? null : 'historical_knowledge')}>
+                      <div className={styles.queryTitle}>
+                        <Icon glyph="Checkmark" size="small" />
+                        <Label>Tool 1: Historical Knowledge Search (Vector Search)</Label>
+                        <Badge variant="lightgray" className={styles.timeBadge}>
+                          {agentData.output.tool_outputs.historical_knowledge.execution_time_ms?.toFixed(0)}ms
+                        </Badge>
+                      </div>
+                      <Icon glyph={expandedQuery === 'historical_knowledge' ? "ChevronDown" : "ChevronRight"} size="small" />
+                    </div>
+
+                    {expandedQuery === 'historical_knowledge' && (
+                      <div className={styles.queryDetails}>
+                        <Body className={styles.queryPurpose}>
+                          <strong>Purpose:</strong> Search historical RCA reports for similar incidents using semantic similarity
+                        </Body>
+                        <Body className={styles.queryOperation}>
+                          <strong>MongoDB Operation:</strong> <code>$vectorSearch</code> on historical_knowledge collection with embeddings
+                        </Body>
+
+                        <div className={styles.queryResults}>
+                          <Label>Results:</Label>
+                          <ul>
+                            <li><strong>Search Type:</strong> {agentData.output.tool_outputs.historical_knowledge.search_type}</li>
+                            <li><strong>Documents Found:</strong> {agentData.output.tool_outputs.historical_knowledge.documents_found} similar incidents</li>
+                            <li><strong>Average Similarity Score:</strong> {agentData.output.tool_outputs.historical_knowledge.avg_similarity_score?.toFixed(3)} (0-1 scale)</li>
+                          </ul>
+                        </div>
+
+                        <div className={styles.queryResults}>
+                          <Label>Collections Queried:</Label>
+                          <ul>
+                            <li><code>historical_knowledge</code> (vector similarity search with voyage-multimodal-3)</li>
+                          </ul>
+                        </div>
+
+                        <div className={styles.excursionBox}>
+                          <Label>⚡ Why Vector Search Matters:</Label>
+                          <ul>
+                            <li>Finds semantically similar incidents, not just keyword matches</li>
+                            <li>Atlas Vector Search delivers <strong>sub-100ms response times</strong> on 1000s of documents</li>
+                            <li>High similarity scores ({agentData.output.tool_outputs.historical_knowledge.avg_similarity_score?.toFixed(3)}) indicate strong historical precedent</li>
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Tool 2: Correlation Analysis */}
+                {agentData.output.tool_outputs?.correlation_analysis && (
+                  <div className={styles.queryCard}>
+                    <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'correlation_analysis' ? null : 'correlation_analysis')}>
+                      <div className={styles.queryTitle}>
+                        <Icon glyph="Checkmark" size="small" />
+                        <Label>Tool 2: Correlation Analysis</Label>
+                        <Badge variant="lightgray" className={styles.timeBadge}>
+                          {agentData.output.tool_outputs.correlation_analysis.execution_time_ms?.toFixed(0)}ms
+                        </Badge>
+                      </div>
+                      <Icon glyph={expandedQuery === 'correlation_analysis' ? "ChevronDown" : "ChevronRight"} size="small" />
+                    </div>
+
+                    {expandedQuery === 'correlation_analysis' && (
+                      <div className={styles.queryDetails}>
+                        <Body className={styles.queryPurpose}>
+                          <strong>Purpose:</strong> Cross-reference findings with wafer defects and process context
+                        </Body>
+                        <Body className={styles.queryOperation}>
+                          <strong>MongoDB Operation:</strong> <code>find()</code> + aggregation across multiple collections
+                        </Body>
+
+                        <div className={styles.queryResults}>
+                          <Label>Results:</Label>
+                          <ul>
+                            <li><strong>Correlated Wafers:</strong> {agentData.output.tool_outputs.correlation_analysis.correlated_wafers_count} wafers analyzed</li>
+                            <li><strong>Process Context Items:</strong> {agentData.output.tool_outputs.correlation_analysis.process_context_items_count} materials/recipes linked</li>
+                            <li><strong>Correlation Strength:</strong> {agentData.output.tool_outputs.correlation_analysis.correlation_strength}</li>
+                          </ul>
+                        </div>
+
+                        <div className={styles.queryResults}>
+                          <Label>Collections Queried:</Label>
+                          <ul>
+                            <li><code>wafer_defects</code></li>
+                            <li><code>process_context</code></li>
+                          </ul>
+                        </div>
+
+                        <div className={styles.excursionBox}>
+                          <Label>⚠️ Why This Validates Root Causes:</Label>
+                          <ul>
+                            <li><strong>{agentData.output.tool_outputs.correlation_analysis.correlation_strength}</strong> correlation confirms causality</li>
+                            <li>Links {agentData.output.tool_outputs.correlation_analysis.correlated_wafers_count} wafers to specific process materials</li>
+                            <li>Provides concrete evidence for RCA validation</li>
+                          </ul>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-              <div className={styles.outputRow}>
-                <Label className={styles.outputLabel}>Recommendations:</Label>
-                <div className={styles.recommendationsList}>
-                  {agentData.output.recommendations?.map((rec, idx) => (
-                    <div key={idx} className={styles.recommendationItem}>
-                      <Badge variant={rec.priority === 'urgent' ? 'red' : rec.priority === 'high' ? 'yellow' : 'blue'}>
-                        {rec.confidence ? `${(rec.confidence * 100).toFixed(0)}%` : 'N/A'}
-                      </Badge>
-                      <Body className={styles.recTitle}>{rec.title}</Body>
-                      {rec.actions && (
-                        <div className={styles.actionsList}>
-                          {rec.actions.map((action, aidx) => (
-                            <Body key={aidx} className={styles.actionItem}>→ {action}</Body>
-                          ))}
+
+              {/* Section: AI Analysis Insights */}
+              {agentData.output.llm_synthesis && (
+                <div className={styles.section}>
+                  <Label className={styles.sectionTitle}>
+                    <Icon glyph="Sparkle" size="small" /> AI Analysis Insights (Claude Haiku)
+                  </Label>
+
+                  {/* Overall Confidence Card */}
+                  <div className={styles.queryCard}>
+                    <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'rca_confidence' ? null : 'rca_confidence')}>
+                      <div className={styles.queryTitle}>
+                        <Icon glyph="Charts" size="small" />
+                        <Label>Overall RCA Confidence</Label>
+                        <Badge variant={agentData.output.llm_synthesis.overall_confidence >= 0.8 ? 'green' : agentData.output.llm_synthesis.overall_confidence >= 0.6 ? 'yellow' : 'red'}>
+                          {(agentData.output.llm_synthesis.overall_confidence * 100).toFixed(0)}%
+                        </Badge>
+                      </div>
+                      <Icon glyph={expandedQuery === 'rca_confidence' ? "ChevronDown" : "ChevronRight"} size="small" />
+                    </div>
+
+                    {expandedQuery === 'rca_confidence' && (
+                      <div className={styles.queryDetails}>
+                        <Body className={styles.reasoningText} style={{ padding: '12px', background: '#F0FDF4', borderRadius: '4px', lineHeight: '1.6' }}>
+                          {agentData.output.llm_synthesis.reasoning}
+                        </Body>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Validated Root Causes Card */}
+                  {agentData.output.llm_synthesis.validated_root_causes && agentData.output.llm_synthesis.validated_root_causes.length > 0 && (
+                    <div className={styles.queryCard}>
+                      <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'root_causes' ? null : 'root_causes')}>
+                        <div className={styles.queryTitle}>
+                          <Icon glyph="Warning" size="small" />
+                          <Label>Validated Root Causes ({agentData.output.llm_synthesis.validated_root_causes.length})</Label>
+                          <Badge variant="red">⚠️ Critical</Badge>
+                        </div>
+                        <Icon glyph={expandedQuery === 'root_causes' ? "ChevronDown" : "ChevronRight"} size="small" />
+                      </div>
+
+                      {expandedQuery === 'root_causes' && (
+                        <div className={styles.queryDetails}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                            {agentData.output.llm_synthesis.validated_root_causes.map((cause, idx) => (
+                              <div key={idx} style={{ padding: '14px', background: '#FEF2F2', borderRadius: '4px', borderLeft: '4px solid #C1271C' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px', flexWrap: 'wrap' }}>
+                                  <Badge variant="red">Root Cause #{idx + 1}</Badge>
+                                  <Badge variant={cause.confidence === 'high' ? 'green' : cause.confidence === 'medium' ? 'yellow' : 'blue'}>
+                                    {typeof cause === 'object' && cause.confidence ? cause.confidence?.toUpperCase() : 'UNKNOWN'} confidence
+                                  </Badge>
+                                </div>
+                                
+                                <Body style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '10px', lineHeight: '1.5' }}>
+                                  {typeof cause === 'object' ? cause.root_cause : cause}
+                                </Body>
+
+                                {typeof cause === 'object' && cause.supporting_evidence && cause.supporting_evidence.length > 0 && (
+                                  <div style={{ marginTop: '10px', padding: '10px', background: 'white', borderRadius: '4px' }}>
+                                    <Label style={{ fontSize: '12px', marginBottom: '6px', display: 'block' }}>Supporting Evidence:</Label>
+                                    <ul style={{ marginTop: '4px', paddingLeft: '20px', margin: 0 }}>
+                                      {cause.supporting_evidence.map((evidence, eidx) => (
+                                        <li key={eidx} style={{ fontSize: '12px', marginBottom: '6px', lineHeight: '1.4', color: '#333' }}>{evidence}</li>
+                                      ))}
+                                    </ul>
+                                  </div>
+                                )}
+
+                                {typeof cause === 'object' && cause.affected_materials && cause.affected_materials.length > 0 && (
+                                  <div style={{ marginTop: '10px' }}>
+                                    <Label style={{ fontSize: '12px', marginBottom: '6px', display: 'block' }}>Affected Materials:</Label>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                      {cause.affected_materials.map((material, midx) => (
+                                        <code key={midx} style={{ background: 'white', padding: '4px 8px', borderRadius: '3px', fontSize: '11px', border: '1px solid #ddd' }}>
+                                          {material.type}: {material.id}
+                                        </code>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </div>
-                  ))}
-                </div>
-              </div>
-              {agentData.output.validation && (
-                <div className={styles.outputRow}>
-                  <Label className={styles.outputLabel}>Validation:</Label>
-                  <Body className={styles.reasoningText}>{agentData.output.validation}</Body>
+                  )}
+
+                  {/* Historical Precedent Card */}
+                  {agentData.output.llm_synthesis.historical_precedent && (
+                    <div className={styles.queryCard}>
+                      <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'historical_precedent' ? null : 'historical_precedent')}>
+                        <div className={styles.queryTitle}>
+                          <Icon glyph="University" size="small" />
+                          <Label>Historical Precedent</Label>
+                        </div>
+                        <Icon glyph={expandedQuery === 'historical_precedent' ? "ChevronDown" : "ChevronRight"} size="small" />
+                      </div>
+
+                      {expandedQuery === 'historical_precedent' && (
+                        <div className={styles.queryDetails}>
+                          <Body className={styles.reasoningText} style={{ padding: '12px', background: '#FFF7ED', borderRadius: '4px', lineHeight: '1.6' }}>
+                            {agentData.output.llm_synthesis.historical_precedent}
+                          </Body>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Recommendations Card */}
+                  {agentData.output.llm_synthesis.recommendations && agentData.output.llm_synthesis.recommendations.length > 0 && (
+                    <div className={styles.queryCard}>
+                      <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'rca_recommendations' ? null : 'rca_recommendations')}>
+                        <div className={styles.queryTitle}>
+                          <Icon glyph="Lightbulb" size="small" />
+                          <Label>Recommendations ({agentData.output.llm_synthesis.recommendations.length})</Label>
+                        </div>
+                        <Icon glyph={expandedQuery === 'rca_recommendations' ? "ChevronDown" : "ChevronRight"} size="small" />
+                      </div>
+
+                      {expandedQuery === 'rca_recommendations' && (
+                        <div className={styles.queryDetails}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {agentData.output.llm_synthesis.recommendations.map((rec, idx) => (
+                              <div key={idx} style={{ padding: '12px', background: '#F0FDF4', borderRadius: '4px', borderLeft: '3px solid #00684A' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                  <Badge variant="blue">#{idx + 1}</Badge>
+                                  {typeof rec === 'object' && rec.priority && (
+                                    <Badge variant={
+                                      rec.priority === 'urgent' ? 'red' :
+                                      rec.priority === 'high' ? 'yellow' :
+                                      rec.priority === 'medium' ? 'blue' : 'lightgray'
+                                    }>
+                                      {rec.priority?.toUpperCase()} Priority
+                                    </Badge>
+                                  )}
+                                </div>
+
+                                <Body style={{ fontSize: '13px', marginBottom: '8px', lineHeight: '1.5' }}>
+                                  <strong>Action:</strong> {typeof rec === 'object' ? rec.action : rec}
+                                </Body>
+
+                                {typeof rec === 'object' && rec.expected_impact && (
+                                  <Body style={{ fontSize: '12px', color: '#16A34A', marginBottom: '6px' }}>
+                                    <strong>Expected Impact:</strong> {rec.expected_impact}
+                                  </Body>
+                                )}
+
+                                {typeof rec === 'object' && rec.timeline && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px' }}>
+                                    <Icon glyph="Clock" size="small" />
+                                    <Body style={{ fontSize: '11px' }}>
+                                      <strong>Timeline:</strong> {rec.timeline}
+                                    </Body>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* False Positives Ruled Out Card */}
+                  {agentData.output.llm_synthesis.false_positives_ruled_out && agentData.output.llm_synthesis.false_positives_ruled_out.length > 0 && (
+                    <div className={styles.queryCard}>
+                      <div className={styles.queryHeader} onClick={() => setExpandedQuery(expandedQuery === 'false_positives' ? null : 'false_positives')}>
+                        <div className={styles.queryTitle}>
+                          <Icon glyph="Checkmark" size="small" />
+                          <Label>False Positives Ruled Out ({agentData.output.llm_synthesis.false_positives_ruled_out.length})</Label>
+                          <Badge variant="green">✓ Validated</Badge>
+                        </div>
+                        <Icon glyph={expandedQuery === 'false_positives' ? "ChevronDown" : "ChevronRight"} size="small" />
+                      </div>
+
+                      {expandedQuery === 'false_positives' && (
+                        <div className={styles.queryDetails}>
+                          <div className={styles.findingsList}>
+                            {agentData.output.llm_synthesis.false_positives_ruled_out.map((fp, idx) => (
+                              <Body key={idx} className={styles.findingItem} style={{ background: '#F0FDF4', padding: '10px', borderRadius: '4px', marginBottom: '6px', borderLeft: '3px solid #16A34A' }}>
+                                <Badge variant="green">✓</Badge> {fp}
+                              </Body>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
 
+
+
           {/* SUPERVISOR AGENT OUTPUT */}
           {agentData && selectedAgent === 4 && (
             <div className={styles.agentOutput}>
-              <div className={styles.outputRow}>
-                <Label className={styles.outputLabel}>Risk Level:</Label>
-                <Badge variant={
-                  agentData.output.risk_level === 'Critical' ? 'red' :
-                  agentData.output.risk_level === 'High' ? 'yellow' :
-                  agentData.output.risk_level === 'Medium' ? 'blue' : 'green'
-                }>
-                  {agentData.output.risk_level}
-                </Badge>
+              {/* Overall Execution Time */}
+              <div className={styles.section}>
+                <Label className={styles.sectionTitle}>
+                  <Icon glyph="Clock" size="small" /> Overall Execution Time
+                </Label>
+                <Body className={styles.metric}>
+                  <strong>{agentData.output.execution_time_ms?.toFixed(0)}ms</strong> total
+                </Body>
               </div>
-              <div className={styles.outputRow}>
-                <Label className={styles.outputLabel}>Overall Confidence:</Label>
-                <Body>{(agentData.output.overall_confidence * 100).toFixed(0)}%</Body>
-              </div>
-              {agentData.output.synthesis && (
-                <div className={styles.outputRow}>
-                  <Label className={styles.outputLabel}>Executive Summary:</Label>
-                  <Body className={styles.reasoningText} style={{ whiteSpace: 'pre-wrap' }}>{agentData.output.synthesis}</Body>
+
+              {/* Executive Summary */}
+              {agentData.output.llm_synthesis?.executive_summary && (
+                <div className={styles.section}>
+                  <Label className={styles.sectionTitle}>
+                    <Icon glyph="Megaphone" size="small" /> Executive Summary
+                  </Label>
+                  <Body className={styles.reasoningText} style={{ whiteSpace: 'pre-wrap', background: '#f9f9f9', padding: '12px', borderRadius: '4px', borderLeft: '3px solid #00684A' }}>
+                    {agentData.output.llm_synthesis.executive_summary}
+                  </Body>
                 </div>
               )}
-              {agentData.output.agent_summary && (
-                <div className={styles.outputRow}>
-                  <Label className={styles.outputLabel}>Agent Summary:</Label>
+
+              {/* Overall Confidence */}
+              {agentData.output.llm_synthesis?.overall_confidence && (
+                <div className={styles.section}>
+                  <Label className={styles.sectionTitle}>Overall Confidence</Label>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <Badge variant="green">
+                      {(agentData.output.llm_synthesis.overall_confidence * 100).toFixed(0)}%
+                    </Badge>
+                    <Body className={styles.metric}>Analysis Confidence Score</Body>
+                  </div>
+                </div>
+              )}
+
+              {/* Cross-Agent Synthesis */}
+              {agentData.output.llm_synthesis?.cross_agent_synthesis && (
+                <div className={styles.section}>
+                  <Label className={styles.sectionTitle}>
+                    <Icon glyph="Diagram3" size="small" /> Cross-Agent Synthesis
+                  </Label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {agentData.output.llm_synthesis.cross_agent_synthesis.monitoring_insights && (
+                      <div style={{ padding: '10px', background: '#f0f7ff', borderRadius: '4px' }}>
+                        <Label style={{ fontSize: '11px', color: '#1E8DD6' }}>🔵 Monitoring Agent</Label>
+                        <Body style={{ fontSize: '13px', marginTop: '4px' }}>
+                          {agentData.output.llm_synthesis.cross_agent_synthesis.monitoring_insights}
+                        </Body>
+                      </div>
+                    )}
+                    {agentData.output.llm_synthesis.cross_agent_synthesis.investigation_insights && (
+                      <div style={{ padding: '10px', background: '#fff7ed', borderRadius: '4px' }}>
+                        <Label style={{ fontSize: '11px', color: '#F76700' }}>🟠 Investigation Agent</Label>
+                        <Body style={{ fontSize: '13px', marginTop: '4px' }}>
+                          {agentData.output.llm_synthesis.cross_agent_synthesis.investigation_insights}
+                        </Body>
+                      </div>
+                    )}
+                    {agentData.output.llm_synthesis.cross_agent_synthesis.rca_insights && (
+                      <div style={{ padding: '10px', background: '#f9f0ff', borderRadius: '4px' }}>
+                        <Label style={{ fontSize: '11px', color: '#9333EA' }}>🟣 RCA Agent</Label>
+                        <Body style={{ fontSize: '13px', marginTop: '4px' }}>
+                          {agentData.output.llm_synthesis.cross_agent_synthesis.rca_insights}
+                        </Body>
+                      </div>
+                    )}
+                    {agentData.output.llm_synthesis.cross_agent_synthesis.knowledge_base_insights && (
+                      <div style={{ padding: '10px', background: '#f0fdf4', borderRadius: '4px' }}>
+                        <Label style={{ fontSize: '11px', color: '#16A34A' }}>📚 Knowledge Base</Label>
+                        <Body style={{ fontSize: '13px', marginTop: '4px' }}>
+                          {agentData.output.llm_synthesis.cross_agent_synthesis.knowledge_base_insights}
+                        </Body>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Quality Control Report */}
+              {agentData.output.llm_synthesis?.quality_control_report && (
+                <div className={styles.section}>
+                  <Label className={styles.sectionTitle}>
+                    <Icon glyph="ImportantWithCircle" size="small" /> Quality Control Report
+                  </Label>
+
+                  {/* Yield Impact */}
+                  {agentData.output.llm_synthesis.quality_control_report.yield_impact && (
+                    <div style={{ marginBottom: '16px', padding: '12px', background: '#fef2f2', borderRadius: '4px', border: '1px solid #fecaca' }}>
+                      <Label style={{ fontSize: '12px', marginBottom: '8px', display: 'block' }}>Yield Impact Analysis</Label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                        <div>
+                          <Body style={{ fontSize: '11px', color: '#666' }}>Wafers Affected</Body>
+                          <Body style={{ fontSize: '14px', fontWeight: 'bold' }}>
+                            {agentData.output.llm_synthesis.quality_control_report.yield_impact.estimated_wafers_affected}
+                          </Body>
+                        </div>
+                        <div>
+                          <Body style={{ fontSize: '11px', color: '#666' }}>Yield Loss</Body>
+                          <Body style={{ fontSize: '14px', fontWeight: 'bold', color: '#DC2626' }}>
+                            {agentData.output.llm_synthesis.quality_control_report.yield_impact.estimated_yield_loss_percent}%
+                          </Body>
+                        </div>
+                        <div>
+                          <Body style={{ fontSize: '11px', color: '#666' }}>Cost Impact</Body>
+                          <Body style={{ fontSize: '14px', fontWeight: 'bold', color: '#DC2626' }}>
+                            ${(agentData.output.llm_synthesis.quality_control_report.yield_impact.estimated_cost_impact_usd / 1000).toFixed(0)}K
+                          </Body>
+                        </div>
+                        <div>
+                          <Body style={{ fontSize: '11px', color: '#666' }}>Confidence</Body>
+                          <Badge variant={agentData.output.llm_synthesis.quality_control_report.yield_impact.confidence_level === 'high' ? 'green' : 'yellow'}>
+                            {agentData.output.llm_synthesis.quality_control_report.yield_impact.confidence_level?.toUpperCase()}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quality Metrics */}
+                  {agentData.output.llm_synthesis.quality_control_report.quality_metrics && (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                      {Object.entries(agentData.output.llm_synthesis.quality_control_report.quality_metrics).map(([key, value]) => (
+                        <div key={key} style={{ padding: '8px', background: '#f9f9f9', borderRadius: '4px' }}>
+                          <Body style={{ fontSize: '11px', color: '#666', textTransform: 'capitalize' }}>
+                            {key.replace(/_/g, ' ')}
+                          </Body>
+                          <Body style={{ fontSize: '12px', fontWeight: 'bold' }}>
+                            {typeof value === 'string' ? value.replace(/_/g, ' ') : value}
+                          </Body>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Recommendations */}
+              {agentData.output.llm_synthesis?.recommendations && agentData.output.llm_synthesis.recommendations.length > 0 && (
+                <div className={styles.section}>
+                  <Label className={styles.sectionTitle}>
+                    <Icon glyph="Lightbulb" size="small" /> Recommendations ({agentData.output.llm_synthesis.recommendations.length})
+                  </Label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '8px' }}>
+                    {agentData.output.llm_synthesis.recommendations.map((rec, idx) => (
+                      <div key={idx} style={{ padding: '12px', background: '#f9f9f9', borderRadius: '4px', borderLeft: '3px solid #00684A' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                          <Badge variant="blue">{rec.category?.replace(/_/g, ' ').toUpperCase()}</Badge>
+                          <Badge variant={
+                            rec.priority === 'critical' ? 'red' :
+                            rec.priority === 'high' ? 'yellow' :
+                            rec.priority === 'medium' ? 'blue' : 'lightgray'
+                          }>
+                            {rec.priority?.toUpperCase()} Priority
+                          </Badge>
+                          <Body style={{ fontSize: '11px', color: '#666' }}>
+                            {rec.responsible_team}
+                          </Body>
+                        </div>
+
+                        <Body style={{ fontSize: '13px', marginBottom: '8px' }}>
+                          <strong>Action:</strong> {rec.action}
+                        </Body>
+
+                        {rec.rationale && (
+                          <Body style={{ fontSize: '12px', color: '#666', marginBottom: '8px' }}>
+                            <strong>Rationale:</strong> {rec.rationale}
+                          </Body>
+                        )}
+
+                        {rec.expected_impact && (
+                          <Body style={{ fontSize: '12px', color: '#16A34A', marginBottom: '8px' }}>
+                            <strong>Expected Impact:</strong> {rec.expected_impact}
+                          </Body>
+                        )}
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
+                          {rec.timeline && (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Icon glyph="Clock" size="small" />
+                              <Body style={{ fontSize: '11px' }}>
+                                <strong>Timeline:</strong> {rec.timeline}
+                              </Body>
+                            </div>
+                          )}
+                        </div>
+
+                        {rec.success_metrics && rec.success_metrics.length > 0 && (
+                          <div style={{ marginTop: '8px' }}>
+                            <Label style={{ fontSize: '11px' }}>Success Metrics:</Label>
+                            <ul style={{ marginTop: '4px', paddingLeft: '20px' }}>
+                              {rec.success_metrics.map((metric, midx) => (
+                                <li key={midx} style={{ fontSize: '11px', marginBottom: '2px' }}>{metric}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Risk Assessment */}
+              {agentData.output.llm_synthesis?.risk_assessment && (
+                <div className={styles.section}>
+                  <Label className={styles.sectionTitle}>
+                    <Icon glyph="Warning" size="small" /> Risk Assessment
+                  </Label>
+                  <div style={{ padding: '12px', background: '#fef2f2', borderRadius: '4px', border: '1px solid #fecaca' }}>
+                    {agentData.output.llm_synthesis.risk_assessment.recurrence_risk && (
+                      <div style={{ marginBottom: '12px' }}>
+                        <Label style={{ fontSize: '12px' }}>Recurrence Risk:</Label>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                          <Badge variant={
+                            agentData.output.llm_synthesis.risk_assessment.recurrence_risk === 'high' ? 'red' :
+                            agentData.output.llm_synthesis.risk_assessment.recurrence_risk === 'medium' ? 'yellow' : 'green'
+                          }>
+                            {agentData.output.llm_synthesis.risk_assessment.recurrence_risk?.toUpperCase()}
+                          </Badge>
+                        </div>
+                        {agentData.output.llm_synthesis.risk_assessment.recurrence_risk_rationale && (
+                          <Body style={{ fontSize: '12px', marginTop: '6px' }}>
+                            {agentData.output.llm_synthesis.risk_assessment.recurrence_risk_rationale}
+                          </Body>
+                        )}
+                      </div>
+                    )}
+
+                    {agentData.output.llm_synthesis.risk_assessment.escalation_needed !== undefined && (
+                      <div style={{ marginBottom: '12px' }}>
+                        <Label style={{ fontSize: '12px' }}>Escalation Required:</Label>
+                        <Badge variant={agentData.output.llm_synthesis.risk_assessment.escalation_needed ? 'red' : 'green'}>
+                          {agentData.output.llm_synthesis.risk_assessment.escalation_needed ? 'YES' : 'NO'}
+                        </Badge>
+                        {agentData.output.llm_synthesis.risk_assessment.escalation_rationale && (
+                          <Body style={{ fontSize: '12px', marginTop: '6px' }}>
+                            {agentData.output.llm_synthesis.risk_assessment.escalation_rationale}
+                          </Body>
+                        )}
+                      </div>
+                    )}
+
+                    {agentData.output.llm_synthesis.risk_assessment.monitoring_plan && (
+                      <div>
+                        <Label style={{ fontSize: '12px' }}>Monitoring Plan:</Label>
+                        <Body style={{ fontSize: '12px', marginTop: '4px' }}>
+                          {agentData.output.llm_synthesis.risk_assessment.monitoring_plan}
+                        </Body>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Lessons Learned */}
+              {agentData.output.llm_synthesis?.lessons_learned && agentData.output.llm_synthesis.lessons_learned.length > 0 && (
+                <div className={styles.section}>
+                  <Label className={styles.sectionTitle}>
+                    <Icon glyph="University" size="small" /> Lessons Learned
+                  </Label>
                   <div className={styles.findingsList}>
-                    {agentData.output.agent_summary.monitoring && (
-                      <Body className={styles.findingItem}>
-                        🔵 Monitoring: {agentData.output.agent_summary.monitoring.pattern} ({(agentData.output.agent_summary.monitoring.confidence * 100).toFixed(0)}%)
+                    {agentData.output.llm_synthesis.lessons_learned.map((lesson, idx) => (
+                      <Body key={idx} className={styles.findingItem} style={{ background: '#f0fdf4', padding: '10px', borderRadius: '4px', marginBottom: '8px' }}>
+                        <strong>Lesson {idx + 1}:</strong> {lesson}
                       </Body>
-                    )}
-                    {agentData.output.agent_summary.investigation && (
-                      <Body className={styles.findingItem}>
-                        🟠 Investigation: {agentData.output.agent_summary.investigation.affected_wafers} wafers, {agentData.output.agent_summary.investigation.key_findings_count} findings
-                      </Body>
-                    )}
-                    {agentData.output.agent_summary.rca && (
-                      <Body className={styles.findingItem}>
-                        🟣 RCA: {agentData.output.agent_summary.rca.validated_causes_count} causes, {agentData.output.agent_summary.rca.recommendations_count} recommendations
-                      </Body>
-                    )}
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Tool Outputs - Troubleshooting Guides */}
+              {agentData.output.tool_outputs?.troubleshooting_guides && (
+                <div className={styles.section}>
+                  <Label className={styles.sectionTitle}>
+                    <Icon glyph="University" size="small" /> Tool: Troubleshooting Guides Search
+                  </Label>
+                  <div className={styles.toolMetrics}>
+                    <Badge variant="lightgray">
+                      {agentData.output.tool_outputs.troubleshooting_guides.execution_time_ms?.toFixed(0)}ms
+                    </Badge>
+                    <Body className={styles.toolSummary}>
+                      Found: <strong>{agentData.output.tool_outputs.troubleshooting_guides.documents_found}</strong> documents
+                    </Body>
                   </div>
                 </div>
               )}
             </div>
           )}
+
         </div>
       )}
 

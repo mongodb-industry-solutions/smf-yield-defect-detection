@@ -319,3 +319,285 @@
   color: var(--gray-dark-1);
   line-height: 1.5;
 }
+
+/* ========================================
+   Monitoring Agent Query Cards
+   ======================================== */
+
+.queryCard {
+  background: white;
+  border: 1.5px solid rgba(0, 104, 74, 0.2);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.queryCard:hover {
+  border-color: rgba(0, 104, 74, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 104, 74, 0.1);
+}
+
+.queryHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s ease;
+}
+
+.queryHeader:hover {
+  background: rgba(0, 104, 74, 0.04);
+}
+
+.queryTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+}
+
+.queryTitle > span {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--gray-dark-3);
+}
+
+.timeBadge {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 8px;
+  background: rgba(0, 104, 74, 0.1);
+  color: #00684A;
+  border-radius: 4px;
+}
+
+.queryDetails {
+  padding: 16px;
+  border-top: 1px solid rgba(0, 104, 74, 0.1);
+  background: rgba(249, 251, 250, 0.7);
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.queryDetails > div {
+  margin-bottom: 14px;
+}
+
+.queryDetails > div:last-child {
+  margin-bottom: 0;
+}
+
+.queryPurpose {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--gray-dark-2);
+}
+
+.queryOperation {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--gray-dark-2);
+}
+
+.queryOperation code {
+  background: rgba(0, 104, 74, 0.1);
+  color: #00684A;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'Source Code Pro', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.queryResults {
+  background: white;
+  border: 1px solid rgba(0, 104, 74, 0.15);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-top: 12px;
+}
+
+.queryResults > span {
+  display: block;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--gray-dark-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.queryResults ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.queryResults li {
+  font-size: 13px;
+  color: var(--gray-dark-2);
+  line-height: 1.6;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.queryResults li::before {
+  content: '▸';
+  color: #00684A;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.queryResults strong {
+  color: #00684A;
+  font-weight: 600;
+}
+
+/* Excursion Explanation Box */
+.excursionBox {
+  background: linear-gradient(135deg, #FFF4E6 0%, #FFE8CC 100%);
+  border: 1.5px solid #F79009;
+  border-left: 4px solid #F79009;
+  border-radius: 6px;
+  padding: 14px 16px;
+  margin-top: 14px;
+}
+
+.excursionBox > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 12px;
+  color: #B54708;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
+.excursionBox ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.excursionBox li {
+  font-size: 13px;
+  color: #93370D;
+  line-height: 1.6;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.excursionBox li::before {
+  content: '⚠';
+  flex-shrink: 0;
+}
+
+.excursionBox strong {
+  font-weight: 600;
+  color: #B54708;
+}
+
+/* ========================================
+   AI Analysis Insights Section
+   ======================================== */
+
+.aiInsightsCard {
+  background: linear-gradient(135deg, #F0F9FF 0%, #E0F2FE 100%);
+  border: 1.5px solid #0284C7;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.aiHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(2, 132, 199, 0.2);
+}
+
+.riskBadge {
+  font-weight: 600;
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.riskBadge.high {
+  background: #FEE2E2;
+  color: #DC2626;
+  border: 1px solid #FCA5A5;
+}
+
+.riskBadge.critical {
+  background: #FEE2E2;
+  color: #991B1B;
+  border: 1px solid #DC2626;
+  font-weight: 700;
+}
+
+.confidence {
+  font-size: 13px;
+  color: var(--gray-dark-2);
+  font-weight: 500;
+}
+
+.insightsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.insightsList > span {
+  display: block;
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--gray-dark-2);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.insightItem {
+  font-size: 13px;
+  color: var(--gray-dark-2);
+  line-height: 1.7;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.insightItem strong {
+  color: #0369A1;
+  font-weight: 700;
+  min-width: 20px;
+  flex-shrink: 0;
+}

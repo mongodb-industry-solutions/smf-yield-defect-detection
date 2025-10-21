@@ -202,6 +202,95 @@ async def get_alerts(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/analyzed")
+async def get_analyzed_alerts(
+    limit: int = Query(50, description="Maximum number of analyzed alerts to return")
+):
+    """
+    Get alerts that have been analyzed by AI agents
+    Returns alerts with monitoring_agent_analysis, investigation_agent_analysis, rca_agent_analysis, and supervisor_agent_analysis
+    """
+    logger.info(f"📥 GET /alerts/analyzed - Fetching alerts with AI agent analysis (limit={limit})")
+
+    try:
+        # Access MongoDB directly to query for alerts with agent analysis
+        if mongodb_client_instance is None or mdb_database_name is None:
+            logger.error("❌ MongoDB client not initialized")
+            raise HTTPException(status_code=503, detail="Database not available")
+
+        db = mongodb_client_instance[mdb_database_name]
+        alerts_collection = db['alerts']
+
+        # Query for unresolved scenario_analysis alerts that have at least one agent analysis field
+        query = {
+            "alert_type": "scenario_analysis",
+            "status": {"$ne": "resolved"},
+            "$or": [
+                {"monitoring_agent_analysis": {"$exists": True, "$ne": None}},
+                {"investigation_agent_analysis": {"$exists": True, "$ne": None}},
+                {"rca_agent_analysis": {"$exists": True, "$ne": None}},
+                {"supervisor_agent_analysis": {"$exists": True, "$ne": None}}
+            ]
+        }
+
+        # Fetch alerts sorted by timestamp (most recent first)
+        analyzed_alerts = await alerts_collection.find(query).sort("timestamp", -1).limit(limit).to_list(length=limit)
+
+        logger.debug(f"📊 Found {len(analyzed_alerts)} analyzed alerts")
+
+        # Convert ObjectIds for JSON serialization
+        analyzed_alerts = convert_objectids(analyzed_alerts)
+
+        # Transform alerts to include summary info for frontend display
+        alert_summaries = []
+        for alert in analyzed_alerts:
+            summary = {
+                "alert_id": alert.get("alert_id"),
+                "scenario_id": alert.get("scenario_id"),
+                "timestamp": alert.get("timestamp"),
+                "equipment_id": alert.get("equipment_id"),
+                "severity": alert.get("severity"),
+                "alert_type": alert.get("alert_type"),
+                "status": alert.get("status"),
+                "has_monitoring": bool(alert.get("monitoring_agent_analysis")),
+                "has_investigation": bool(alert.get("investigation_agent_analysis")),
+                "has_rca": bool(alert.get("rca_agent_analysis")),
+                "has_supervisor": bool(alert.get("supervisor_agent_analysis")),
+                # Include brief preview for dropdown display
+                "preview": {
+                    "risk_level": None,
+                    "pattern": None,
+                    "key_finding": None
+                }
+            }
+
+            # Extract preview data from monitoring agent if available
+            if alert.get("monitoring_agent_analysis"):
+                mon_analysis = alert["monitoring_agent_analysis"]
+                if "output" in mon_analysis and "llm_interpretation" in mon_analysis["output"]:
+                    llm = mon_analysis["output"]["llm_interpretation"]
+                    summary["preview"]["risk_level"] = llm.get("risk_level")
+                    summary["preview"]["pattern"] = llm.get("pattern_detected")
+                    if llm.get("key_insights") and len(llm["key_insights"]) > 0:
+                        summary["preview"]["key_finding"] = llm["key_insights"][0]
+
+            alert_summaries.append(summary)
+
+        logger.info(f"✅ GET /alerts/analyzed - Success: Retrieved {len(alert_summaries)} analyzed alerts")
+
+        return {
+            "count": len(alert_summaries),
+            "alerts": alert_summaries
+        }
+
+    except HTTPException:
+        logger.warning(f"⚠️ GET /alerts/analyzed - HTTPException raised")
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error fetching analyzed alerts: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{alert_id}")
 async def get_alert_details(alert_id: str):
     """
@@ -303,67 +392,48 @@ async def get_alert_agent_details(alert_id: str):
         agents = []
 
         # Agent 1: Monitoring Agent
-        monitoring_decision = alert.get('monitoring_decision', {})
-        if monitoring_decision:
+        monitoring_agent_analysis = alert.get('monitoring_agent_analysis', {})
+        if monitoring_agent_analysis:
             agents.append({
                 "id": 1,
                 "name": "Monitor",
                 "status": "completed",
-                "output": {
-                    "decision": "CREATE ALERT" if monitoring_decision.get('create_alert') else "FILTER",
-                    "confidence": monitoring_decision.get('confidence', 0),
-                    "pattern": monitoring_decision.get('pattern_detected', 'unknown'),
-                    "reasoning": monitoring_decision.get('reasoning', ''),
-                    "statistical_context": monitoring_decision.get('statistical_context', {})
-                },
-                "data_used": ["process_sensor_ts"]  # Statistical context from time series
+                "output": monitoring_agent_analysis,  # Return complete structure
+                "data_used": ["scenario_time_series", "process_sensor_ts"]
             })
 
         # Agent 2: Investigation Agent
-        ai_investigation = alert.get('ai_investigation', {})
-        if ai_investigation:
+        investigation_agent_analysis = alert.get('investigation_agent_analysis', {})
+        if investigation_agent_analysis:
             agents.append({
                 "id": 2,
                 "name": "Investigate",
                 "status": "completed",
-                "output": {
-                    "affected_wafers": ai_investigation.get('affected_wafers', 0),
-                    "correlation_confidence": ai_investigation.get('correlation_confidence', 0),
-                    "key_findings": ai_investigation.get('key_findings', []),
-                    "summary": ai_investigation.get('summary', '')
-                },
+                "output": investigation_agent_analysis,  # Return complete structure
                 "data_used": ["wafer_defects", "process_context", "alerts"]
             })
 
         # Agent 3: RCA Agent
-        ai_rca = alert.get('ai_rca', {})
+        rca_agent_analysis = alert.get('rca_agent_analysis', {})
+        ai_rca = alert.get('ai_rca', rca_agent_analysis)  # Check both old and new field names
         if ai_rca:
             agents.append({
                 "id": 3,
                 "name": "RCA",
                 "status": "completed",
-                "output": {
-                    "confidence": ai_rca.get('confidence', 0),
-                    "validated_causes": ai_rca.get('validated_causes', []),
-                    "recommendations": ai_rca.get('recommendations', []),
-                    "validation": ai_rca.get('validation', '')
-                },
+                "output": ai_rca,  # Return complete structure
                 "data_used": ["historical_knowledge"]
             })
 
         # Agent 4: Supervisor Agent
-        ai_supervisor = alert.get('ai_supervisor', {})
+        supervisor_agent_analysis = alert.get('supervisor_agent_analysis', {})
+        ai_supervisor = alert.get('ai_supervisor', supervisor_agent_analysis)  # Check both old and new field names
         if ai_supervisor:
             agents.append({
                 "id": 4,
                 "name": "Synthesize",
                 "status": "completed",
-                "output": {
-                    "risk_level": ai_supervisor.get('risk_level', 'Unknown'),
-                    "overall_confidence": ai_supervisor.get('overall_confidence', 0),
-                    "synthesis": ai_supervisor.get('synthesis', ''),
-                    "agent_summary": ai_supervisor.get('agent_summary', {})
-                },
+                "output": ai_supervisor,  # Return complete structure
                 "data_used": ["wafer_defects", "historical_knowledge", "process_context"]  # Aggregated from all agents
             })
 

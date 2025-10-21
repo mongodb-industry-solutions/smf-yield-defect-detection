@@ -94,17 +94,17 @@ const AgentWorkflowBar = ({ selectedAgent, onAgentSelect, selectedAlertId }) => 
             <Body className={styles.noAlertText}>No analysis running</Body>
           )}
 
-          {!loading && alertInfo && (
+          {!loading && alertInfo && alertInfo.severity && (
             <div className={styles.alertDetails}>
               <Badge variant={getSeverityBadgeVariant(alertInfo.severity)}>
                 {alertInfo.severity.toUpperCase()}
               </Badge>
-              <span className={styles.alertEquipment}>{alertInfo.equipment_id}</span>
+              <span className={styles.alertEquipment}>{alertInfo.equipment_id || 'N/A'}</span>
               <span className={styles.alertSeparator}>•</span>
-              <span className={styles.alertType}>{alertInfo.alert_type}</span>
+              <span className={styles.alertType}>{alertInfo.alert_type || 'N/A'}</span>
               <span className={styles.alertSeparator}>•</span>
               <span className={styles.alertTime}>
-                {new Date(alertInfo.timestamp).toLocaleTimeString()}
+                {alertInfo.timestamp ? new Date(alertInfo.timestamp).toLocaleTimeString() : 'N/A'}
               </span>
             </div>
           )}
