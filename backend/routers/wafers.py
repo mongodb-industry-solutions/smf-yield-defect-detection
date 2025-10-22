@@ -577,6 +577,64 @@ async def get_wafer_visualization(wafer_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/oldest/raw")
+async def get_oldest_wafer_raw():
+    """
+    Get the oldest wafer with full MongoDB document structure including embeddings.
+    This endpoint is for educational purposes to show the complete data model.
+    """
+    start_time = time.time()
+    logger.info(f"📥 GET /wafers/oldest/raw - Fetching oldest wafer with embeddings")
+
+    try:
+        with get_mongodb_connector() as mdb_connector:
+            wafer_collection = mdb_connector.get_collection("wafer_defects")
+
+            # Get oldest wafer with embedding
+            query_start = time.time()
+            wafer = wafer_collection.find_one(
+                {"embedding": {"$exists": True}},
+                sort=[("inspection_timestamp", 1)]
+            )
+            query_time = (time.time() - query_start) * 1000
+
+            if not wafer:
+                logger.warning(f"⚠️ No wafers with embeddings found")
+                raise HTTPException(status_code=404, detail="No wafers with embeddings found")
+
+            logger.info(f"   📊 Found oldest wafer: {wafer.get('wafer_id')}, query time: {query_time:.0f}ms")
+
+            # Convert ObjectId to string
+            wafer_data = convert_objectids(wafer)
+
+            # Add metadata about the structure
+            metadata = {
+                "document_size_bytes": len(str(wafer).encode('utf-8')),
+                "embedding_dimensions": len(wafer.get("embedding", [])),
+                "embedding_model": wafer.get("embedding_model"),
+                "embedding_type": wafer.get("embedding_type"),
+                "has_die_map": "die_map" in wafer,
+                "die_map_size": f"{len(wafer.get('die_map', []))}x{len(wafer.get('die_map', [[]])[0]) if wafer.get('die_map') else 0}",
+                "defect_count": len(wafer.get("defects", [])),
+                "collection_name": "wafer_defects",
+                "database_name": "smf-yield-defect"
+            }
+
+            total_time = (time.time() - start_time) * 1000
+            logger.info(f"✅ GET /wafers/oldest/raw completed in {total_time:.0f}ms")
+
+            return {
+                "metadata": metadata,
+                "document": wafer_data
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ GET /wafers/oldest/raw - Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/visualization/batch")
 async def get_batch_wafer_visualization(
     request: Dict[str, List[str]]  # Expects {"wafer_ids": ["W_001", "W_002", ...]}

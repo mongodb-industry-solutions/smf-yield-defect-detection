@@ -395,8 +395,9 @@ class MonitoringService:
                             temp_thresholds = thresholds["temperature_drift"]
 
                             # Check particle count threshold using centralized config
+                            # Detect excursions at MEDIUM level and above (not just CRITICAL)
                             particle_count = metrics.get("particle_count", 0)
-                            if particle_count > particle_thresholds["critical"]:
+                            if particle_count > particle_thresholds["medium"]:
                                 excursion_detected = True
                                 excursion_type = "particle_excursion"
                                 excursion_value = particle_count

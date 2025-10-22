@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Card from '@leafygreen-ui/card';
 import Badge from '@leafygreen-ui/badge';
+import Button from '@leafygreen-ui/button';
+import Modal from '@leafygreen-ui/modal';
 import { waferAPI } from '@/lib/api';
 import { useDashboardData } from '@/contexts/DashboardDataProvider';
 import styles from './LiveWaferYieldMap.module.css';
@@ -12,6 +14,9 @@ const LiveWaferYieldMap = () => {
   const [waferData, setWaferData] = useState(null);
   const [isLoading, setIsLoading] = useState(!isPreloaded);
   const [selectedWafer, setSelectedWafer] = useState(0);
+  const [showMongoModal, setShowMongoModal] = useState(false);
+  const [mongoData, setMongoData] = useState(null);
+  const [loadingMongoData, setLoadingMongoData] = useState(false);
   const canvasRef = useRef(null);
 
   // Fetch die maps for wafers
@@ -162,6 +167,21 @@ const LiveWaferYieldMap = () => {
 
   }, [waferData, selectedWafer]);
 
+  // Fetch MongoDB raw data for oldest wafer
+  const fetchMongoData = async () => {
+    setLoadingMongoData(true);
+    try {
+      const response = await waferAPI.getOldestWaferRaw();
+      setMongoData(response);
+      setShowMongoModal(true);
+    } catch (error) {
+      console.error('Error fetching MongoDB data:', error);
+      alert('Failed to fetch MongoDB data. See console for details.');
+    } finally {
+      setLoadingMongoData(false);
+    }
+  };
+
   // Calculate batch statistics
   const getBatchStats = () => {
     if (!waferData || waferData.length === 0) return null;
@@ -190,6 +210,15 @@ const LiveWaferYieldMap = () => {
             </p>
           </div>
           <div className={styles.headerRight}>
+            <Button
+              variant="primary"
+              size="small"
+              onClick={fetchMongoData}
+              disabled={loadingMongoData}
+              style={{ marginRight: '12px' }}
+            >
+              {loadingMongoData ? 'Loading...' : 'View MongoDB Structure'}
+            </Button>
             <span className={styles.liveIndicator}>
               <span className={styles.liveDot}></span>
               LIVE
@@ -310,6 +339,103 @@ const LiveWaferYieldMap = () => {
           </div>
         </div>
       </Card>
+
+      {/* MongoDB Structure Modal */}
+      <Modal
+        open={showMongoModal}
+        setOpen={setShowMongoModal}
+        size="large"
+      >
+        <div style={{ padding: '20px', maxHeight: '80vh', overflow: 'auto' }}>
+          <h2 style={{ marginBottom: '16px', color: '#001E2B' }}>MongoDB Wafer Document Structure</h2>
+
+          {mongoData && (
+            <>
+              <div style={{
+                backgroundColor: '#F9FBFA',
+                padding: '16px',
+                borderRadius: '8px',
+                marginBottom: '20px',
+                border: '1px solid #C1E1C5'
+              }}>
+                <h3 style={{ marginBottom: '12px', color: '#00684A' }}>Metadata</h3>
+                <table style={{ width: '100%', fontSize: '14px' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ padding: '4px 0', fontWeight: 600 }}>Collection:</td>
+                      <td style={{ padding: '4px 0' }}>{mongoData.metadata.collection_name}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '4px 0', fontWeight: 600 }}>Database:</td>
+                      <td style={{ padding: '4px 0' }}>{mongoData.metadata.database_name}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '4px 0', fontWeight: 600 }}>Wafer ID:</td>
+                      <td style={{ padding: '4px 0' }}>{mongoData.document.wafer_id}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '4px 0', fontWeight: 600 }}>Document Size:</td>
+                      <td style={{ padding: '4px 0' }}>{(mongoData.metadata.document_size_bytes / 1024).toFixed(2)} KB</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '4px 0', fontWeight: 600 }}>Embedding Dimensions:</td>
+                      <td style={{ padding: '4px 0' }}>{mongoData.metadata.embedding_dimensions}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '4px 0', fontWeight: 600 }}>Embedding Model:</td>
+                      <td style={{ padding: '4px 0' }}>{mongoData.metadata.embedding_model}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '4px 0', fontWeight: 600 }}>Embedding Type:</td>
+                      <td style={{ padding: '4px 0' }}>{mongoData.metadata.embedding_type}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '4px 0', fontWeight: 600 }}>Die Map Size:</td>
+                      <td style={{ padding: '4px 0' }}>{mongoData.metadata.die_map_size}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '4px 0', fontWeight: 600 }}>Defect Count:</td>
+                      <td style={{ padding: '4px 0' }}>{mongoData.metadata.defect_count}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={{
+                backgroundColor: '#001E2B',
+                padding: '16px',
+                borderRadius: '8px',
+                marginBottom: '12px'
+              }}>
+                <h3 style={{ marginBottom: '12px', color: '#00ED64' }}>Full Document (JSON)</h3>
+                <pre style={{
+                  backgroundColor: '#13AA52',
+                  color: '#001E2B',
+                  padding: '16px',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  overflow: 'auto',
+                  maxHeight: '400px',
+                  margin: 0,
+                  fontFamily: 'monospace'
+                }}>
+                  {JSON.stringify(mongoData.document, null, 2)}
+                </pre>
+              </div>
+
+              <div style={{
+                backgroundColor: '#FFF8E1',
+                padding: '12px',
+                borderRadius: '8px',
+                fontSize: '13px',
+                border: '1px solid #FFD54F'
+              }}>
+                <strong>💡 Note:</strong> This shows the complete MongoDB document structure including the 1024-dimensional embedding vector from voyage-multimodal-3 model. The embedding is used for semantic similarity search to find similar defect patterns.
+              </div>
+            </>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 };

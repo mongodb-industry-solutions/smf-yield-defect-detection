@@ -156,11 +156,17 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     fetchAutoExcursionsStatus(); // Fetch auto-excursions status
     fetchAnalyzedAlerts(); // Fetch previously analyzed alerts
 
+    // Poll demo status every 5 seconds to detect auto-stop
+    const statusPollInterval = setInterval(() => {
+      fetchStatus();
+    }, 5000);
+
     // Cleanup on unmount
     return () => {
       if (progressInterval) {
         clearInterval(progressInterval);
       }
+      clearInterval(statusPollInterval);
     };
   }, []);
 
@@ -289,6 +295,9 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
                              excursionForm.excursion_type === 'rf_power' ? 'RF Power' :
                              'Temperature';
       setInjectionSuccess(`${excursionLabel} excursion injected on ${excursionForm.equipment_id}!`);
+
+      // Refresh demo status (excursion injection stops demo mode)
+      await fetchStatus();
 
       // Clear success message after 5 seconds
       setTimeout(() => setInjectionSuccess(null), 5000);

@@ -3,12 +3,16 @@
 import React, { useState, useEffect } from 'react';
 import Card from '@leafygreen-ui/card';
 import Badge from '@leafygreen-ui/badge';
+import Button from '@leafygreen-ui/button';
+import Modal from '@leafygreen-ui/modal';
+import { SAMPLE_WAFER_MONGO_DATA } from '@/lib/sampleWaferData';
 import styles from './LiveWaferImageMapCompact.module.css';
 
 const LiveWaferImageMapCompact = () => {
   const [waferData, setWaferData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedWafer, setSelectedWafer] = useState(0);
+  const [showMongoModal, setShowMongoModal] = useState(false);
 
   // Fetch wafer data with thumbnails
   const fetchWaferData = async () => {
@@ -57,6 +61,42 @@ const LiveWaferImageMapCompact = () => {
     const interval = setInterval(fetchWaferData, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Show pre-loaded MongoDB sample data (instant - no API call)
+  const showMongoData = () => {
+    setShowMongoModal(true);
+  };
+
+  // Inject CSS to fix modal z-index above FabPulseBar
+  useEffect(() => {
+    if (showMongoModal) {
+      const styleId = 'mongo-modal-zindex-fix';
+
+      // Check if style already exists
+      if (!document.getElementById(styleId)) {
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.textContent = `
+          /* Override LeafyGreen Modal z-index to appear above FabPulseBar (z-index: 1001) */
+          body > div[role="presentation"],
+          body > div[role="presentation"] > *,
+          div[role="dialog"],
+          div[data-lg-id*="modal"] {
+            z-index: 10001 !important;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+
+      // Cleanup function to remove style when modal closes
+      return () => {
+        const existingStyle = document.getElementById(styleId);
+        if (existingStyle) {
+          existingStyle.remove();
+        }
+      };
+    }
+  }, [showMongoModal]);
 
   const currentWafer = waferData?.[selectedWafer];
 
@@ -107,6 +147,14 @@ const LiveWaferImageMapCompact = () => {
             </p>
           </div>
           <div className={styles.headerRight}>
+            <Button
+              variant="primary"
+              size="small"
+              onClick={showMongoData}
+              style={{ marginRight: '12px' }}
+            >
+              View MongoDB Structure
+            </Button>
             <span className={styles.liveIndicator}>
               <span className={styles.liveDot}></span>
               LIVE
@@ -234,6 +282,212 @@ const LiveWaferImageMapCompact = () => {
           </div>
         </div>
       </Card>
+
+      {/* MongoDB Structure Modal */}
+      <Modal
+        open={showMongoModal}
+        setOpen={setShowMongoModal}
+        size="large"
+      >
+          <div style={{
+            padding: '24px',
+            maxHeight: '85vh',
+            overflow: 'auto',
+            backgroundColor: 'var(--color-neutral-light3)'
+          }}>
+            <h2 style={{
+              marginBottom: '20px',
+              color: 'var(--color-neutral-dark3)',
+              fontSize: '24px',
+              fontWeight: 600,
+              borderBottom: '2px solid var(--color-primary-base)',
+              paddingBottom: '12px'
+            }}>
+              MongoDB Wafer Document Structure
+            </h2>
+
+            {/* Metadata Section */}
+            <div style={{
+              backgroundColor: '#ffffff',
+              padding: '20px',
+              borderRadius: '8px',
+              marginBottom: '20px',
+              border: '1px solid var(--color-neutral-light2)',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+            }}>
+              <h3 style={{
+                marginBottom: '16px',
+                color: 'var(--color-primary-dark2)',
+                fontSize: '18px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span style={{
+                  display: 'inline-block',
+                  width: '4px',
+                  height: '20px',
+                  backgroundColor: 'var(--color-primary-base)',
+                  borderRadius: '2px'
+                }}></span>
+                Document Metadata
+              </h3>
+              <table style={{
+                width: '100%',
+                fontSize: '14px',
+                borderCollapse: 'collapse'
+              }}>
+                <tbody>
+                  <tr style={{ borderBottom: '1px solid var(--color-neutral-light2)' }}>
+                    <td style={{
+                      padding: '12px 8px',
+                      fontWeight: 600,
+                      color: 'var(--color-neutral-dark2)',
+                      width: '40%'
+                    }}>Collection:</td>
+                    <td style={{
+                      padding: '12px 8px',
+                      color: 'var(--color-neutral-dark3)',
+                      fontFamily: 'monospace',
+                      fontSize: '13px'
+                    }}>{SAMPLE_WAFER_MONGO_DATA.metadata.collection_name}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--color-neutral-light2)' }}>
+                    <td style={{ padding: '12px 8px', fontWeight: 600, color: 'var(--color-neutral-dark2)' }}>Database:</td>
+                    <td style={{
+                      padding: '12px 8px',
+                      color: 'var(--color-neutral-dark3)',
+                      fontFamily: 'monospace',
+                      fontSize: '13px'
+                    }}>{SAMPLE_WAFER_MONGO_DATA.metadata.database_name}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--color-neutral-light2)' }}>
+                    <td style={{ padding: '12px 8px', fontWeight: 600, color: 'var(--color-neutral-dark2)' }}>Wafer ID:</td>
+                    <td style={{
+                      padding: '12px 8px',
+                      color: 'var(--color-primary-dark2)',
+                      fontFamily: 'monospace',
+                      fontWeight: 600,
+                      fontSize: '13px'
+                    }}>{SAMPLE_WAFER_MONGO_DATA.document.wafer_id}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--color-neutral-light2)' }}>
+                    <td style={{ padding: '12px 8px', fontWeight: 600, color: 'var(--color-neutral-dark2)' }}>Document Size:</td>
+                    <td style={{ padding: '12px 8px', color: 'var(--color-neutral-dark3)' }}>
+                      {(SAMPLE_WAFER_MONGO_DATA.metadata.document_size_bytes / 1024).toFixed(2)} KB
+                    </td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--color-neutral-light2)' }}>
+                    <td style={{ padding: '12px 8px', fontWeight: 600, color: 'var(--color-neutral-dark2)' }}>Embedding Dimensions:</td>
+                    <td style={{
+                      padding: '12px 8px',
+                      color: 'var(--color-neutral-dark3)',
+                      fontWeight: 600
+                    }}>{SAMPLE_WAFER_MONGO_DATA.metadata.embedding_dimensions}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--color-neutral-light2)' }}>
+                    <td style={{ padding: '12px 8px', fontWeight: 600, color: 'var(--color-neutral-dark2)' }}>Embedding Model:</td>
+                    <td style={{
+                      padding: '12px 8px',
+                      color: 'var(--color-neutral-dark3)',
+                      fontFamily: 'monospace',
+                      fontSize: '13px'
+                    }}>{SAMPLE_WAFER_MONGO_DATA.metadata.embedding_model}</td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--color-neutral-light2)' }}>
+                    <td style={{ padding: '12px 8px', fontWeight: 600, color: 'var(--color-neutral-dark2)' }}>Embedding Type:</td>
+                    <td style={{ padding: '12px 8px', color: 'var(--color-neutral-dark3)' }}>
+                      {SAMPLE_WAFER_MONGO_DATA.metadata.embedding_type}
+                    </td>
+                  </tr>
+                  <tr style={{ borderBottom: '1px solid var(--color-neutral-light2)' }}>
+                    <td style={{ padding: '12px 8px', fontWeight: 600, color: 'var(--color-neutral-dark2)' }}>Die Map Size:</td>
+                    <td style={{ padding: '12px 8px', color: 'var(--color-neutral-dark3)' }}>
+                      {SAMPLE_WAFER_MONGO_DATA.metadata.die_map_size}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style={{ padding: '12px 8px', fontWeight: 600, color: 'var(--color-neutral-dark2)' }}>Defect Count:</td>
+                    <td style={{ padding: '12px 8px', color: 'var(--color-neutral-dark3)' }}>
+                      {SAMPLE_WAFER_MONGO_DATA.metadata.defect_count}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            {/* JSON Document Section */}
+            <div style={{
+              backgroundColor: '#ffffff',
+              padding: '20px',
+              borderRadius: '8px',
+              marginBottom: '20px',
+              border: '1px solid var(--color-neutral-light2)',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+            }}>
+              <h3 style={{
+                marginBottom: '16px',
+                color: 'var(--color-primary-dark2)',
+                fontSize: '18px',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span style={{
+                  display: 'inline-block',
+                  width: '4px',
+                  height: '20px',
+                  backgroundColor: 'var(--color-primary-base)',
+                  borderRadius: '2px'
+                }}></span>
+                Full Document (JSON)
+              </h3>
+              <pre style={{
+                backgroundColor: 'var(--color-neutral-light3)',
+                color: 'var(--color-neutral-dark3)',
+                padding: '16px',
+                borderRadius: '6px',
+                fontSize: '12px',
+                lineHeight: '1.6',
+                overflow: 'auto',
+                maxHeight: '450px',
+                margin: 0,
+                fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                border: '1px solid var(--color-neutral-light2)',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word'
+              }}>
+                {JSON.stringify(SAMPLE_WAFER_MONGO_DATA.document, null, 2)}
+              </pre>
+            </div>
+
+            {/* Info Note */}
+            <div style={{
+              backgroundColor: 'var(--color-yellow-light2)',
+              padding: '16px',
+              borderRadius: '8px',
+              fontSize: '14px',
+              border: '1px solid var(--color-yellow-base)',
+              display: 'flex',
+              gap: '12px',
+              alignItems: 'flex-start'
+            }}>
+              <span style={{
+                fontSize: '20px',
+                flexShrink: 0,
+                marginTop: '2px'
+              }}>💡</span>
+              <div style={{ color: 'var(--color-neutral-dark3)' }}>
+                <strong style={{ display: 'block', marginBottom: '4px' }}>About This Document</strong>
+                This shows the complete MongoDB document structure for wafer <strong>W_0001</strong> (oldest wafer with embeddings).
+                The document includes a <strong>1024-dimensional embedding vector</strong> from the <strong>voyage-multimodal-3</strong> model,
+                which is used for semantic similarity search to find similar defect patterns. Data is pre-loaded for instant display.
+              </div>
+            </div>
+          </div>
+        </Modal>
     </div>
   );
 };

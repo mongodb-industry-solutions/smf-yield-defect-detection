@@ -485,11 +485,18 @@ class DemoModeService:
 
                     # Generate metadata with lot information if applicable
                     metadata = self.generate_demo_metadata(is_excursion)
-                    if self.demo_scenario.startswith("lot_processing_"):
-                        # Extract numeric lot ID from LOT_2025_101 → 101 for consistent wafer naming
-                        lot_num = self.lot_id.split("_")[-1]  # Gets "101"
+                    # Override lot_id for BOTH continuous and lot_processing modes if persistent lot exists
+                    if self.lot_id:
+                        # Extract numeric lot ID from LOT_2025_1234 → 1234
+                        lot_num = self.lot_id.split("_")[-1]  # Gets "1234" or "101"
                         metadata["lot_id"] = self.lot_id
-                        metadata["wafer_id"] = f"W_{lot_num}_{self.wafer_counter:02d}"  # W_101_15 (consistent with continuous mode)
+                        # For lot_processing, maintain sequential wafer IDs
+                        if self.demo_scenario.startswith("lot_processing_"):
+                            metadata["wafer_id"] = f"W_{lot_num}_{self.wafer_counter:02d}"  # W_101_15
+                        else:
+                            # For continuous mode, use random wafer numbers within the lot
+                            import random
+                            metadata["wafer_id"] = f"W_{lot_num}_{random.randint(1, 25):02d}"  # W_1234_12
 
                     # Generate sensor data for this equipment
                     data = {
@@ -905,8 +912,19 @@ class DemoModeService:
             # Set scenario
             self.demo_scenario = scenario
 
+            # Handle continuous mode with 2-minute auto-stop
+            if scenario == "continuous":
+                # Configure 2-minute continuous mode
+                self.demo_duration_seconds = 120  # 2 minutes
+                self.wafer_counter = 0  # Track wafers in this continuous session
+                # Generate persistent lot_id (use 1001-1999 range to avoid conflicts)
+                import random
+                lot_number = random.randint(1001, 1999)
+                self.lot_id = f"LOT_2025_{lot_number:04d}"  # e.g., LOT_2025_1234
+                logger.info(f"🎯 Continuous mode: Auto-stop after 2 minutes | Lot: {self.lot_id}")
+
             # Handle lot processing scenarios (drift, spike, oscillation)
-            if scenario in ["lot_processing_drift", "lot_processing_spike", "lot_processing_oscillation"]:
+            elif scenario in ["lot_processing_drift", "lot_processing_spike", "lot_processing_oscillation"]:
                 # Configure for 3-minute lot processing
                 self.demo_duration_seconds = 180  # 3 minutes
                 self.demo_interval_seconds = 7.2  # Process 25 wafers in 3 minutes (180/25)
