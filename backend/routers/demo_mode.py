@@ -280,37 +280,48 @@ async def get_demo_status():
 async def start_demo_mode(request: Dict[str, Any] = Body(default={})):
     """
     Start demo mode data generation
-    
+
     Request body (optional):
     {
         "excursion_probability": 0.05,  // Optional: Override excursion probability (0 = no anomalies)
-        "mode": "charts" | "agentic"    // Optional: Mode indicator (agentic sets probability to 0)
+        "mode": "charts" | "agentic",   // Optional: Mode indicator (agentic sets probability to 0)
+        "scenario": "continuous" | "lot_processing_drift" | "lot_processing_spike" | "lot_processing_oscillation"
+                   // Optional: Demo scenario (default: continuous)
     }
-    
+
     Returns detailed information about:
     - Start status
     - Configuration (mode, interval, excursion probability)
-    - Reset statistics (baseline and anomalous readings seeded)
+    - Scenario details (lot processing: 25 wafers in 3 minutes)
     - Equipment list
     """
     logger.info(f"🎬 POST /demo/start - Starting demo mode with config: {request}")
-    
+
     try:
         service = get_demo_service()
-        
+
         # Extract parameters from request
         mode = request.get("mode", "charts")
         custom_probability = request.get("excursion_probability")
-        
+        scenario = request.get("scenario", "continuous")
+
+        # If lot processing scenario, optionally reset collections for clean slate
+        if scenario.startswith("lot_processing_"):
+            pattern = scenario.split("_")[-1]  # Extract: drift, spike, or oscillation
+            logger.info(f"📦 Lot processing {pattern} scenario requested - preparing clean environment")
+            # Optionally reset collections for clean demo
+            # await service.reset_demo_collections()  # Uncomment if you want fresh data
+
         # Start demo mode through service
         result = await service.start_demo_mode(
             mode=mode,
-            custom_probability=custom_probability
+            custom_probability=custom_probability,
+            scenario=scenario
         )
-        
-        logger.info(f"✅ Demo mode started: {result['status']}")
+
+        logger.info(f"✅ Demo mode started: {result['status']} - scenario: {scenario}")
         return result
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -352,6 +363,61 @@ async def stop_demo_mode():
         raise HTTPException(
             status_code=500,
             detail=f"Failed to stop demo mode: {str(e)}"
+        )
+
+@router.post("/demo/bulk-insert-lot")
+async def bulk_insert_lot_scenario(
+    scenario: str = Body(..., embed=True, description="Scenario: lot_processing_drift, lot_processing_spike, or lot_processing_oscillation")
+):
+    """
+    Bulk insert all sensor data for a lot processing scenario at once (no 3-minute wait).
+    Creates only ONE alert per lot.
+
+    Request body:
+    {
+        "scenario": "lot_processing_drift" | "lot_processing_spike" | "lot_processing_oscillation"
+    }
+
+    Returns:
+    {
+        "status": "success",
+        "lot_id": "LOT_2025_342",
+        "total_wafers": 25,
+        "pattern": "drift",
+        "sensor_records_inserted": 150,
+        "excursion_wafers": [10, 11, 12, ...],
+        "message": "Lot data inserted successfully. Alerts will be generated shortly."
+    }
+    """
+    logger.info(f"📦 POST /demo/bulk-insert-lot - Scenario: {scenario}")
+
+    # Validate scenario
+    valid_scenarios = ["lot_processing_drift", "lot_processing_spike", "lot_processing_oscillation"]
+    if scenario not in valid_scenarios:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid scenario. Must be one of: {', '.join(valid_scenarios)}"
+        )
+
+    try:
+        service = get_demo_service()
+
+        # Ensure process context is loaded
+        await service.load_process_context_ids()
+
+        # Bulk insert all lot data at once
+        result = await service.bulk_insert_lot_scenario(scenario)
+
+        logger.info(f"✅ Bulk lot insertion complete: {result['lot_id']}")
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error in bulk lot insertion: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to bulk insert lot scenario: {str(e)}"
         )
 
 @router.post("/demo/reset")

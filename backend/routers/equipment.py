@@ -355,45 +355,52 @@ async def get_equipment_details(
                 reticle_ids.add(process_ctx["reticle_id"])
 
         # Query process_context collection for material details
+        # NOTE: process_context uses "context_type" and "context_id" fields
         if slurry_batch_ids:
             cursor = process_context_collection.find({
-                "type": "slurry_batch",
-                "batch_id": {"$in": list(slurry_batch_ids)}
+                "context_type": "slurry_batch",
+                "context_id": {"$in": list(slurry_batch_ids)}
             })
             slurry_docs = await cursor.to_list(length=None)
 
             for doc in slurry_docs:
+                context_id = doc.get("context_id")
                 slurry_batches.append({
-                    "batch_id": doc.get("batch_id"),
-                    "usage_count": sum(1 for w in wafers if w.get("process_context", {}).get("slurry_batch") == doc.get("batch_id")),
+                    "batch_id": context_id,
+                    "usage_count": sum(1 for w in wafers if w.get("process_context", {}).get("slurry_batch") == context_id),
                     "is_problematic": doc.get("is_problematic", False),
-                    "issues": doc.get("issues", [])
+                    "known_issues": doc.get("known_issues", []),
+                    "manufacturer": doc.get("slurry_details", {}).get("manufacturer"),
+                    "composition": doc.get("slurry_details", {}).get("composition"),
+                    "qc_status": doc.get("slurry_details", {}).get("qc_status")
                 })
 
         if recipe_ids:
             cursor = process_context_collection.find({
-                "type": "etch_recipe",
-                "recipe_id": {"$in": list(recipe_ids)}
+                "context_type": "etch_recipe",
+                "context_id": {"$in": list(recipe_ids)}
             })
             recipe_docs = await cursor.to_list(length=None)
 
             for doc in recipe_docs:
+                context_id = doc.get("context_id")
                 recipes.append({
-                    "recipe_id": doc.get("recipe_id"),
-                    "usage_count": sum(1 for w in wafers if w.get("process_context", {}).get("etch_recipe") == doc.get("recipe_id"))
+                    "recipe_id": context_id,
+                    "usage_count": sum(1 for w in wafers if w.get("process_context", {}).get("etch_recipe") == context_id)
                 })
 
         if reticle_ids:
             cursor = process_context_collection.find({
-                "type": "reticle",
-                "reticle_id": {"$in": list(reticle_ids)}
+                "context_type": "reticle",
+                "context_id": {"$in": list(reticle_ids)}
             })
             reticle_docs = await cursor.to_list(length=None)
 
             for doc in reticle_docs:
+                context_id = doc.get("context_id")
                 reticles.append({
-                    "reticle_id": doc.get("reticle_id"),
-                    "usage_count": sum(1 for w in wafers if w.get("process_context", {}).get("reticle_id") == doc.get("reticle_id"))
+                    "reticle_id": context_id,
+                    "usage_count": sum(1 for w in wafers if w.get("process_context", {}).get("reticle_id") == context_id)
                 })
 
         query4_time = (time.time() - query4_start) * 1000

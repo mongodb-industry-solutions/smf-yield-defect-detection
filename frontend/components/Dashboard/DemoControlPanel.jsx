@@ -14,6 +14,7 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [demoScenario, setDemoScenario] = useState('continuous'); // 'continuous', 'lot_processing_drift', 'lot_processing_spike', 'lot_processing_oscillation'
   const [excursionForm, setExcursionForm] = useState({
     equipment_id: 'CMP_TOOL_01',
     excursion_type: 'particle' // 'particle', 'rf_power', 'temperature'
@@ -21,6 +22,10 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
   const [injectionSuccess, setInjectionSuccess] = useState(null);
   const [resetLoading, setResetLoading] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(null);
+
+  // Lot processing progress tracking
+  const [lotProgress, setLotProgress] = useState(null);
+  const [progressInterval, setProgressInterval] = useState(null);
 
   // Auto-excursions state
   const [autoExcursionsEnabled, setAutoExcursionsEnabled] = useState(false);
@@ -40,6 +45,11 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
   const [selectedAlertId, setSelectedAlertId] = useState('');
   const [loadingAnalyzedAlerts, setLoadingAnalyzedAlerts] = useState(false);
   const [loadingAlertData, setLoadingAlertData] = useState(false);
+
+  // Lot Processing Alerts State (for selecting existing alerts to analyze)
+  const [lotAlerts, setLotAlerts] = useState([]);
+  const [selectedLotAlertId, setSelectedLotAlertId] = useState('');
+  const [loadingLotAlerts, setLoadingLotAlerts] = useState(false);
 
   // Fetch status function
   const fetchStatus = async () => {
@@ -74,6 +84,29 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
       console.error('Error fetching analyzed alerts:', err);
     } finally {
       setLoadingAnalyzedAlerts(false);
+    }
+  };
+
+  // Fetch lot processing alerts (for reusing in agentic AI mode)
+  const fetchLotAlerts = async () => {
+    setLoadingLotAlerts(true);
+    try {
+      // Fetch recent alerts
+      const data = await alertAPI.getAll(50);
+
+      // Filter for lot processing alerts (have scenario_id and is_lot_processing_scenario)
+      const filtered = (data.alerts || []).filter(alert => {
+        const sourceData = alert.source_data || {};
+        return sourceData.scenario_id && sourceData.is_lot_processing_scenario === true;
+      });
+
+      setLotAlerts(filtered);
+      console.log('📦 Loaded lot processing alerts:', filtered.length);
+    } catch (err) {
+      console.error('Error fetching lot alerts:', err);
+      setLotAlerts([]);
+    } finally {
+      setLoadingLotAlerts(false);
     }
   };
 
@@ -122,7 +155,21 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     fetchStatus(); // Initial fetch
     fetchAutoExcursionsStatus(); // Fetch auto-excursions status
     fetchAnalyzedAlerts(); // Fetch previously analyzed alerts
+
+    // Cleanup on unmount
+    return () => {
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
+    };
   }, []);
+
+  // Fetch lot processing alerts when in agentic mode
+  useEffect(() => {
+    if (dashboardMode === 'agentic') {
+      fetchLotAlerts();
+    }
+  }, [dashboardMode]);
 
   // Handle Start/Stop toggle
   const handleToggle = async () => {
@@ -132,17 +179,44 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     try {
       if (status?.active) {
         // Stop demo mode
-        if (window.confirm('Stop demo mode? This will cleanup recent alerts.')) {
+        const confirmMsg = demoScenario.startsWith('lot_processing_')
+          ? 'Stop lot processing?'
+          : 'Stop demo mode? This will cleanup recent alerts.';
+        if (window.confirm(confirmMsg)) {
+          // Clear progress interval if running
+          if (progressInterval) {
+            clearInterval(progressInterval);
+            setProgressInterval(null);
+          }
+          setLotProgress(null);
+
           await demoAPI.stop();
           await fetchStatus();
         }
       } else {
-        // Start demo mode with appropriate mode based on auto-excursions status
-        // If auto-excursions are DISABLED, use agentic mode (excursion probability = 0)
-        // If auto-excursions are ENABLED, use charts mode (normal probability)
-        const params = autoExcursionsEnabled ? { mode: 'charts' } : { mode: 'agentic' };
-        await demoAPI.start(params);
-        await fetchStatus();
+        // Check if this is a lot processing scenario - use bulk insert instead of gradual demo
+        if (demoScenario.startsWith('lot_processing_')) {
+          // Bulk insert all lot data at once (no 3-minute wait)
+          const result = await demoAPI.bulkInsertLot(demoScenario);
+          console.log('✅ Bulk lot insertion complete:', result);
+
+          // Show success message with lot ID
+          setInjectionSuccess(result.message);
+          setTimeout(() => setInjectionSuccess(null), 5000);
+
+          // No need to fetch status or start progress tracking - instant insertion
+        } else {
+          // Start demo mode with appropriate mode based on auto-excursions status
+          // If auto-excursions are DISABLED, use agentic mode (excursion probability = 0)
+          // If auto-excursions are ENABLED, use charts mode (normal probability)
+          const params = {
+            mode: autoExcursionsEnabled ? 'charts' : 'agentic',
+            scenario: demoScenario
+          };
+
+          const result = await demoAPI.start(params);
+          await fetchStatus();
+        }
       }
     } catch (err) {
       console.error('Error toggling demo mode:', err);
@@ -150,6 +224,53 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Start tracking lot progress
+  const startLotProgressTracking = (durationSeconds) => {
+    const startTime = Date.now();
+    const endTime = startTime + (durationSeconds * 1000);
+
+    // Update progress every second
+    const interval = setInterval(async () => {
+      const now = Date.now();
+      const elapsed = (now - startTime) / 1000;
+      const remaining = Math.max(0, (endTime - now) / 1000);
+      const progress = Math.min(100, (elapsed / durationSeconds) * 100);
+
+      setLotProgress({
+        elapsed: Math.floor(elapsed),
+        remaining: Math.floor(remaining),
+        progress: Math.floor(progress),
+        currentWafer: Math.floor((elapsed / durationSeconds) * 25) + 1,
+        totalWafers: 25
+      });
+
+      // Check if complete OR if backend auto-stopped
+      if (remaining <= 0) {
+        clearInterval(interval);
+        setProgressInterval(null);
+        setLotProgress(null);
+        // Fetch final status - backend should have auto-stopped
+        await fetchStatus();
+      } else if (Math.floor(elapsed) % 5 === 0) {
+        // Also check backend status every 5 seconds
+        try {
+          const currentStatus = await demoAPI.getStatus();
+          if (!currentStatus.active) {
+            // Backend has stopped (manually or auto)
+            clearInterval(interval);
+            setProgressInterval(null);
+            setLotProgress(null);
+            setStatus(currentStatus);
+          }
+        } catch (err) {
+          console.error('Error checking status:', err);
+        }
+      }
+    }, 1000);
+
+    setProgressInterval(interval);
   };
 
   // Handle excursion injection
@@ -231,20 +352,41 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     setAlertId(null);
 
     try {
-      // Agent 1: Monitoring Agent (12-15s)
-      console.log('🤖 Running Agent 1: Monitoring Agent...');
-      setCurrentAgent(1);
-      setProgressPercent(25);
-      const monitoringResponse = await fetch(
-        `http://localhost:8000/ai-agents/analyze-scenario/${selectedScenario}`,
-        { method: 'POST' }
-      );
-      if (!monitoringResponse.ok) throw new Error('Monitoring Agent failed');
-      const monitoringData = await monitoringResponse.json();
-      const newAlertId = monitoringData.alert_info.alert_id;
-      setAlertId(newAlertId);
-      console.log(`✅ Agent 1 complete. Alert ID: ${newAlertId}`);
-      console.log('📊 Monitoring Data Structure:', JSON.stringify(monitoringData, null, 2));
+      let newAlertId = null;
+      let monitoringData = null;
+
+      // OPTION 1: Analyze existing lot processing alert
+      if (selectedLotAlertId) {
+        console.log('🔄 Analyzing existing lot processing alert:', selectedLotAlertId);
+        setCurrentAgent(1);
+        setProgressPercent(25);
+
+        const response = await aiAgentAPI.analyzeAlert(selectedLotAlertId);
+        newAlertId = response.alert_id; // Same as selectedLotAlertId
+        monitoringData = response;
+
+        console.log('✅ Agent 1 complete. Updated existing alert:', newAlertId);
+        console.log('📊 Monitoring Data:', JSON.stringify(monitoringData, null, 2));
+        setAlertId(newAlertId);
+      }
+      // OPTION 2: Create new alert from scenario (legacy agentic mode)
+      else {
+        console.log('🆕 Creating new alert for scenario:', selectedScenario);
+        setCurrentAgent(1);
+        setProgressPercent(25);
+
+        const monitoringResponse = await fetch(
+          `http://localhost:8000/ai-agents/analyze-scenario/${selectedScenario}`,
+          { method: 'POST' }
+        );
+        if (!monitoringResponse.ok) throw new Error('Monitoring Agent failed');
+        monitoringData = await monitoringResponse.json();
+        newAlertId = monitoringData.alert_info.alert_id;
+
+        console.log(`✅ Agent 1 complete. Created new alert: ${newAlertId}`);
+        console.log('📊 Monitoring Data Structure:', JSON.stringify(monitoringData, null, 2));
+        setAlertId(newAlertId);
+      }
 
       // Notify parent Dashboard about the created alert
       if (onAnalysisComplete) {
@@ -322,13 +464,105 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
         <div className={styles.agenticContainer}>
           {/* Left: Scenario Selection & Previously Analyzed Alerts */}
           <div className={styles.scenarioSection}>
+            {/* Option 1: Select existing lot processing alert */}
+            <div style={{ marginBottom: '12px' }}>
+              <span className={styles.scenarioLabel}>📦 Analyze Lot Processing Alert</span>
+              <select
+                className={styles.scenarioSelect}
+                value={selectedLotAlertId}
+                onChange={async (e) => {
+                  const alertId = e.target.value;
+                  setSelectedLotAlertId(alertId);
+
+                  if (alertId) {
+                    // Clear other selections
+                    setSelectedAlertId('');
+
+                    // Load the alert data and display it (if it has agent analysis already)
+                    setLoadingAlertData(true);
+                    setPipelineError(null);
+
+                    try {
+                      console.log('📥 Loading lot processing alert data:', alertId);
+
+                      // Fetch alert details to check if it has agent analysis
+                      const alert = await alertAPI.getById(alertId);
+                      console.log('📊 Alert data:', alert);
+
+                      // Check if this alert already has AI agent analysis
+                      const hasAgentAnalysis = alert.alert?.supervisor_agent_analysis ||
+                                               alert.alert?.rca_agent_analysis ||
+                                               alert.alert?.investigation_agent_analysis ||
+                                               alert.alert?.monitoring_agent_analysis;
+
+                      if (hasAgentAnalysis) {
+                        // Alert already analyzed - display it
+                        console.log('✅ Alert already has agent analysis - loading for display');
+                        setAlertId(alertId);
+                        setAnalysisComplete(true);
+                        setCurrentAgent(null);
+                        setProgressPercent(100);
+
+                        // Notify parent component
+                        if (onAnalysisComplete) {
+                          onAnalysisComplete(alertId);
+                        }
+                      } else {
+                        // Alert not yet analyzed - just set it for analysis
+                        console.log('📝 Alert not yet analyzed - ready to run pipeline');
+                        setAlertId(null);
+                        setAnalysisComplete(false);
+                      }
+                    } catch (err) {
+                      console.error('❌ Error loading lot alert:', err);
+                      setPipelineError('Failed to load alert data');
+                    } finally {
+                      setLoadingAlertData(false);
+                    }
+                  } else {
+                    // Cleared selection
+                    setAlertId(null);
+                    setAnalysisComplete(false);
+                  }
+                }}
+                disabled={pipelineRunning || loadingAlertData || loadingLotAlerts}
+              >
+                <option value="">
+                  {loadingLotAlerts ? 'Loading...' : '-- Or create new analysis below --'}
+                </option>
+                {lotAlerts.map((alert) => {
+                  const sourceData = alert.source_data || {};
+                  const scenarioLabel = sourceData.scenario_id === 'gradual_drift' ? 'Drift' :
+                                       sourceData.scenario_id === 'sudden_spike' ? 'Spike' :
+                                       sourceData.scenario_id === 'oscillating_pattern' ? 'Oscillation' : 'Unknown';
+                  return (
+                    <option key={alert.alert_id} value={alert.alert_id}>
+                      {alert.lot_id} • {scenarioLabel} • {alert.severity?.toUpperCase()} • {new Date(alert.timestamp).toLocaleTimeString()}
+                    </option>
+                  );
+                })}
+              </select>
+              {loadingLotAlerts && (
+                <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
+                  Loading lot processing alerts...
+                </div>
+              )}
+            </div>
+
             <div style={{ marginBottom: '12px' }}>
               <span className={styles.scenarioLabel}>🤖 AI Analysis Scenario</span>
               <select
                 className={styles.scenarioSelect}
                 value={selectedScenario}
-                onChange={(e) => setSelectedScenario(e.target.value)}
-                disabled={pipelineRunning || loadingAlertData}
+                onChange={(e) => {
+                  setSelectedScenario(e.target.value);
+                  // Clear lot alert selection when scenario is changed
+                  if (e.target.value) {
+                    setSelectedLotAlertId('');
+                    setSelectedAlertId('');
+                  }
+                }}
+                disabled={pipelineRunning || loadingAlertData || !!selectedLotAlertId}
               >
                 <option value="gradual_drift">Gradual Drift Pattern</option>
                 <option value="sudden_spike">Sudden Spike Event</option>
@@ -342,7 +576,13 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
               <select
                 className={styles.scenarioSelect}
                 value={selectedAlertId}
-                onChange={(e) => handleAlertSelection(e.target.value)}
+                onChange={(e) => {
+                  handleAlertSelection(e.target.value);
+                  // Clear lot alert and scenario when loading previous analysis
+                  if (e.target.value) {
+                    setSelectedLotAlertId('');
+                  }
+                }}
                 disabled={pipelineRunning || loadingAlertData || loadingAnalyzedAlerts}
               >
                 <option value="">
@@ -414,8 +654,26 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
       <div className={styles.compactContainer}>
         {/* Left: Status & Control */}
         <div className={styles.leftSection}>
+          {/* Scenario Selector - only show when demo is not active */}
+          {!status?.active && (
+            <select
+              className={styles.compactSelect}
+              value={demoScenario}
+              onChange={(e) => setDemoScenario(e.target.value)}
+              disabled={loading}
+              style={{ marginRight: '8px' }}
+            >
+              <option value="continuous">Continuous</option>
+              <option value="lot_processing_drift">Lot: Gradual Drift (3 min)</option>
+              <option value="lot_processing_spike">Lot: Sudden Spike (3 min)</option>
+              <option value="lot_processing_oscillation">Lot: Oscillation (3 min)</option>
+            </select>
+          )}
+
           <div className={styles.statusBadge}>
-            <span className={styles.demoLabel}>🚧 DEMO</span>
+            <span className={styles.demoLabel}>
+              {demoScenario.startsWith('lot_processing_') ? '📦 LOT' : '🚧 DEMO'}
+            </span>
             <span className={status?.active ? styles.activeIndicator : styles.inactiveIndicator}>
               {status?.active ? '● ACTIVE' : '○ INACTIVE'}
             </span>
@@ -509,6 +767,42 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
           )}
         </div>
       </div>
+
+      {/* Lot Processing Progress */}
+      {status?.active && demoScenario.startsWith('lot_processing_') && lotProgress && (
+        <div className={styles.lotProgressSection}>
+          <div className={styles.progressInfo}>
+            <span>
+              Lot 2025 ({demoScenario.split('_')[2]}): Wafer {lotProgress.currentWafer}/{lotProgress.totalWafers}
+            </span>
+            <span className={styles.progressTime}>
+              Time: {Math.floor(lotProgress.elapsed / 60)}:{(lotProgress.elapsed % 60).toString().padStart(2, '0')} / 3:00
+            </span>
+          </div>
+          <div className={styles.progressBar}>
+            <div
+              className={styles.progressFill}
+              style={{ width: `${lotProgress.progress}%` }}
+            />
+          </div>
+          {/* Show excursion warnings based on scenario pattern */}
+          {demoScenario === 'lot_processing_drift' && lotProgress.currentWafer >= 10 && lotProgress.currentWafer <= 17 && (
+            <div className={styles.excursionWarning}>
+              ⚠️ Gradual particle increase at wafer {lotProgress.currentWafer}
+            </div>
+          )}
+          {demoScenario === 'lot_processing_spike' && lotProgress.currentWafer === 15 && (
+            <div className={styles.excursionWarning}>
+              ⚠️ Sudden particle spike at wafer {lotProgress.currentWafer}
+            </div>
+          )}
+          {demoScenario === 'lot_processing_oscillation' && lotProgress.currentWafer >= 12 && lotProgress.currentWafer <= 19 && (
+            <div className={styles.excursionWarning}>
+              ⚠️ Cyclic particle pattern at wafer {lotProgress.currentWafer}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Success/Error messages */}
       {resetSuccess && (

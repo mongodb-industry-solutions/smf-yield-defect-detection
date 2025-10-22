@@ -62,6 +62,8 @@ const Dashboard = ({ onModeChange }) => {
   const handleAnalysisComplete = (alertId) => {
     console.log('📋 Analysis complete, setting alert ID:', alertId);
     setSelectedAlertId(alertId);
+    // Auto-select agent 1 (Monitoring Agent) to show analysis immediately
+    setSelectedAgent(1);
   };
 
   // Find agents that use a specific collection

@@ -257,6 +257,78 @@ async def analyze_scenario(scenario_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/analyze-alert/{alert_id}")
+async def analyze_existing_alert(alert_id: str):
+    """
+    Analyze existing alert (e.g., from lot processing) instead of creating new one
+
+    This endpoint enables reusing lot processing alerts in agentic AI mode:
+    - Fetches existing alert by ID
+    - Extracts scenario_id from source_data (must be in format: "gradual_drift", etc.)
+    - Runs MongoDB time series analysis
+    - Runs Claude AI analysis
+    - Updates existing alert with monitoring_agent_analysis
+    - Returns alert_id to continue pipeline with agents 2-4
+
+    Workflow after this endpoint:
+    1. POST /ai-agents/analyze-alert/{alert_id} (this endpoint)
+    2. POST /ai-agents/investigate (with alert_id)
+    3. POST /ai-agents/rca/{alert_id}
+    4. POST /ai-agents/supervisor/{alert_id}
+
+    Args:
+        alert_id: Existing alert ID from lot processing or previous analysis
+
+    Returns:
+        Analysis results with alert_id (not creating new alert)
+    """
+    logger.info("=" * 80)
+    logger.info(f"📥 POST /ai-agents/analyze-alert/{alert_id}")
+    logger.info("=" * 80)
+
+    try:
+        # Import the new worker function
+        from multi_agent.workers import analyze_existing_alert_tool
+
+        # Connect to MongoDB
+        mongodb_uri = os.getenv("MONGODB_URI")
+        database_name = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
+
+        if not mongodb_uri:
+            raise HTTPException(status_code=500, detail="MONGODB_URI not configured")
+
+        logger.info(f"🔗 Connecting to MongoDB...")
+        client = AsyncIOMotorClient(mongodb_uri)
+        db = client[database_name]
+
+        # Run analysis on existing alert
+        logger.info(f"🚀 Starting analysis for existing alert: {alert_id}")
+        result = await analyze_existing_alert_tool(alert_id, db)
+
+        # Close connection
+        client.close()
+        logger.info(f"🔌 MongoDB connection closed")
+
+        # Check for errors
+        if "error" in result:
+            logger.error(f"❌ Alert analysis failed: {result['error']}")
+            raise HTTPException(status_code=404, detail=result['error'])
+
+        logger.info("=" * 80)
+        logger.info(f"✅ POST /ai-agents/analyze-alert/{alert_id} - Success")
+        logger.info(f"   🔄 Alert updated (not created new)")
+        logger.info(f"   📊 Ready for agents 2-4")
+        logger.info("=" * 80)
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ POST /ai-agents/analyze-alert/{alert_id} - Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/investigate")
 async def investigate_scenario(payload: dict):
     """

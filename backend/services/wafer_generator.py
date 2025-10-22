@@ -103,6 +103,17 @@ class WaferGenerator:
         }
         defect_rate = base_defect_rate * severity_multiplier.get(severity, 1.0)
 
+        # Scale defect rate based on particle count magnitude (for particle excursions)
+        # Higher particle counts should produce lower yields (higher defect rates)
+        if excursion_type in ['particle_excursion', 'particle_spike']:
+            particle_count = metrics.get('particle_count', 0)
+            # Threshold: 1000 = baseline critical, scale linearly up to 3000
+            if particle_count > 1000:
+                scale_factor = min(2.0, 1.0 + (particle_count - 1000) / 2000)  # 1.0x to 2.0x
+                original_defect_rate = defect_rate
+                defect_rate = min(0.50, defect_rate * scale_factor)  # Cap at 50% defect rate
+                logger.info(f"Scaled defect_rate from {original_defect_rate:.2f} to {defect_rate:.2f} for particle_count={particle_count}")
+
         # Use wafer_id from sensor metadata to maintain correlation
         # This ensures wafer defect image links to the actual wafer from sensor data
         wafer_id = excursion_data.get('metadata', {}).get('wafer_id')
@@ -221,12 +232,23 @@ class WaferGenerator:
     def save_wafer(self, wafer_record: Dict[str, Any]) -> str:
         """
         Save wafer defect record to MongoDB
+        Checks for duplicates and only inserts if wafer_id doesn't exist
 
         Returns:
-            Inserted document ID
+            Inserted document ID (or existing ID if duplicate)
         """
+        wafer_id = wafer_record['wafer_id']
+
+        # Check if wafer already exists
+        existing = self.wafer_collection.find_one({'wafer_id': wafer_id}, {'_id': 1})
+
+        if existing:
+            logger.warning(f"Wafer {wafer_id} already exists with ID: {existing['_id']} - skipping duplicate insert")
+            return str(existing['_id'])
+
+        # Insert new wafer
         result = self.wafer_collection.insert_one(wafer_record)
-        logger.info(f"Wafer {wafer_record['wafer_id']} saved with ID: {result.inserted_id}")
+        logger.info(f"✅ New wafer {wafer_id} saved with ID: {result.inserted_id}")
         return str(result.inserted_id)
 
     def cleanup(self):

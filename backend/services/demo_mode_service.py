@@ -62,7 +62,15 @@ class DemoModeService:
         # Demo mode state
         self.demo_mode_active = False
         self.demo_task: Optional[asyncio.Task] = None
-        
+
+        # Lot processing scenario fields
+        self.demo_scenario = "continuous"  # "continuous" or "lot_processing"
+        self.demo_duration_seconds = None  # None = unlimited, number = time limit
+        self.demo_start_time = None
+        self.scripted_excursions = []  # Predetermined excursions at specific times
+        self.wafer_counter = 0  # Track wafers processed in this lot
+        self.lot_id = None  # Current lot being processed
+
         # Process context cache (loaded from MongoDB)
         self.process_context_cache: Dict[str, Any] = {
             "problematic_batches": [],
@@ -117,6 +125,7 @@ class DemoModeService:
         status = {
             "active": self.demo_mode_active,
             "task_running": task_running,
+            "scenario": self.demo_scenario,
             "interval_seconds": self.demo_interval_seconds,
             "excursion_probability": self.demo_excursion_probability,
             "equipment_ids": self.equipment_ids,
@@ -131,6 +140,25 @@ class DemoModeService:
             },
             "note": f"Parallel mode: All {equipment_count} standardized equipment report simultaneously each interval"
         }
+
+        # Add lot processing specific status
+        if self.demo_scenario.startswith("lot_processing_"):
+            if self.demo_start_time:
+                elapsed_seconds = (datetime.now(timezone.utc) - self.demo_start_time).total_seconds()
+                remaining_seconds = max(0, (self.demo_duration_seconds or 0) - elapsed_seconds)
+            else:
+                elapsed_seconds = 0
+                remaining_seconds = self.demo_duration_seconds or 0
+
+            status["lot_processing"] = {
+                "lot_id": self.lot_id,
+                "current_wafer": self.wafer_counter,
+                "total_wafers": 25,
+                "elapsed_seconds": round(elapsed_seconds),
+                "remaining_seconds": round(remaining_seconds),
+                "duration_seconds": self.demo_duration_seconds,
+                "progress_percentage": round((self.wafer_counter / 25) * 100) if self.wafer_counter > 0 else 0
+            }
         
         logger.debug(f"📊 Demo mode status: active={status['active']}, task_running={task_running}")
         return status
@@ -372,49 +400,106 @@ class DemoModeService:
     async def demo_data_generator(self):
         """
         Generate normal sensor data with occasional anomalies - parallel for all equipment
-        
+
         This is the main async loop that generates demo data continuously while demo mode is active.
         """
         logger.info(
             f"🎬 Demo data generator started - "
+            f"Scenario: {self.demo_scenario}, "
             f"Interval: {self.demo_interval_seconds}s, "
             f"Excursion probability: {self.demo_excursion_probability}"
         )
-        logger.info(
-            f"📊 Generating parallel data for {len(self.equipment_ids)} equipment - "
-            f"{60 // (120 // self.demo_interval_seconds)} data points per 2 minutes"
-        )
-        
+
+        if self.demo_scenario.startswith("lot_processing_"):
+            logger.info(f"📦 Processing lot {self.lot_id}: 25 wafers over 3 minutes")
+        else:
+            logger.info(
+                f"📊 Generating parallel data for {len(self.equipment_ids)} equipment - "
+                f"{60 // (120 // self.demo_interval_seconds)} data points per 2 minutes"
+            )
+
         while self.demo_mode_active:
             try:
+                # Check time limit for lot processing
+                if self.demo_duration_seconds:
+                    elapsed = (datetime.now(timezone.utc) - self.demo_start_time).total_seconds()
+                    if elapsed >= self.demo_duration_seconds:
+                        logger.info(f"⏱️ Demo completed after {elapsed:.0f}s")
+                        # Auto-stop after duration
+                        await self.stop_demo_mode()
+                        break
+
+                # Increment wafer counter for lot processing
+                if self.demo_scenario.startswith("lot_processing_"):
+                    self.wafer_counter += 1
+                    if self.wafer_counter > 25:
+                        logger.info(f"✅ Lot {self.lot_id} processing complete - 25 wafers processed")
+                        await self.stop_demo_mode()
+                        break
+
+                    logger.info(f"🔵 Processing wafer {self.wafer_counter}/25 in lot {self.lot_id}")
+
                 # Generate timestamp once for all equipment in this batch
                 timestamp = datetime.now(timezone.utc)
-                
+
                 # Collect data for all equipment
                 bulk_data = []
                 excursion_count = 0
                 particle_excursion_count = 0
-                
-                # Pick at most ONE equipment to have excursion (prevents multiple simultaneous Bedrock calls)
+
+                # Handle scripted excursions for lot processing
                 excursion_equipment = None
-                if random.random() < self.demo_excursion_probability:
-                    excursion_equipment = random.choice(self.equipment_ids)
-                
+                excursion_details = None
+
+                if self.demo_scenario.startswith("lot_processing_") and self.scripted_excursions:
+                    # Check if current wafer has a scripted excursion
+                    for exc in self.scripted_excursions:
+                        if exc["wafer"] == self.wafer_counter:
+                            excursion_equipment = exc["equipment"]
+                            excursion_details = exc
+                            logger.info(f"⚠️ Scripted excursion at wafer {self.wafer_counter}: {exc}")
+                            break
+                else:
+                    # Original logic: random excursions
+                    if random.random() < self.demo_excursion_probability:
+                        excursion_equipment = random.choice(self.equipment_ids)
+
                 for equipment_id in self.equipment_ids:
-                    # Only the selected equipment gets excursion
-                    is_excursion = (equipment_id == excursion_equipment)
-                    if is_excursion:
-                        excursion_count += 1
-                    
+                    # Check if this equipment has excursion
+                    is_excursion = False
+                    metrics = self.generate_demo_metrics(equipment_id, False)  # Start with normal
+
+                    if equipment_id == excursion_equipment:
+                        if excursion_details:
+                            # Use scripted values
+                            if excursion_details["type"] == "particle":
+                                metrics["particle_count"] = excursion_details["value"]
+                                is_excursion = True
+                        else:
+                            # Random excursion
+                            metrics = self.generate_demo_metrics(equipment_id, True)
+                            is_excursion = True
+
+                        if is_excursion:
+                            excursion_count += 1
+
+                    # Generate metadata with lot information if applicable
+                    metadata = self.generate_demo_metadata(is_excursion)
+                    if self.demo_scenario.startswith("lot_processing_"):
+                        # Extract numeric lot ID from LOT_2025_101 → 101 for consistent wafer naming
+                        lot_num = self.lot_id.split("_")[-1]  # Gets "101"
+                        metadata["lot_id"] = self.lot_id
+                        metadata["wafer_id"] = f"W_{lot_num}_{self.wafer_counter:02d}"  # W_101_15 (consistent with continuous mode)
+
                     # Generate sensor data for this equipment
                     data = {
                         "equipment_id": equipment_id,
                         "process_step": equipment_id.split("_")[0],
                         "timestamp": timestamp,  # Use same timestamp for batch consistency
-                        "metrics": self.generate_demo_metrics(equipment_id, is_excursion),
-                        "metadata": self.generate_demo_metadata(is_excursion)
+                        "metrics": metrics,
+                        "metadata": metadata
                     }
-                    
+
                     bulk_data.append(data)
                     
                     # Track particle excursions for logging
@@ -632,15 +717,172 @@ class DemoModeService:
         except Exception as e:
             logger.error(f"❌ Failed to reset demo collections: {e}", exc_info=True)
             raise
-    
-    async def start_demo_mode(self, mode: str = "charts", custom_probability: Optional[float] = None) -> Dict[str, Any]:
+
+    async def bulk_insert_lot_scenario(self, scenario: str) -> Dict[str, Any]:
+        """
+        Bulk insert all sensor data for a lot processing scenario at once (no 3-minute wait).
+        Creates only ONE alert per lot for drift scenarios.
+
+        Args:
+            scenario: "lot_processing_drift", "lot_processing_spike", or "lot_processing_oscillation"
+
+        Returns:
+            Dict with lot_id, total_wafers, pattern, and sensor data insertion status
+        """
+        try:
+            import random
+            from datetime import timedelta
+
+            # Generate unique lot number
+            lot_number = random.randint(101, 999)
+            lot_id = f"LOT_2025_{lot_number:03d}"
+            lot_num = str(lot_number).zfill(3)
+
+            # Extract pattern
+            pattern = scenario.split("_")[-1]  # drift, spike, oscillation
+
+            # Map lot processing scenarios to standard agentic AI scenario IDs
+            # This enables reusing lot processing alerts in agentic AI mode
+            SCENARIO_MAPPING = {
+                "lot_processing_drift": "gradual_drift",
+                "lot_processing_spike": "sudden_spike",
+                "lot_processing_oscillation": "oscillating_pattern"
+            }
+            scenario_id_for_agents = SCENARIO_MAPPING.get(scenario, "gradual_drift")
+
+            logger.info(f"📦 Scenario mapping: {scenario} → {scenario_id_for_agents} (agentic AI compatible)")
+
+            # Define excursion patterns (same as before)
+            if scenario == "lot_processing_drift":
+                scripted_excursions = [
+                    {"wafer": 10, "equipment": "CMP_TOOL_01", "type": "particle", "value": 800},
+                    {"wafer": 11, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1100},  # MEDIUM
+                    {"wafer": 12, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1300},
+                    {"wafer": 13, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},  # HIGH
+                    {"wafer": 14, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1900},
+                    {"wafer": 15, "equipment": "CMP_TOOL_01", "type": "particle", "value": 2100},  # CRITICAL
+                    {"wafer": 16, "equipment": "CMP_TOOL_01", "type": "particle", "value": 2300},
+                    {"wafer": 17, "equipment": "CMP_TOOL_01", "type": "particle", "value": 2500},
+                    {"wafer": 18, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1800},
+                    {"wafer": 19, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1200},
+                    {"wafer": 20, "equipment": "CMP_TOOL_01", "type": "particle", "value": 900},
+                ]
+            elif scenario == "lot_processing_spike":
+                scripted_excursions = [
+                    {"wafer": 15, "equipment": "CMP_TOOL_01", "type": "particle", "value": 2800},  # CRITICAL
+                    {"wafer": 16, "equipment": "CMP_TOOL_01", "type": "particle", "value": 600},
+                    {"wafer": 17, "equipment": "CMP_TOOL_01", "type": "particle", "value": 500},
+                ]
+            elif scenario == "lot_processing_oscillation":
+                scripted_excursions = [
+                    {"wafer": 12, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},  # HIGH
+                    {"wafer": 13, "equipment": "CMP_TOOL_01", "type": "particle", "value": 600},
+                    {"wafer": 14, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1700},
+                    {"wafer": 15, "equipment": "CMP_TOOL_01", "type": "particle", "value": 550},
+                    {"wafer": 16, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1800},
+                    {"wafer": 17, "equipment": "CMP_TOOL_01", "type": "particle", "value": 600},
+                    {"wafer": 18, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1650},
+                    {"wafer": 19, "equipment": "CMP_TOOL_01", "type": "particle", "value": 500},
+                ]
+            else:
+                scripted_excursions = []
+
+            # Create lookup dict for excursions
+            excursion_map = {exc["wafer"]: exc for exc in scripted_excursions}
+
+            # Generate sensor data for all 25 wafers
+            base_time = datetime.now(timezone.utc)
+            bulk_data = []
+
+            logger.info(f"📦 Bulk generating {pattern} scenario for lot {lot_id} (25 wafers)")
+
+            for wafer_num in range(1, 26):
+                # Each wafer gets a timestamp 7.2s apart (simulates 3-minute processing)
+                timestamp = base_time + timedelta(seconds=(wafer_num - 1) * 7.2)
+
+                # Generate data for all equipment at this wafer's timestamp
+                for equipment_id in self.equipment_ids:
+                    # Check if this wafer/equipment has scripted excursion
+                    is_excursion = False
+                    metrics = self.generate_demo_metrics(equipment_id, False)
+
+                    if wafer_num in excursion_map and equipment_id == excursion_map[wafer_num]["equipment"]:
+                        exc = excursion_map[wafer_num]
+                        if exc["type"] == "particle":
+                            metrics["particle_count"] = exc["value"]
+                            is_excursion = True
+
+                    # Generate metadata with lot/wafer info
+                    metadata = self.generate_demo_metadata(is_excursion)
+                    metadata["lot_id"] = lot_id
+                    metadata["wafer_id"] = f"W_{lot_num}_{wafer_num:02d}"
+
+                    # Add scenario metadata for agentic AI integration
+                    # This allows lot processing alerts to be selected and analyzed in agentic AI mode
+                    metadata["scenario_id"] = scenario_id_for_agents  # "gradual_drift", "sudden_spike", etc.
+                    metadata["pattern_type"] = pattern  # "drift", "spike", "oscillation"
+                    metadata["is_lot_processing_scenario"] = True
+
+                    # Mark first excursion for single alert creation
+                    if is_excursion and pattern == "drift" and wafer_num == 11:
+                        # For drift, mark wafer 11 (first MEDIUM breach) as the trigger
+                        metadata["is_first_drift_excursion"] = True
+                    elif is_excursion and pattern == "spike" and wafer_num == 15:
+                        # For spike, mark wafer 15 as trigger
+                        metadata["is_first_spike_excursion"] = True
+                    elif is_excursion and pattern == "oscillation" and wafer_num == 12:
+                        # For oscillation, mark wafer 12 as trigger
+                        metadata["is_first_oscillation_excursion"] = True
+
+                    data = {
+                        "equipment_id": equipment_id,
+                        "process_step": equipment_id.split("_")[0],
+                        "timestamp": timestamp,
+                        "metrics": metrics,
+                        "metadata": metadata
+                    }
+                    bulk_data.append(data)
+
+            # Bulk write all sensor data at once
+            logger.info(f"💾 Inserting {len(bulk_data)} sensor readings for {lot_id}...")
+            result = self.sensor_writer.bulk_write_sensor_data(bulk_data)
+
+            logger.info(
+                f"✅ Bulk insert complete: {result['sensor_events']['inserted']} sensor_events, "
+                f"{result['process_sensor_ts']['inserted']} time series records"
+            )
+
+            # Return summary
+            return {
+                "status": "success",
+                "lot_id": lot_id,
+                "total_wafers": 25,
+                "pattern": pattern,
+                "sensor_records_inserted": len(bulk_data),
+                "excursion_wafers": list(excursion_map.keys()),
+                "message": f"Lot {lot_id} ({pattern}) data inserted successfully. Alerts will be generated shortly."
+            }
+
+        except Exception as e:
+            logger.error(f"❌ Failed to bulk insert lot scenario: {e}", exc_info=True)
+            raise Exception(f"Failed to bulk insert lot scenario: {str(e)}")
+
+    async def start_demo_mode(
+        self,
+        mode: str = "charts",
+        custom_probability: Optional[float] = None,
+        scenario: str = "continuous",
+        duration_seconds: Optional[int] = None
+    ) -> Dict[str, Any]:
         """
         Start demo mode data generation
-        
+
         Args:
-            mode: Mode indicator ("charts" or "agentic")
+            mode: Mode indicator ("charts", "agentic", or "lot_processing")
             custom_probability: Optional custom excursion probability
-            
+            scenario: "continuous" or "lot_processing"
+            duration_seconds: Optional duration limit in seconds
+
         Returns:
             Dict with start status and configuration
         """
@@ -650,22 +892,87 @@ class DemoModeService:
                 "status": "already_running",
                 "message": "Demo mode is already active",
                 "interval_seconds": self.demo_interval_seconds,
-                "excursion_probability": self.demo_excursion_probability
+                "excursion_probability": self.demo_excursion_probability,
+                "scenario": self.demo_scenario
             }
-        
+
         try:
             # Store original probability for restoration later
             original_probability = self.demo_excursion_probability
-            
-            logger.info(f"🎬 Demo start request - mode: {mode}")
-            
+
+            logger.info(f"🎬 Demo start request - mode: {mode}, scenario: {scenario}")
+
+            # Set scenario
+            self.demo_scenario = scenario
+
+            # Handle lot processing scenarios (drift, spike, oscillation)
+            if scenario in ["lot_processing_drift", "lot_processing_spike", "lot_processing_oscillation"]:
+                # Configure for 3-minute lot processing
+                self.demo_duration_seconds = 180  # 3 minutes
+                self.demo_interval_seconds = 7.2  # Process 25 wafers in 3 minutes (180/25)
+                self.demo_excursion_probability = 0  # No random excursions
+                self.wafer_counter = 0
+                # Generate unique lot number (101-999) to avoid conflicts with continuous mode (1-50)
+                # This ensures each lot processing run has unique wafer IDs
+                import random
+                lot_number = random.randint(101, 999)  # Use 101-999 range for lot processing
+                self.lot_id = f"LOT_2025_{lot_number:03d}"  # e.g., LOT_2025_342 (matches continuous mode format)
+
+                # Define different excursion patterns based on scenario
+                # NOTE: Using centralized thresholds: MEDIUM=1000, HIGH=1500, CRITICAL=2000
+                if scenario == "lot_processing_drift":
+                    # Gradual drift: Particle count gradually increases from wafer 10-17
+                    # Escalates from MEDIUM → HIGH → CRITICAL severity
+                    self.scripted_excursions = [
+                        {"wafer": 10, "equipment": "CMP_TOOL_01", "type": "particle", "value": 800},
+                        {"wafer": 11, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1100},  # MEDIUM alert
+                        {"wafer": 12, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1300},
+                        {"wafer": 13, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},  # HIGH alert
+                        {"wafer": 14, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1900},
+                        {"wafer": 15, "equipment": "CMP_TOOL_01", "type": "particle", "value": 2100},  # CRITICAL alert
+                        {"wafer": 16, "equipment": "CMP_TOOL_01", "type": "particle", "value": 2300},
+                        {"wafer": 17, "equipment": "CMP_TOOL_01", "type": "particle", "value": 2500},
+                        # Wafers 18-20 still elevated but dropping
+                        {"wafer": 18, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1800},
+                        {"wafer": 19, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1200},
+                        {"wafer": 20, "equipment": "CMP_TOOL_01", "type": "particle", "value": 900},
+                    ]
+                    logger.info(f"📦 Lot processing DRIFT: Gradual particle increase wafers 10-17 (800→2500)")
+
+                elif scenario == "lot_processing_spike":
+                    # Sudden spike: Sharp CRITICAL excursion at wafer 15, then returns to normal
+                    self.scripted_excursions = [
+                        {"wafer": 15, "equipment": "CMP_TOOL_01", "type": "particle", "value": 2800},  # CRITICAL spike
+                        {"wafer": 16, "equipment": "CMP_TOOL_01", "type": "particle", "value": 600},   # Back to normal
+                        {"wafer": 17, "equipment": "CMP_TOOL_01", "type": "particle", "value": 500},
+                    ]
+                    logger.info(f"📦 Lot processing SPIKE: Sudden CRITICAL spike at wafer 15 (2800)")
+
+                elif scenario == "lot_processing_oscillation":
+                    # Oscillating pattern: Alternating between HIGH and normal values
+                    self.scripted_excursions = [
+                        {"wafer": 12, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},  # HIGH
+                        {"wafer": 13, "equipment": "CMP_TOOL_01", "type": "particle", "value": 600},   # Normal
+                        {"wafer": 14, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1700},  # HIGH
+                        {"wafer": 15, "equipment": "CMP_TOOL_01", "type": "particle", "value": 550},   # Normal
+                        {"wafer": 16, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1800},  # HIGH
+                        {"wafer": 17, "equipment": "CMP_TOOL_01", "type": "particle", "value": 600},   # Normal
+                        {"wafer": 18, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1650},  # HIGH
+                        {"wafer": 19, "equipment": "CMP_TOOL_01", "type": "particle", "value": 500},   # Normal
+                    ]
+                    logger.info(f"📦 Lot processing OSCILLATION: Cyclic HIGH alerts wafers 12-19")
+
             # Check if mode is "agentic" - if so, set probability to 0
-            if mode == "agentic":
+            elif mode == "agentic":
                 self.demo_excursion_probability = 0.0
                 logger.info("🤖 Agentic AI mode: Setting excursion probability to 0 (manual pattern injection only)")
             elif custom_probability is not None:
                 self.demo_excursion_probability = float(custom_probability)
                 logger.info(f"🎲 Overriding excursion probability to {self.demo_excursion_probability}")
+
+            # Set duration if provided
+            if duration_seconds is not None:
+                self.demo_duration_seconds = duration_seconds
             
             # ========== LOAD REAL PROCESS CONTEXT IDs ==========
             await self.load_process_context_ids()
@@ -673,28 +980,61 @@ class DemoModeService:
             
             # NOTE: Seeding is now handled by separate /api/demo/initialize-seed endpoint
             # This endpoint only starts continuous data generation
-            
-            # Set demo mode active flag
+
+            # Set demo mode active flag and start time
             self.demo_mode_active = True
-            
+            self.demo_start_time = datetime.now(timezone.utc)
+
             # Create and start the demo task
             self.demo_task = asyncio.create_task(self.demo_data_generator())
-            
-            log_msg = f"🎬 Demo mode started successfully with excursion probability: {self.demo_excursion_probability}"
-            if mode == "agentic":
-                log_msg += " (Agentic AI mode - anomalies disabled for manual pattern injection)"
+
+            log_msg = f"🎬 Demo mode started successfully"
+            if scenario.startswith("lot_processing_"):
+                pattern = scenario.split("_")[-1]  # drift, spike, or oscillation
+                log_msg = f"📦 Lot processing ({pattern}) started: {self.lot_id} - 25 wafers in 3 minutes"
+            elif mode == "agentic":
+                log_msg += f" with excursion probability: {self.demo_excursion_probability} (Agentic AI mode)"
+            else:
+                log_msg += f" with excursion probability: {self.demo_excursion_probability}"
             logger.info(log_msg)
-            
-            return {
+
+            result = {
                 "status": "started",
-                "message": "Demo mode started successfully - continuous generation only (no seeding)",
+                "message": "Lot processing demo started" if scenario.startswith("lot_processing_") else "Demo mode started successfully",
                 "mode": mode,
+                "scenario": scenario,
                 "interval_seconds": self.demo_interval_seconds,
                 "excursion_probability": self.demo_excursion_probability,
                 "original_probability": original_probability,
                 "equipment_ids": self.equipment_ids,
-                "note": "Seed data should already exist from /api/demo/initialize-seed"
             }
+
+            if scenario.startswith("lot_processing_"):
+                # Determine excursion wafers based on scenario
+                pattern = scenario.split("_")[-1]
+                if pattern == "drift":
+                    excursion_wafers = list(range(10, 18))  # 10-17
+                    note = "Gradual particle increase at wafers 10-17"
+                elif pattern == "spike":
+                    excursion_wafers = [15, 16, 17]
+                    note = "Sudden particle spike at wafer 15"
+                elif pattern == "oscillation":
+                    excursion_wafers = list(range(12, 20))  # 12-19
+                    note = "Cyclic particle pattern at wafers 12-19"
+                else:
+                    excursion_wafers = [15, 16, 17]
+                    note = "Particle contamination will occur"
+
+                result["lot_processing"] = {
+                    "lot_id": self.lot_id,
+                    "total_wafers": 25,
+                    "duration_seconds": self.demo_duration_seconds,
+                    "pattern": pattern,
+                    "excursions_at_wafers": excursion_wafers,
+                    "note": note
+                }
+
+            return result
             
         except Exception as e:
             self.demo_mode_active = False
@@ -704,46 +1044,71 @@ class DemoModeService:
     async def stop_demo_mode(self, restore_probability: float = 0.05) -> Dict[str, Any]:
         """
         Stop demo mode data generation
-        
+
         Args:
             restore_probability: Probability to restore (from environment variable)
-            
+
         Returns:
             Dict with stop status
         """
+        # Store final status for lot processing before stopping
+        final_status = {}
+        if self.demo_scenario.startswith("lot_processing_"):
+            final_status = {
+                "lot_id": self.lot_id,
+                "wafers_processed": self.wafer_counter,
+                "total_wafers": 25,
+                "completion_percentage": round((self.wafer_counter / 25) * 100),
+            }
+            logger.info(f"📦 Lot processing stopped: {self.wafer_counter}/25 wafers processed")
+
         # Restore original excursion probability
         self.demo_excursion_probability = restore_probability
         logger.info(f"🔄 Restored excursion probability to {restore_probability}")
-        
+
         if not self.demo_mode_active:
             logger.warning("⚠️  Demo mode not active")
             return {
                 "status": "not_running",
                 "message": "Demo mode is not active"
             }
-        
+
         try:
             # Set flag to stop the generator
             self.demo_mode_active = False
-            
+
             # Cancel the task if it exists (don't wait for it)
             if self.demo_task and not self.demo_task.done():
                 self.demo_task.cancel()
                 logger.info("🛑 Demo task cancellation requested")
                 # Don't await - just let it cancel in background
-            
+
             self.demo_task = None
-            
+
+            # Reset lot processing state
+            self.demo_scenario = "continuous"
+            self.demo_duration_seconds = None
+            self.demo_start_time = None
+            self.scripted_excursions = []
+            self.wafer_counter = 0
+            self.lot_id = None
+
             logger.info("✅ Demo mode stopped successfully")
             logger.info("   ℹ️  SensorDataWriter connections kept open for next demo session")
             logger.info("   💡 Connections will be closed on service shutdown via cleanup()")
-            
-            return {
+
+            result = {
                 "status": "stopped",
                 "message": "Demo mode stopped successfully",
                 "note": "Sensor data will stop generating. Monitoring loops continue running."
             }
-            
+
+            # Add lot processing final status if applicable
+            if final_status:
+                result["lot_processing_summary"] = final_status
+
+            return result
+
         except Exception as e:
             logger.error(f"❌ Error stopping demo mode: {e}", exc_info=True)
             raise Exception(f"Failed to stop demo mode: {str(e)}")

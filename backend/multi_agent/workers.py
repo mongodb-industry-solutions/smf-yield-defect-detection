@@ -749,3 +749,202 @@ async def analyze_scenario_tool(scenario_id: str, db) -> dict:
         import traceback
         traceback.print_exc()
         return {"error": "Scenario analysis failed", "details": str(e)}
+
+
+async def analyze_existing_alert_tool(alert_id: str, db) -> dict:
+    """
+    Analyze existing alert (e.g., from lot processing) instead of creating new one.
+
+    This enables reusing lot processing alerts in agentic AI mode:
+    1. Fetches existing alert by ID
+    2. Extracts scenario_id from source_data (must be in agentic AI format: "gradual_drift", etc.)
+    3. Runs same MongoDB analysis as analyze_scenario_tool
+    4. Updates existing alert with monitoring_agent_analysis (instead of creating new alert)
+    5. Returns alert_id to continue pipeline with agents 2-4
+
+    Args:
+        alert_id: Existing alert ID to analyze
+        db: MongoDB database instance
+
+    Returns:
+        Analysis results with alert_id (not creating new alert)
+    """
+    # Import modular tools
+    from multi_agent.tools.scenario_tools import (
+        load_scenario_metadata,
+        perform_comprehensive_analysis
+    )
+    from multi_agent.prompts.scenario_prompts import (
+        build_scenario_analysis_prompt
+    )
+
+    logger.info("=" * 80)
+    logger.info(f"🔄 [ANALYZE EXISTING ALERT] Analyzing alert: {alert_id}")
+    logger.info("=" * 80)
+
+    overall_start = time.time()
+
+    try:
+        # ===== Step 1: Fetch Existing Alert =====
+        logger.info(f"\n📥 [STEP 1] Fetching existing alert from database...")
+        alert = await db.alerts.find_one({"alert_id": alert_id})
+
+        if not alert:
+            logger.error(f"❌ Alert not found: {alert_id}")
+            return {"error": f"Alert {alert_id} not found"}
+
+        logger.info(f"   ✅ Alert found: {alert.get('title', 'Unknown')}")
+        logger.info(f"   📋 Alert type: {alert.get('alert_type')}")
+        logger.info(f"   🏷️  Severity: {alert.get('severity')}")
+
+        # ===== Step 2: Extract Scenario Info =====
+        logger.info(f"\n🔍 [STEP 2] Extracting scenario metadata from alert...")
+        source_data = alert.get("source_data", {})
+        scenario_id = source_data.get("scenario_id")
+
+        if not scenario_id:
+            logger.error(f"❌ Alert missing scenario_id in source_data")
+            logger.error(f"   Source data keys: {list(source_data.keys())}")
+            return {"error": "Alert missing scenario_id in source_data. Cannot run agentic analysis."}
+
+        logger.info(f"   ✅ Scenario ID: {scenario_id}")
+        logger.info(f"   🎯 Pattern type: {source_data.get('pattern_type', 'unknown')}")
+        logger.info(f"   📦 Lot processing: {source_data.get('is_lot_processing_scenario', False)}")
+
+        # ===== Step 3: Load Scenario Metadata =====
+        logger.info(f"\n📊 [STEP 3] Loading scenario metadata for: {scenario_id}")
+        metadata = await load_scenario_metadata(db, scenario_id)
+        if not metadata:
+            logger.error(f"❌ Scenario metadata not found for: {scenario_id}")
+            return {"error": f"Scenario {scenario_id} not found in database"}
+
+        logger.info(f"   ✅ Metadata loaded: {metadata.get('title', 'Unknown')}")
+
+        # ===== Step 4-5: Execute Comprehensive MongoDB Analysis =====
+        logger.info(f"\n🗄️  [STEP 4-5] Running MongoDB analysis...")
+        analysis_results = await perform_comprehensive_analysis(db, scenario_id)
+
+        # ===== Step 6: Claude Analysis =====
+        logger.info(f"\n🧠 [STEP 6] Invoking Claude for insight generation...")
+        claude_start = time.time()
+
+        # Build comprehensive prompt using template
+        prompt = build_scenario_analysis_prompt(
+            metadata,
+            analysis_results['statistics'],
+            analysis_results['trend'],
+            analysis_results['comparative']
+        )
+
+        claude_response = call_claude(prompt, temperature=0.2, max_tokens=600)
+        claude_analysis = json.loads(claude_response)
+
+        claude_elapsed = (time.time() - claude_start) * 1000
+        logger.info(f"⚡ [CLAUDE] Analysis completed in {claude_elapsed:.0f}ms")
+        logger.info(f"   🎯 Risk Level: {claude_analysis.get('risk_level', 'UNKNOWN')}")
+        logger.info(f"   📊 Confidence: {claude_analysis.get('confidence', 0):.2f}")
+
+        # ===== Step 7: Build Monitoring Agent Analysis =====
+        mongodb_analysis_for_alert = {
+            "statistical_summary": {
+                "avg_particle_count": round(analysis_results['statistics']['overall'].get('avg_particles', 0), 1),
+                "min": int(analysis_results['statistics']['overall'].get('min_particles', 0)),
+                "max": int(analysis_results['statistics']['overall'].get('max_particles', 0)),
+                "stddev": round(analysis_results['statistics']['overall'].get('stddev_particles', 0), 1),
+                "threshold_violations": analysis_results['statistics']['violations'].get('violation_count', 0),
+                "readings_analyzed": analysis_results['statistics']['overall'].get('readings_count', 0)
+            },
+            "trend_analysis": {
+                "direction": analysis_results['trend']['direction'],
+                "change_percentage": round(analysis_results['trend']['change_pct'], 1),
+                "first_period_avg": round(analysis_results['trend']['first_avg'], 1),
+                "last_period_avg": round(analysis_results['trend']['last_avg'], 1)
+            },
+            "comparative_windows": {
+                "baseline_avg": round(analysis_results['comparative']['baseline'].get('avg', 0), 1),
+                "baseline_stddev": round(analysis_results['comparative']['baseline'].get('stddev', 0), 1),
+                "anomaly_avg": round(analysis_results['comparative']['anomaly'].get('avg', 0), 1),
+                "anomaly_max": int(analysis_results['comparative']['anomaly'].get('max', 0)),
+                "deviation_pct": round(analysis_results['comparative']['deviation_pct'], 1)
+            },
+            "execution_metrics": analysis_results['execution_metrics'],
+            "llm_interpretation": {
+                "risk_level": claude_analysis.get('risk_level', 'UNKNOWN'),
+                "confidence": claude_analysis.get('confidence', 0),
+                "pattern_detected": claude_analysis.get('pattern_detected', 'unknown'),
+                "key_insights": claude_analysis.get('key_insights', []),
+                "recommended_actions": claude_analysis.get('recommended_actions', []),
+                "mongodb_showcase": claude_analysis.get('mongodb_showcase', '')
+            }
+        }
+
+        # ===== Step 8: UPDATE Existing Alert (NOT Create New) =====
+        logger.info(f"\n🔄 [STEP 8] Updating existing alert with monitoring agent analysis...")
+        update_result = await db.alerts.update_one(
+            {"alert_id": alert_id},
+            {
+                "$set": {
+                    "monitoring_agent_analysis": mongodb_analysis_for_alert,
+                    "updated_at": datetime.now(timezone.utc)
+                }
+            }
+        )
+
+        if update_result.modified_count > 0:
+            logger.info(f"   ✅ Alert updated successfully!")
+            logger.info(f"   📊 Added monitoring_agent_analysis field")
+        else:
+            logger.warning(f"   ⚠️  Alert not modified (may already have analysis)")
+
+        # ===== Final Summary =====
+        overall_elapsed = (time.time() - overall_start) * 1000
+        mongodb_time = analysis_results['execution_metrics']['mongodb_total_ms']
+
+        logger.info(f"\n" + "=" * 80)
+        logger.info(f"📋 [SUMMARY] Existing Alert Analysis Complete")
+        logger.info("=" * 80)
+        logger.info(f"   ⏱️  Total Time: {overall_elapsed:.0f}ms")
+        logger.info(f"   🗄️  MongoDB Queries: {mongodb_time:.0f}ms")
+        logger.info(f"   🤖 Claude Analysis: {claude_elapsed:.0f}ms")
+        logger.info(f"   🔄 Alert Updated: {alert_id} (NOT created new)")
+        logger.info(f"   🎯 Risk: {claude_analysis.get('risk_level', 'UNKNOWN')} ({claude_analysis.get('confidence', 0):.0%} confidence)")
+        logger.info("=" * 80 + "\n")
+
+        # Build response matching analyze_scenario_tool format
+        return {
+            "alert_id": alert_id,  # Return same alert_id
+            "alert_created": False,  # CRITICAL: Indicates we updated existing alert
+            "scenario_id": scenario_id,
+            "alert_info": {
+                "alert_id": alert_id,
+                "alert_created": False,
+                "message": f"Updated existing alert {alert_id} with monitoring agent analysis"
+            },
+            "scenario_metadata": {
+                "title": metadata['title'],
+                "description": metadata['description'],
+                "equipment_id": metadata['equipment_id'],
+                "duration_minutes": metadata['duration_minutes'],
+                "data_points": metadata['data_points'],
+                "pattern_type": metadata['pattern_type'],
+                "root_cause": metadata['root_cause']
+            },
+            "execution_metrics": {
+                "total_time_ms": round(overall_elapsed, 0),
+                "mongodb_time_ms": round(mongodb_time, 0),
+                "claude_time_ms": round(claude_elapsed, 0),
+                "queries_executed": 4
+            },
+            "mongodb_analysis": mongodb_analysis_for_alert,
+            "agent_analysis": claude_analysis
+        }
+
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ Failed to parse Claude response: {e}")
+        return {"error": "Failed to parse Claude response", "details": str(e)}
+
+    except Exception as e:
+        logger.error(f"❌ Existing alert analysis error: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"error": "Existing alert analysis failed", "details": str(e)}

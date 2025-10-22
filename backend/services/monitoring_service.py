@@ -333,8 +333,9 @@ class MonitoringService:
                 "timestamp": wafer_record['inspection_timestamp']
             })
 
-            # Clean up
-            self.wafer_generator.cleanup()
+            # NOTE: Do NOT call cleanup() here - it closes the MongoDB client
+            # and breaks subsequent wafer generations. Cleanup is handled by
+            # the service shutdown lifecycle in main.py
 
         except Exception as e:
             logger.error(f"Error generating wafer defect for alert {excursion_data.get('alert_id')}: {e}")
@@ -428,6 +429,9 @@ class MonitoringService:
 
                             # Create alert if excursion detected
                             if excursion_detected and self.alert_manager:
+                                # Extract metadata for easier access
+                                metadata = sensor_data.get("metadata", {})
+
                                 # Prepare excursion data
                                 excursion = {
                                     "equipment_id": sensor_data.get("equipment_id"),
@@ -435,8 +439,12 @@ class MonitoringService:
                                     "excursion_type": excursion_type,
                                     "value": excursion_value,
                                     "metrics": metrics,
-                                    "metadata": sensor_data.get("metadata", {}),
-                                    "description": f"{excursion_type.replace('_', ' ').title()}: {excursion_value}"
+                                    "metadata": metadata,
+                                    "description": f"{excursion_type.replace('_', ' ').title()}: {excursion_value}",
+                                    # Include scenario metadata at top level for easier access by agentic AI
+                                    "scenario_id": metadata.get("scenario_id"),  # "gradual_drift", etc.
+                                    "pattern_type": metadata.get("pattern_type"),  # "drift", "spike", "oscillation"
+                                    "is_lot_processing_scenario": metadata.get("is_lot_processing_scenario", False)
                                 }
 
                                 # Determine severity based on excursion type and value
