@@ -10,6 +10,12 @@ env:
   INTERNAL_API_URL: http://127.0.0.1:8000
   INTERNAL_WS_URL: ws://127.0.0.1:8000
 
+  # Atlas Charts embed URLs (public, visible in browser anyway)
+  NEXT_PUBLIC_ATLAS_CHART_PARTICLE_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=ac775c70-1a0d-44e6-adb2-a1b20f9f7a5b&maxDataAge=10&theme=light&autoRefresh=true"
+  NEXT_PUBLIC_ATLAS_CHART_TEMPERATURE_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=ad4f54e1-707e-4c74-89c4-e0d622261ba6&maxDataAge=10&theme=light&autoRefresh=true"
+  NEXT_PUBLIC_ATLAS_CHART_RFPOWER_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=ca09b6cb-c40d-4fef-b834-53fb387c9993&maxDataAge=10&theme=light&autoRefresh=true"
+  NEXT_PUBLIC_ATLAS_CHART_METRICS_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=3f0e3f1a-e0bd-4de9-ba6c-c59980604a52&maxDataAge=10&theme=light&autoRefresh=true"
+
 sidecarContainers:
   - name: backend
     image: 795250896452.dkr.ecr.us-east-1.amazonaws.com/industrysolutions/smf-yield-defect-backend:latest

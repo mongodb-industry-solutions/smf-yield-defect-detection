@@ -1,6 +1,18 @@
 FROM node:20.10.0
 WORKDIR /app
 
+# Build arguments for Atlas Charts URLs
+ARG NEXT_PUBLIC_ATLAS_CHART_PARTICLE_URL
+ARG NEXT_PUBLIC_ATLAS_CHART_TEMPERATURE_URL
+ARG NEXT_PUBLIC_ATLAS_CHART_RFPOWER_URL
+ARG NEXT_PUBLIC_ATLAS_CHART_METRICS_URL
+
+# Set as environment variables for the build
+ENV NEXT_PUBLIC_ATLAS_CHART_PARTICLE_URL=$NEXT_PUBLIC_ATLAS_CHART_PARTICLE_URL
+ENV NEXT_PUBLIC_ATLAS_CHART_TEMPERATURE_URL=$NEXT_PUBLIC_ATLAS_CHART_TEMPERATURE_URL
+ENV NEXT_PUBLIC_ATLAS_CHART_RFPOWER_URL=$NEXT_PUBLIC_ATLAS_CHART_RFPOWER_URL
+ENV NEXT_PUBLIC_ATLAS_CHART_METRICS_URL=$NEXT_PUBLIC_ATLAS_CHART_METRICS_URL
+
 # Copy package files first
 COPY frontend/package*.json ./
 COPY frontend/jsconfig.json ./
@@ -10,18 +22,6 @@ RUN npm install --legacy-peer-deps
 
 # Copy entire frontend directory
 COPY frontend/ .
-
-# Debug: Verify files exist before build
-RUN echo "=== Directory structure ===" && \
-    find . -type f -name "*.json" | head -20 && \
-    echo "=== Checking /app/lib ===" && \
-    ls -la lib/ && \
-    echo "=== Checking /app/lib/hooks ===" && \
-    ls -la lib/hooks/ && \
-    echo "=== jsconfig.json content ===" && \
-    cat jsconfig.json && \
-    echo "=== Checking for nested frontend ===" && \
-    if [ -d "frontend" ]; then echo "WARNING: nested frontend/ exists!" && ls -la frontend/; else echo "Good: no nested frontend/"; fi
 
 # Build the application
 RUN npm run build

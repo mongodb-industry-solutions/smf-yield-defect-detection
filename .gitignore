@@ -241,3 +241,4 @@ backend/main.py.before_cleanup
 .gitignore
 backend/main.py.bak2
 .cursor/rules/markdown-files-save.mdc
+backend/alert_analysis.json
