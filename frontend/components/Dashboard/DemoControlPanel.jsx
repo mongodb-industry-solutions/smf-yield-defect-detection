@@ -385,7 +385,7 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
         setProgressPercent(25);
 
         const monitoringResponse = await fetch(
-          `http://localhost:8000/ai-agents/analyze-scenario/${selectedScenario}`,
+          `/api/backend/ai-agents/analyze-scenario/${selectedScenario}`,
           { method: 'POST' }
         );
         if (!monitoringResponse.ok) throw new Error('Monitoring Agent failed');
@@ -421,7 +421,7 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
       console.log('📤 Investigation Payload:', investigationPayload);
 
       const investigationResponse = await fetch(
-        `http://localhost:8000/ai-agents/investigate`,
+        `/api/backend/ai-agents/investigate`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -436,7 +436,7 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
       setCurrentAgent(3);
       setProgressPercent(75);
       const rcaResponse = await fetch(
-        `http://localhost:8000/ai-agents/rca/${newAlertId}`,
+        `/api/backend/ai-agents/rca/${newAlertId}`,
         { method: 'POST' }
       );
       if (!rcaResponse.ok) throw new Error('RCA Agent failed');
@@ -447,7 +447,7 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
       setCurrentAgent(4);
       setProgressPercent(100);
       const supervisorResponse = await fetch(
-        `http://localhost:8000/ai-agents/supervisor/${newAlertId}`,
+        `/api/backend/ai-agents/supervisor/${newAlertId}`,
         { method: 'POST' }
       );
       if (!supervisorResponse.ok) throw new Error('Supervisor Agent failed');

@@ -67,29 +67,29 @@ const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onT
     }
   }, [dataAlerts]);
 
-  // Auto-refresh every 30 seconds
+  // Auto-refresh every 10 seconds
   useEffect(() => {
     if (!isPreloaded) {
       // No preloaded data - start immediate polling
       const interval = setInterval(() => {
         refresh();
-      }, 30000);
+      }, 10000);
 
       return () => clearInterval(interval);
     } else {
-      // Preloaded data exists - delay first refresh by 1 minute
-      console.log('✅ AlertsPanel: Delaying first refresh by 1 minute');
+      // Preloaded data exists - delay first refresh by 10 seconds
+      console.log('✅ AlertsPanel: Delaying first refresh by 10 seconds');
       const delayedRefresh = setTimeout(() => {
-        console.log('🔄 AlertsPanel: Starting periodic refresh after 1 minute delay');
+        console.log('🔄 AlertsPanel: Starting periodic refresh after 10 second delay');
         refresh();
 
         // Start polling after the delayed first refresh
         const interval = setInterval(() => {
           refresh();
-        }, 30000);
+        }, 10000);
 
         // Note: This interval won't be cleaned up, but that's acceptable as it runs for the lifetime of the dashboard
-      }, 60000); // 1 minute delay
+      }, 10000); // 10 second delay
 
       return () => clearTimeout(delayedRefresh);
     }
