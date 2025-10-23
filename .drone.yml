@@ -66,10 +66,16 @@ steps:
         - "ingress.enabled=true"
         - "ingress.hosts[0]=smf-yield-defect.industrysolutions.staging.corp.mongodb.com"
         - "mesh.enabled=true"
+        # Frontend container resources (main container)
         - "resources.limits.cpu=1000m"
-        - "resources.limits.memory=1024Mi"
-        - "resources.requests.cpu=250m"
-        - "resources.requests.memory=256Mi"
+        - "resources.limits.memory=1536Mi"
+        - "resources.requests.cpu=500m"
+        - "resources.requests.memory=768Mi"
+        # Backend sidecar resources
+        - "sidecarContainers[0].resources.limits.cpu=1000m"
+        - "sidecarContainers[0].resources.limits.memory=1536Mi"
+        - "sidecarContainers[0].resources.requests.cpu=500m"
+        - "sidecarContainers[0].resources.requests.memory=768Mi"
       api_server: https://api.staging.corp.mongodb.com
       kubernetes_token:
         from_secret: staging_kubernetes_token
