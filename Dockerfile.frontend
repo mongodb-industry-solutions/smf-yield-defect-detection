@@ -1,9 +1,20 @@
 FROM node:20.10.0
 WORKDIR /app
+
+# Copy package files and configs first
 COPY frontend/package*.json ./
 COPY frontend/jsconfig.json ./
+COPY frontend/next.config.js ./
+
+# Install dependencies
 RUN npm install --legacy-peer-deps
+
+# Copy all source files
 COPY frontend/ .
+
+# Build the application
 RUN npm run build
+
+# Expose port and start
 EXPOSE 8080
 CMD ["npm", "start", "--", "-p", "8080"]
