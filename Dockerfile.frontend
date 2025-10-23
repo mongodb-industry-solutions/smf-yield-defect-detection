@@ -3,24 +3,25 @@ WORKDIR /app
 
 # Copy package files first
 COPY frontend/package*.json ./
+COPY frontend/jsconfig.json ./
 
 # Install dependencies
 RUN npm install --legacy-peer-deps
 
-# Copy configuration files
-COPY frontend/jsconfig.json ./
-COPY frontend/next.config.js ./
+# Copy entire frontend directory
+COPY frontend/ .
 
-# Copy source directories explicitly (avoid nested frontend issue)
-COPY frontend/app ./app
-COPY frontend/components ./components
-COPY frontend/contexts ./contexts
-COPY frontend/lib ./lib
-COPY frontend/public ./public
-COPY frontend/utils ./utils
-COPY frontend/data ./data
-
-# Skip copying .env.example as it's not needed for build
+# Debug: Verify files exist before build
+RUN echo "=== Directory structure ===" && \
+    find . -type f -name "*.json" | head -20 && \
+    echo "=== Checking /app/lib ===" && \
+    ls -la lib/ && \
+    echo "=== Checking /app/lib/hooks ===" && \
+    ls -la lib/hooks/ && \
+    echo "=== jsconfig.json content ===" && \
+    cat jsconfig.json && \
+    echo "=== Checking for nested frontend ===" && \
+    if [ -d "frontend" ]; then echo "WARNING: nested frontend/ exists!" && ls -la frontend/; else echo "Good: no nested frontend/"; fi
 
 # Build the application
 RUN npm run build
