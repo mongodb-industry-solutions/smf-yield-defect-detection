@@ -196,13 +196,13 @@ class MonitoringService:
     async def notify_websocket_clients(self, message: Dict[str, Any]):
         """
         Send message to all connected WebSocket clients.
-        
+
         Args:
             message: Dictionary containing message data to broadcast
         """
         # Convert ObjectIds before sending
         message_converted = convert_objectids(message)
-        
+
         # Determine connection type based on message content
         connection_type = None
         if "alert" in message.get("type", "").lower():
@@ -211,18 +211,18 @@ class MonitoringService:
             connection_type = ConnectionType.SENSORS
         elif "wafer" in message.get("type", "").lower():
             connection_type = ConnectionType.WAFERS
-        
+
         # Broadcast message
         sent_count = await self.ws_manager.broadcast(
             message_converted,
             connection_type=connection_type
         )
-        
+
         if sent_count > 0:
             logger.info(f"Notified {sent_count} WebSocket clients")
         else:
             logger.debug("No WebSocket clients to notify")
-    
+
     async def run_alert_correlation(self, alert_id: str):
         """
         Run correlation analysis in background for an alert.
@@ -473,6 +473,93 @@ class MonitoringService:
 
                                 # Record alert creation for deduplication tracking
                                 self._record_alert_creation(equipment_id, excursion_type)
+
+                                # Broadcast all 5 MongoDB operation events to show the pipeline
+                                # DIRTY HACK: Use datetime.now() for each event to ensure unique timestamps
+                                from datetime import datetime
+
+                                # Event 1: INSERT to process_sensor_ts
+                                await self.notify_websocket_clients({
+                                    "type": "mongodb_operation",
+                                    "timestamp": datetime.now().isoformat(),
+                                    "operation_type": "insert",
+                                    "collection": "process_sensor_ts",
+                                    "operation": "insertOne",
+                                    "document": {
+                                        "equipment_id": equipment_id,
+                                        "particle_count": metrics.get("particle_count"),
+                                        "rf_power": metrics.get("rf_power"),
+                                        "temperature": metrics.get("temperature")
+                                    },
+                                    "metadata": {}
+                                })
+                                await asyncio.sleep(0.05)  # 50ms delay for unique timestamp
+
+                                # Event 2: INSERT to sensor_events
+                                await self.notify_websocket_clients({
+                                    "type": "mongodb_operation",
+                                    "timestamp": datetime.now().isoformat(),
+                                    "operation_type": "insert",
+                                    "collection": "sensor_events",
+                                    "operation": "insertOne",
+                                    "document": {
+                                        "equipment_id": equipment_id,
+                                        "particle_count": metrics.get("particle_count"),
+                                        "rf_power": metrics.get("rf_power"),
+                                        "temperature": metrics.get("temperature")
+                                    },
+                                    "metadata": {}
+                                })
+                                await asyncio.sleep(0.05)  # 50ms delay for unique timestamp
+
+                                # Event 3: CHANGE_STREAM activation
+                                await self.notify_websocket_clients({
+                                    "type": "mongodb_operation",
+                                    "timestamp": datetime.now().isoformat(),
+                                    "operation_type": "change_stream",
+                                    "collection": "sensor_events",
+                                    "operation": "watch",
+                                    "document": {
+                                        "operationType": "insert",
+                                        "equipment_id": equipment_id,
+                                        "particle_count": metrics.get("particle_count")
+                                    },
+                                    "metadata": {}
+                                })
+                                await asyncio.sleep(0.05)  # 50ms delay for unique timestamp
+
+                                # Event 4: EXCURSION detection
+                                await self.notify_websocket_clients({
+                                    "type": "mongodb_operation",
+                                    "timestamp": datetime.now().isoformat(),
+                                    "operation_type": "threshold_check",
+                                    "collection": "sensor_events",
+                                    "operation": "excursion_detected",
+                                    "document": {
+                                        "equipment_id": equipment_id,
+                                        "excursion_type": excursion_type,
+                                        "value": excursion_value,
+                                        "threshold": particle_thresholds["medium"] if excursion_type == "particle_excursion" else None
+                                    },
+                                    "metadata": {"severity": severity.value}
+                                })
+                                await asyncio.sleep(0.05)  # 50ms delay for unique timestamp
+
+                                # Event 5: ALERT creation
+                                await self.notify_websocket_clients({
+                                    "type": "mongodb_operation",
+                                    "timestamp": datetime.now().isoformat(),
+                                    "operation_type": "insert",
+                                    "collection": "alerts",
+                                    "operation": "insertOne",
+                                    "document": {
+                                        "_id": alert_id,
+                                        "severity": severity.value,
+                                        "equipment_id": equipment_id,
+                                        "excursion_type": excursion_type
+                                    },
+                                    "metadata": {}
+                                })
 
                                 # Notify WebSocket clients
                                 await self.notify_websocket_clients({

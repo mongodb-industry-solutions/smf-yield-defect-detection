@@ -1,0 +1,348 @@
+/* MongoDB Operations Console - Professional Terminal-Style UI */
+
+.console {
+  background: var(--color-neutral-dark3) !important;
+  border: 1px solid var(--color-neutral-light2) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: var(--shadow-md) !important;
+  overflow: hidden !important;
+  transition: all var(--transition-normal) ease-in-out;
+  margin-top: 16px;
+  padding: 0 !important; /* Remove Card's default padding */
+}
+
+.consoleCollapsed {
+  min-height: 48px;
+  max-height: 48px;
+}
+
+.consoleExpanded {
+  height: 280px;
+}
+
+/* Header */
+.consoleHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--color-neutral-dark2);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.consoleHeader:hover {
+  background: var(--color-neutral-dark1);
+}
+
+/* Show border only when expanded */
+.consoleExpanded .consoleHeader {
+  border-bottom: 1px solid var(--color-primary-dark1);
+}
+
+/* No border when collapsed */
+.consoleCollapsed .consoleHeader {
+  border-bottom: none;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.headerIcon {
+  color: var(--color-primary-base);
+}
+
+.headerTitle {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-neutral-light3);
+  letter-spacing: 0.3px;
+}
+
+.eventCount {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-neutral-base);
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Collapsed Summary */
+.summaryContainer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.summaryText {
+  font-size: 12px;
+  color: var(--color-neutral-base);
+  font-style: italic;
+}
+
+.summaryItem {
+  font-size: 11px;
+  color: var(--color-neutral-light1);
+  padding: 4px 8px;
+  background: var(--color-neutral-dark1);
+  border-radius: 4px;
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.summaryItem::before {
+  content: '•';
+  margin-right: 6px;
+  color: var(--color-primary-base);
+}
+
+/* Console Body */
+.consoleBody {
+  height: 232px;
+  overflow-y: auto;
+  background: var(--color-neutral-dark3);
+  padding: 12px 16px;
+}
+
+.consoleBody::-webkit-scrollbar {
+  width: 8px;
+}
+
+.consoleBody::-webkit-scrollbar-track {
+  background: var(--color-neutral-dark2);
+}
+
+.consoleBody::-webkit-scrollbar-thumb {
+  background: var(--color-neutral-dark1);
+  border-radius: 4px;
+}
+
+.consoleBody::-webkit-scrollbar-thumb:hover {
+  background: var(--color-neutral-base);
+}
+
+/* Empty State */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+}
+
+.emptyIcon {
+  color: var(--color-neutral-base);
+  opacity: 0.5;
+}
+
+.emptyText {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-neutral-light1);
+  font-weight: 500;
+}
+
+.emptySubtext {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-neutral-base);
+  text-align: center;
+  max-width: 400px;
+}
+
+/* Operations List */
+.operationsList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Individual Operation */
+.operation {
+  border-left: 2px solid var(--color-primary-dark1);
+  padding-left: 12px;
+  animation: slideIn 0.3s ease-out;
+  margin-bottom: 8px;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.operationHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 4px;
+  transition: background var(--transition-fast);
+  margin-bottom: 4px;
+}
+
+.operationHeader:hover {
+  background: var(--color-neutral-dark2);
+}
+
+.operationHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.expandButton {
+  color: var(--color-neutral-light1) !important;
+  padding: 2px !important;
+  min-width: 24px !important;
+  height: 24px !important;
+}
+
+.operationTimestamp {
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 11px;
+  color: var(--color-neutral-base);
+  letter-spacing: 0.5px;
+}
+
+.operationBadge {
+  font-size: 10px !important;
+  padding: 2px 8px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px !important;
+}
+
+.operationCollectionName {
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--color-primary-light1);
+  font-weight: 600;
+}
+
+.operationContent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px 8px 32px;
+  animation: expandContent 0.2s ease-out;
+}
+
+@keyframes expandContent {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 500px;
+  }
+}
+
+.operationCommand {
+  font-family: 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--color-neutral-light2);
+  line-height: 1.6;
+}
+
+.label {
+  color: var(--color-primary-light1);
+  font-weight: 600;
+}
+
+/* JSON Block */
+.jsonBlock {
+  background: var(--color-neutral-dark2);
+  border: 1px solid var(--color-neutral-dark1);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin: 0;
+  overflow-x: auto;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.jsonBlock::-webkit-scrollbar {
+  height: 6px;
+}
+
+.jsonBlock::-webkit-scrollbar-track {
+  background: var(--color-neutral-dark3);
+}
+
+.jsonBlock::-webkit-scrollbar-thumb {
+  background: var(--color-neutral-dark1);
+  border-radius: 3px;
+}
+
+.jsonSyntax {
+  color: var(--color-neutral-light2);
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+/* Metadata */
+.metadata {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+}
+
+.metadataItem {
+  font-size: 11px;
+  color: var(--color-neutral-base);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.metadataValue {
+  color: var(--color-primary-light1);
+  font-weight: 600;
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .consoleExpanded {
+    height: 200px;
+  }
+
+  .consoleBody {
+    height: 152px;
+  }
+
+  .summaryContainer {
+    display: none;
+  }
+
+  .headerTitle {
+    font-size: 12px;
+  }
+
+  .operationCommand {
+    font-size: 11px;
+  }
+
+  .jsonBlock {
+    font-size: 10px;
+  }
+}

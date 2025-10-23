@@ -17,6 +17,7 @@ import LiveTemperatureMonitor from './LiveTemperatureMonitor';
 import LiveRFPowerMonitor from './LiveRFPowerMonitor';
 import LiveWaferImageMapCompact from './LiveWaferImageMapCompact';
 import EquipmentMetricsChart from './EquipmentMetricsChart';
+import MongoDBOperationsConsole from './MongoDBOperationsConsole';
 import { useDashboardData } from '@/contexts/DashboardDataProvider';
 import { aiAgentAPI, alertAPI } from '@/lib/api';
 import styles from './Dashboard.module.css';
@@ -158,6 +159,14 @@ const Dashboard = ({ onModeChange }) => {
               />
             </>
           )}
+
+          {/* MongoDB Operations Console - Bottom of centerPanel */}
+          <MongoDBOperationsConsole
+            maxEvents={20}
+            autoScroll={true}
+            pauseOnHover={true}
+            defaultExpanded={false}
+          />
         </div>
         <div className={`${styles.rightPanel} ${isAlertsCollapsed ? styles.rightPanelCollapsed : ''}`}>
           <AlertsPanel

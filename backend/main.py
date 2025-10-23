@@ -305,16 +305,16 @@ def _initialize_core_services():
 def _initialize_demo_service(alert_mgr, mongo_client):
     """
     Initialize Demo Mode Service
-    
+
     Args:
         alert_mgr: AlertManager instance
         mongo_client: AsyncIOMotorClient instance
-        
+
     Returns:
         DemoModeService: Initialized demo service instance
     """
     logger.info("🎬 Initializing Demo Mode Service...")
-    
+
     demo_svc = DemoModeService(
         mongodb_uri=MDB_URI,
         database_name=MDB_DATABASE_NAME,
@@ -482,7 +482,7 @@ async def startup_event():
         logger.info("✅ Monitoring services initialized successfully on startup")
         logger.info("Services ready: ExcursionDetector, CorrelationEngine, RCAGenerator, AlertManager")
         logger.info("✅ Monitoring loops auto-started (sensor + wafer defects)")
-        
+
         # Step 3: Initialize demo service
         demo_service_instance = _initialize_demo_service(alert_manager, mongodb_client)
         

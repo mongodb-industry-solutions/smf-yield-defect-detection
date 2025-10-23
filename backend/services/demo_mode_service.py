@@ -47,7 +47,7 @@ class DemoModeService:
     ):
         """
         Initialize Demo Mode Service
-        
+
         Args:
             mongodb_uri: MongoDB connection URI
             database_name: Database name
@@ -100,7 +100,7 @@ class DemoModeService:
             f"Excursion probability: {demo_excursion_probability}"
         )
         logger.info(f"   ♻️  SensorDataWriter: Persistent connection pool (avoids per-batch overhead)")
-    
+
     def get_status(self) -> Dict[str, Any]:
         """
         Get current demo mode status
@@ -495,7 +495,6 @@ class DemoModeService:
                             metadata["wafer_id"] = f"W_{lot_num}_{self.wafer_counter:02d}"  # W_101_15
                         else:
                             # For continuous mode, use random wafer numbers within the lot
-                            import random
                             metadata["wafer_id"] = f"W_{lot_num}_{random.randint(1, 25):02d}"  # W_1234_12
 
                     # Generate sensor data for this equipment
@@ -518,10 +517,10 @@ class DemoModeService:
                 batch_start = time.time()
                 
                 result = self.sensor_writer.bulk_write_sensor_data(bulk_data)
-                
+
                 batch_elapsed_ms = (time.time() - batch_start) * 1000
                 logger.debug(f"   ⏱️  Bulk write completed in {batch_elapsed_ms:.0f}ms (connection reused)")
-                
+
                 if result["sensor_events"]["inserted"] > 0 or result["process_sensor_ts"]["inserted"] > 0:
                     logger.info(
                         f"✅ Demo batch generated: {len(bulk_data)} equipment readings, "
