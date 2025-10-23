@@ -1,16 +1,26 @@
 FROM node:20.10.0
 WORKDIR /app
 
-# Copy package files and configs first
+# Copy package files first
 COPY frontend/package*.json ./
-COPY frontend/jsconfig.json ./
-COPY frontend/next.config.js ./
 
 # Install dependencies
 RUN npm install --legacy-peer-deps
 
-# Copy all source files
-COPY frontend/ .
+# Copy configuration files
+COPY frontend/jsconfig.json ./
+COPY frontend/next.config.js ./
+
+# Copy source directories explicitly (avoid nested frontend issue)
+COPY frontend/app ./app
+COPY frontend/components ./components
+COPY frontend/contexts ./contexts
+COPY frontend/lib ./lib
+COPY frontend/public ./public
+COPY frontend/utils ./utils
+COPY frontend/data ./data
+
+# Skip copying .env.example as it's not needed for build
 
 # Build the application
 RUN npm run build
