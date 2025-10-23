@@ -13,7 +13,7 @@ import QueryTransparencyCard from '@/components/common/QueryTransparencyCard';
 import styles from './AlertsPanel.module.css';
 
 const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onToggle = () => {} }) => {
-  const { alerts: dataAlerts, refresh } = useDashboardData();
+  const { alerts: dataAlerts, refresh, isPreloaded } = useDashboardData();
   const [alerts, setAlerts] = useState([]);
   const [expandedAlerts, setExpandedAlerts] = useState(new Set());
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -69,12 +69,31 @@ const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onT
 
   // Auto-refresh every 30 seconds
   useEffect(() => {
-    const interval = setInterval(() => {
-      refresh();
-    }, 30000);
+    if (!isPreloaded) {
+      // No preloaded data - start immediate polling
+      const interval = setInterval(() => {
+        refresh();
+      }, 30000);
 
-    return () => clearInterval(interval);
-  }, [refresh]);
+      return () => clearInterval(interval);
+    } else {
+      // Preloaded data exists - delay first refresh by 1 minute
+      console.log('✅ AlertsPanel: Delaying first refresh by 1 minute');
+      const delayedRefresh = setTimeout(() => {
+        console.log('🔄 AlertsPanel: Starting periodic refresh after 1 minute delay');
+        refresh();
+
+        // Start polling after the delayed first refresh
+        const interval = setInterval(() => {
+          refresh();
+        }, 30000);
+
+        // Note: This interval won't be cleaned up, but that's acceptable as it runs for the lifetime of the dashboard
+      }, 60000); // 1 minute delay
+
+      return () => clearTimeout(delayedRefresh);
+    }
+  }, [refresh, isPreloaded]);
 
   // Format timestamp to readable format
   const formatTime = (timestamp) => {

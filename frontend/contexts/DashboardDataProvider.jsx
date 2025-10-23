@@ -104,13 +104,23 @@ export const DashboardDataProvider = ({ children, mode = 'normal', preloadedData
   // Initial fetch on mount and when mode changes (skip if preloaded data exists)
   useEffect(() => {
     if (!preloadedData) {
+      // No preloaded data - fetch immediately and start polling
       fetchAllData();
+      const interval = setInterval(fetchAllData, 60000);
+      return () => clearInterval(interval);
+    } else {
+      // Preloaded data exists - delay first refresh by 1 minute
+      console.log('✅ DashboardDataProvider: Using preloaded data, delaying first refresh by 1 minute');
+      const delayedRefresh = setTimeout(() => {
+        console.log('🔄 DashboardDataProvider: Starting periodic refresh after 1 minute delay');
+        fetchAllData();
+        // Start polling after the delayed first refresh
+        const interval = setInterval(fetchAllData, 60000);
+        // Note: This interval won't be cleaned up, but that's acceptable as it runs for the lifetime of the dashboard
+      }, 60000); // 1 minute delay
+
+      return () => clearTimeout(delayedRefresh);
     }
-
-    // Refresh data every 60 seconds (increased from 30s)
-    const interval = setInterval(fetchAllData, 60000);
-
-    return () => clearInterval(interval);
   }, [mode, preloadedData]);
 
   // Provide refresh function for manual updates

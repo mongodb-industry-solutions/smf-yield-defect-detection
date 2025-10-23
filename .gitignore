@@ -190,6 +190,8 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
+# Allow frontend lib directories
+!frontend/lib/
 !frontend/app/lib/
 
 cicd-kanopy/

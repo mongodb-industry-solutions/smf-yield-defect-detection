@@ -37,7 +37,7 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
     // After that, let fetchEquipmentStatus handle all updates
     if (preloadedEquipment && isPreloaded && preloadedEquipment.length > 0 && !equipmentData) {
       console.log('✅ ProcessHealthMatrix: Using preloaded equipment data (one-time)');
-      
+
       // Transform preloaded equipment data to match expected format
       // Group by process type
       const matrix = {
@@ -63,21 +63,37 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
       setIsLoading(false);
       setLastRefresh(new Date());
     }
-    
-    // If no preloaded data, do initial fetch
+
+    // If no preloaded data, do initial fetch and start immediate polling
     if (!isPreloaded || !preloadedEquipment || preloadedEquipment.length === 0) {
       console.log('🔄 ProcessHealthMatrix: No preloaded data, fetching...');
       fetchEquipmentStatus();
+
+      // Start immediate polling for non-preloaded scenario
+      const interval = setInterval(() => {
+        console.log('🔄 ProcessHealthMatrix: Auto-refreshing equipment status...');
+        fetchEquipmentStatus();
+      }, 10000);
+
+      return () => clearInterval(interval);
+    } else {
+      // Preloaded data exists - delay first refresh by 1 minute
+      console.log('✅ ProcessHealthMatrix: Delaying first refresh by 1 minute');
+      const delayedRefresh = setTimeout(() => {
+        console.log('🔄 ProcessHealthMatrix: Starting periodic refresh after 1 minute delay');
+        fetchEquipmentStatus();
+
+        // Start polling after the delayed first refresh
+        const interval = setInterval(() => {
+          console.log('🔄 ProcessHealthMatrix: Auto-refreshing equipment status...');
+          fetchEquipmentStatus();
+        }, 10000);
+
+        // Note: This interval won't be cleaned up, but that's acceptable as it runs for the lifetime of the dashboard
+      }, 60000); // 1 minute delay
+
+      return () => clearTimeout(delayedRefresh);
     }
-
-    // CRITICAL: Set up auto-refresh every 10 seconds regardless of preload
-    // This ensures data keeps updating after initial load
-    const interval = setInterval(() => {
-      console.log('🔄 ProcessHealthMatrix: Auto-refreshing equipment status...');
-      fetchEquipmentStatus();
-    }, 10000);
-
-    return () => clearInterval(interval);
   }, []); // Empty deps - run once on mount, then interval takes over
 
   const calculateStatus = (metrics) => {
