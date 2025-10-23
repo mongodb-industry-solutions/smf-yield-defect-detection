@@ -10,8 +10,6 @@ env:
   INTERNAL_API_URL: http://127.0.0.1:8000
   INTERNAL_WS_URL: ws://127.0.0.1:8000
 
-envSecrets:
-
 sidecarContainers:
   - name: backend
     image: 795250896452.dkr.ecr.us-east-1.amazonaws.com/industrysolutions/smf-yield-defect-backend:latest
