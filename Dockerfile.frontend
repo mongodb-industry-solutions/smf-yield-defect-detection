@@ -4,5 +4,5 @@ COPY frontend/package*.json ./
 RUN npm install
 COPY frontend/ .
 RUN npm run build
-EXPOSE 3000
-CMD ["npm", "start"]
+EXPOSE 8080
+CMD ["npm", "start", "--", "-p", "8080"]

@@ -1,0 +1,72 @@
+env:
+  NODE_ENV: staging
+
+  # Client-side API calls use Next.js proxy route (runs server-side)
+  # The proxy route then uses INTERNAL_API_URL to reach backend via loopback
+  NEXT_PUBLIC_API_URL: /api/backend
+
+  # Server-side environment variables for Next.js API routes and rewrites
+  # These use loopback because Next.js runs in the same pod as backend
+  INTERNAL_API_URL: http://127.0.0.1:8000
+  INTERNAL_WS_URL: ws://127.0.0.1:8000
+
+envSecrets:
+
+sidecarContainers:
+  - name: backend
+    image: 795250896452.dkr.ecr.us-east-1.amazonaws.com/industrysolutions/smf-yield-defect-backend:latest
+    ports:
+      - containerPort: 8000
+        name: backend
+
+    env:
+      # Application environment
+      - name: NODE_ENV
+        value: staging
+
+      - name: APP_NAME
+        value: smf-yield-defect-staging
+
+      - name: DEMO_MODE_ENABLED
+        value: "true"
+
+      - name: DEMO_MODE_ENABLED
+        value: "true"
+
+      - name: DEMO_EXCURSION_PROBABILITY
+        value: "0.1"
+
+      - name: USE_AI_AGENTS
+        value: "true"
+
+      - name: USE_CENTRALIZED_THRESHOLDS
+        value: "true"
+
+      # MongoDB connection (from Kubernetes secret)
+      - name: MONGODB_URI
+        valueFrom:
+          secretKeyRef:
+            name: smf-yield-secrets-staging
+            key: MONGODB_URI
+
+      - name: MDB_DATABASE_NAME
+        valueFrom:
+          secretKeyRef:
+            name: smf-yield-secrets-staging
+            key: MDB_DATABASE_NAME
+
+      # Voyage AI API Key (embeddings)
+      - name: VOYAGE_API_KEY
+        valueFrom:
+          secretKeyRef:
+            name: smf-yield-secrets-staging
+            key: VOYAGE_API_KEY
+
+serviceAccount:
+  enabled: true
+  irsa:
+    accountId: "275662791714"
+    roleName: "kanopy-staging-cicd-irsa"
+
+
+
