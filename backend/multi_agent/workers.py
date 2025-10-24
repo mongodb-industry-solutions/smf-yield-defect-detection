@@ -234,169 +234,283 @@ Valid pattern_detected values: "drift", "spike", "oscillation", "normal_variatio
         client.close()
 
 
+def _map_evidence_quality_to_confidence(
+    evidence_quality: str,
+    problematic_items: int,
+    wafers_found: int
+) -> float:
+    """
+    Map evidence quality from investigation synthesis to numeric confidence score
+    
+    Evidence quality comes from LLM synthesis:
+    - "strong": High confidence with clear evidence
+    - "moderate": Some evidence but not conclusive  
+    - "weak": Limited evidence
+    - "unknown": No determination possible
+    
+    Args:
+        evidence_quality: Quality assessment from investigation synthesis
+        problematic_items: Count of problematic materials found
+        wafers_found: Count of similar wafer defects found via vector search
+        
+    Returns:
+        Confidence score between 0.0 and 1.0
+    """
+    # Base confidence from evidence quality
+    base_confidence = {
+        "strong": 0.80,
+        "moderate": 0.60,
+        "weak": 0.40,
+        "unknown": 0.50
+    }.get(evidence_quality.lower(), 0.50)
+    
+    # Boost confidence if problematic items found (direct evidence)
+    if problematic_items > 0:
+        base_confidence = min(1.0, base_confidence + 0.10)
+    
+    # Boost confidence if similar wafer defects found (pattern evidence)
+    if wafers_found >= 5:
+        base_confidence = min(1.0, base_confidence + 0.05)
+    
+    return round(base_confidence, 2)
+
+
 async def investigation_agent_tool(state: dict) -> dict:
     """
-    Investigation Agent: Wraps CorrelationEngine with LLM interpretation
+    Investigation Agent: Query MongoDB collections for evidence (matches sequential workflow)
 
-    Uses:
-    - Existing CorrelationEngine service (reuse existing code!)
-    - LLM to interpret raw correlation data into actionable insights
-
-    Input: Alert that passed monitoring filter
-    Output: Correlation results + key findings + LLM interpretation
+    This implementation MUST match the sequential workflow in routers/ai_agents.py
+    
+    Calls TWO MongoDB tool functions sequentially:
+    1. query_process_context() - Slurry batches, recipes, reticles
+    2. query_wafer_defects() - Vector search using voyage-multimodal-3 embeddings
+    
+    Then uses LLM to synthesize evidence into actionable insights.
 
     Args:
-        state: AlertAnalysisState dict with alert_id
+        state: AlertAnalysisState dict with alert_id, equipment_id, excursion_type
 
     Returns:
-        Updated state with correlation_results, investigation_summary, and key_findings
+        Updated state with:
+        - process_context_evidence: Raw data from query_process_context()
+        - wafer_defects_evidence: Raw data from query_wafer_defects()
+        - investigation_synthesis: LLM synthesis of evidence
+        - investigation_summary: For RCA agent compatibility
+        - key_findings: For RCA agent compatibility
+        - correlation_results: For RCA agent compatibility
+        - workflow_stage: "rca"
     """
-    logger.info(f"🟠 [INVESTIGATION AGENT] Starting correlation analysis for alert {state['alert_id']}")
+    logger.info(f"🟠 [INVESTIGATION AGENT] Starting investigation for alert {state['alert_id']}")
     logger.info(f"🟠    Equipment: {state.get('equipment_id')}, Excursion: {state.get('excursion_type')}")
 
     alert_id = state['alert_id']
-    logger.info(f"🟠    🔑 Using alert_id (ObjectId): {alert_id}, type: {type(alert_id)}")
+    equipment_id = state.get('equipment_id')
+    excursion_type = state.get('excursion_type')
 
     try:
-        # Import CorrelationEngine (reuse existing service!)
-        from services.correlation_engine import CorrelationEngine
+        # ========== STEP 1: Connect to MongoDB ==========
+        from motor.motor_asyncio import AsyncIOMotorClient
+        import os
 
-        logger.info(f"🟠    🔄 Initializing CorrelationEngine...")
-        logger.info(f"📊    Querying wafer_defects, process_context, alerts collections...")
+        mongodb_uri = os.getenv("MONGODB_URI")
+        database_name = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
 
-        # Initialize engine and run analysis
-        engine = CorrelationEngine()
-        logger.info(f"🟠    🔍 Running correlation analysis with ObjectId: {alert_id}...")
+        if not mongodb_uri:
+            raise ValueError("MONGODB_URI not configured")
 
-        correlation_data = await engine.analyze_alert(alert_id)
+        logger.info(f"🟠    🔗 Connecting to MongoDB...")
+        client = AsyncIOMotorClient(mongodb_uri)
+        db = client[database_name]
 
-        # Log key metrics
-        confidence = correlation_data.get('confidence_score', 0)
-        affected_wafers_data = correlation_data.get('affected_wafers', {})
-        affected_total = affected_wafers_data.get('total', 0)
+        # Get slurry_batch and recipe_id from state metadata (passed from monitoring agent)
+        # Fallback to fetching from alert document if not in state
+        state_metadata = state.get('metadata', {})
+        slurry_batch = state_metadata.get('slurry_batch')
+        recipe_id = state_metadata.get('recipe_id')
 
-        logger.info(f"🟠    📊 Correlation complete: {confidence:.0%} confidence, {affected_total} wafers affected")
-        logger.info(f"🟠    📈 Wafer breakdown: Pre={affected_wafers_data.get('pre_alert', 0)}, "
-                   f"During={affected_wafers_data.get('during_alert', 0)}, "
-                   f"Post={affected_wafers_data.get('post_alert', 0)}")
+        # If not in state metadata, fetch from alert document
+        if not slurry_batch and not recipe_id:
+            logger.info(f"🟠    📄 Fetching alert document to extract context...")
+            alert_doc = await db.alerts.find_one({"alert_id": alert_id})
 
-        # Extract key correlation data for LLM prompt
-        correlations = correlation_data.get('correlations', {})
-        temporal = correlations.get('temporal', {})
-        batch = correlations.get('batch', {})
-        spatial = correlations.get('spatial', {})
-        process_context = correlations.get('process_context', {})
+            if alert_doc:
+                source_data = alert_doc.get('source_data', {})
+                alert_metadata = source_data.get('metadata', {})
+                slurry_batch = alert_metadata.get('slurry_batch')
+                recipe_id = alert_metadata.get('recipe_id')
+                logger.info(f"🟠    📋 Extracted from alert: slurry_batch={slurry_batch}, recipe_id={recipe_id}")
+            else:
+                logger.warning(f"🟠    ⚠️  Alert {alert_id} not found, proceeding without slurry/recipe context")
+        else:
+            logger.info(f"🟠    📋 Using from state metadata: slurry_batch={slurry_batch}, recipe_id={recipe_id}")
 
-        # Log detailed correlation findings
-        logger.info(f"🟠    🔍 Temporal: {temporal.get('yield_impact', 0):.1f}% yield drop, "
-                   f"{temporal.get('correlation_strength', 0):.2f} strength")
-        logger.info(f"🟠    🧪 Batch: {len(batch.get('suspect_batches', []))} suspect batches")
-        logger.info(f"🟠    📐 Spatial: {len(spatial.get('dominant_patterns', []))} dominant patterns")
-        logger.info(f"🟠    ⚠️  Problematic materials: {len(process_context.get('problematic_materials', []))}")
+        # ========== STEP 2: Tool 1 - Query Process Context ==========
+        logger.info("🟠    📦 Tool 1: query_process_context()")
+        import time
+        tool1_start = time.time()
 
-        # Build concise summary for LLM
-        prompt = f"""Analyze semiconductor manufacturing correlation data and provide key findings.
+        from multi_agent.tools.investigation_tools import query_process_context
 
-CORRELATION ANALYSIS RESULTS:
+        process_context_evidence = await query_process_context(
+            db=db,
+            equipment_id=equipment_id,
+            slurry_batch=slurry_batch,
+            recipe_id=recipe_id,
+            context_types=["slurry_batch", "etch_recipe", "recipe", "reticle"]
+        )
 
-Affected Wafers: {affected_total}
-- Pre-alert: {correlation_data.get('affected_wafers', {}).get('pre_alert', 0)}
-- During alert: {correlation_data.get('affected_wafers', {}).get('during_alert', 0)}
-- Post-alert: {correlation_data.get('affected_wafers', {}).get('post_alert', 0)}
+        tool1_elapsed = (time.time() - tool1_start) * 1000
+        logger.info(f"🟠    ⏱️  Tool 1 completed in {tool1_elapsed:.0f}ms")
+        logger.info(f"🟠    📊 Process context: {process_context_evidence.get('problematic_items', 0)} problematic items")
 
-Temporal Correlation:
-- Yield Impact: {temporal.get('yield_impact', 0):.1f}% drop
-- Correlation Strength: {temporal.get('correlation_strength', 0):.2f}
-- Defect Rate Change: +{temporal.get('defect_rate_change', 0):.0f} defects
-- Time Lag: {temporal.get('time_lag_hours', 'N/A')} hours
+        # ========== STEP 3: Tool 2 - Query Wafer Defects (Vector Search) ==========
+        logger.info("🟠    📦 Tool 2: query_wafer_defects() - VECTOR SEARCH")
+        tool2_start = time.time()
 
-Batch Analysis:
-- Suspect Batches: {len(batch.get('suspect_batches', []))}
-{chr(10).join([f"  • {b.get('batch_id')}: {b.get('avg_yield', 0):.1f}% yield ({b.get('wafer_count', 0)} wafers)" for b in batch.get('suspect_batches', [])[:3]])}
+        from multi_agent.tools.investigation_tools import query_wafer_defects
 
-Spatial Patterns:
-{chr(10).join([f"  • {p.get('pattern')}: {p.get('frequency', 0)} wafers ({p.get('avg_yield', 0):.1f}% avg yield)" for p in spatial.get('dominant_patterns', [])[:3]])}
+        wafer_defects_evidence = await query_wafer_defects(
+            db=db,
+            equipment_id=equipment_id,
+            excursion_type=excursion_type,
+            limit=10
+        )
 
-Problematic Materials:
-{chr(10).join([f"  • {m.get('type')}: {m.get('id')} - {', '.join([i.get('severity', '') + ' issue' for i in m.get('issues', [])[:2]])}" for m in process_context.get('problematic_materials', [])[:2]]) if process_context.get('problematic_materials') else '  None detected'}
+        tool2_elapsed = (time.time() - tool2_start) * 1000
+        logger.info(f"🟠    ⏱️  Tool 2 completed in {tool2_elapsed:.0f}ms")
+        logger.info(f"🟠    📊 Wafer defects: {wafer_defects_evidence.get('summary', {}).get('total_wafers_found', 0)} wafers found")
 
-Overall Confidence: {confidence:.0%}
+        # Close MongoDB connection
+        client.close()
+        logger.info(f"🟠    🔌 MongoDB connection closed")
 
-Provide:
-1. Top 3 key findings (be specific with numbers, yields, batch IDs)
-2. Overall significance (1-2 sentences on business impact)
+        # ========== STEP 4: LLM Evidence Synthesis ==========
+        logger.info("🟠    🧠 STEP 4: Invoking Claude for evidence synthesis...")
+        synthesis_start = time.time()
 
-Be concise, technical, and focus on actionable insights."""
+        from multi_agent.prompts.investigation_prompts import build_investigation_synthesis_prompt
+        from multi_agent.simple_bedrock import call_claude
+        import json
 
-        # Call Claude for interpretation
-        logger.info(f"🟠    🤖 Invoking Claude Haiku for interpretation...")
-        logger.info(f"🟠    📝 Prompt length: {len(prompt)} chars")
+        # Build monitoring analysis summary for prompt
+        monitoring_summary = {
+            "risk_level": state.get("risk_level", "UNKNOWN"),
+            "pattern_detected": state.get("pattern_detected", "unknown"),
+            "equipment_id": equipment_id,
+            "key_insights": state.get("key_insights", [])
+        }
 
-        response = call_claude(prompt, temperature=0.2, max_tokens=400)
+        # Build synthesis prompt
+        prompt = build_investigation_synthesis_prompt(
+            monitoring_analysis=monitoring_summary,
+            process_context_evidence=process_context_evidence,
+            wafer_defects_evidence=wafer_defects_evidence
+        )
 
-        logger.info(f"🟠    ✅ LLM response received ({len(response)} chars)")
+        logger.info(f"🟠    📝 Prompt length: {len(prompt)} characters")
 
-        # Parse response to extract key findings
-        lines = response.strip().split('\n')
-        key_findings = []
-        for line in lines:
-            stripped = line.strip()
-            # Look for bullet points or numbered items
-            if stripped and (stripped[0] in ('•', '-', '1', '2', '3', '*') or stripped.startswith('- ')):
-                # Clean up the finding
-                finding = stripped.lstrip('•-123*. ').strip()
-                if finding and len(finding) > 10:  # Meaningful findings only
-                    key_findings.append(finding)
+        # Call Claude
+        try:
+            claude_response = call_claude(prompt, temperature=0.2, max_tokens=2000)
+            synthesis = json.loads(claude_response)
+        except json.JSONDecodeError as e:
+            logger.error(f"🟠    ❌ Claude returned malformed JSON: {e}")
+            logger.error(f"🟠       Response preview: {claude_response[:500]}")
+            # Fallback to minimal synthesis
+            synthesis = {
+                "key_findings": ["Investigation completed but LLM synthesis failed"],
+                "problematic_materials": [],
+                "evidence_quality": "unknown",
+                "correlation_with_monitoring": "Unable to synthesize due to LLM error",
+                "recommended_next_steps": ["Review raw evidence data"]
+            }
 
-        # Take top 3 findings
-        key_findings = key_findings[:3]
+        synthesis_elapsed = (time.time() - synthesis_start) * 1000
+        logger.info(f"🟠    ⚡ [CLAUDE] Synthesis completed in {synthesis_elapsed:.0f}ms")
+        logger.info(f"🟠    📊 Key findings: {len(synthesis.get('key_findings', []))}")
+        logger.info(f"🟠    🚨 Problematic materials: {len(synthesis.get('problematic_materials', []))}")
+        logger.info(f"🟠    🎯 Evidence quality: {synthesis.get('evidence_quality', 'unknown')}")
+
+        # Calculate confidence score from evidence
+        confidence_score = _map_evidence_quality_to_confidence(
+            synthesis.get("evidence_quality", "unknown"),
+            process_context_evidence.get("problematic_items", 0),
+            wafer_defects_evidence.get("summary", {}).get("total_wafers_found", 0)
+        )
+        logger.info(f"🟠    📈 Calculated correlation confidence: {confidence_score:.2f}")
 
         logger.info(f"🟠    ✅ Investigation complete")
-        logger.info(f"🟠    📋 Key findings extracted: {len(key_findings)}")
-        for i, finding in enumerate(key_findings, 1):
-            logger.info(f"🟠       {i}. {finding[:100]}{'...' if len(finding) > 100 else ''}")
-
         logger.info(f"🟠    🎯 Next stage: RCA")
 
-        # Return updated state
+        # Return updated state (matching sequential workflow output structure)
         return {
-            "correlation_results": correlation_data,
-            "investigation_summary": response,
-            "key_findings": key_findings,
+            # Fields for MongoDB persistence (via wrapper in workflow_graph.py)
+            "process_context_evidence": process_context_evidence,
+            "wafer_defects_evidence": wafer_defects_evidence,
+            "investigation_synthesis": synthesis,
+            "tool_execution_times": {
+                "process_context_ms": round(tool1_elapsed, 2),
+                "wafer_defects_ms": round(tool2_elapsed, 2),
+                "synthesis_ms": round(synthesis_elapsed, 2),
+                "total_ms": round(tool1_elapsed + tool2_elapsed + synthesis_elapsed, 2)
+            },
+            
+            # Fields for RCA agent state compatibility (rca_agent_tool expects these)
+            "investigation_summary": synthesis.get("correlation_with_monitoring", ""),
+            "key_findings": synthesis.get("key_findings", []),
+            "correlation_results": {
+                "confidence_score": confidence_score
+            },
+            
             "workflow_stage": "rca"  # Proceed to RCA stage
         }
 
-    except ValueError as e:
-        # Alert not found error
-        logger.error(f"🟠    ❌ Alert not found: {e}")
-        return {
-            "correlation_results": {},
-            "investigation_summary": f"Alert {alert_id} not found in database",
-            "key_findings": [],
-            "workflow_stage": "complete"  # Can't proceed without alert
-        }
-
     except Exception as e:
-        logger.error(f"🟠    ❌ Investigation agent error: {e}")
+        logger.error(f"🟠    ❌ Investigation agent error: {e}", exc_info=True)
         # Return minimal results, allow workflow to continue
         return {
-            "correlation_results": {},
+            "process_context_evidence": {},
+            "wafer_defects_evidence": {},
+            "investigation_synthesis": {
+                "key_findings": [f"Investigation failed: {str(e)}"],
+                "problematic_materials": [],
+                "evidence_quality": "error",
+                "correlation_with_monitoring": "Investigation failed",
+                "recommended_next_steps": []
+            },
+            "tool_execution_times": {
+                "process_context_ms": 0,
+                "wafer_defects_ms": 0,
+                "synthesis_ms": 0,
+                "total_ms": 0
+            },
+            # RCA agent compatibility fields
             "investigation_summary": f"Investigation failed: {str(e)}",
             "key_findings": [],
+            "correlation_results": {
+                "confidence_score": 0.0
+            },
             "workflow_stage": "rca"  # Still try RCA even if investigation fails
         }
 
 
 async def rca_agent_tool(state: dict) -> dict:
     """
-    RCA Agent (Worker 3): Root Cause Analysis with LLM validation
+    RCA Agent (Worker 3): Root Cause Analysis with historical knowledge and LLM synthesis
 
-    Uses:
-    - Existing RCAGenerator service (reuses existing code!)
-    - LLM to validate and prioritize pattern-based recommendations
+    MATCHES SEQUENTIAL WORKFLOW:
+    - Tool 1: query_historical_rca_reports() for RAG search
+    - Tool 2: Correlation analysis (skipped, same as sequential)
+    - LLM Synthesis: build_rca_synthesis_prompt() with Claude
+    - Returns: tool outputs + state fields for Supervisor agent
 
-    Returns to supervisor for next decision
+    Returns structure for both MongoDB persistence and state propagation
     """
+    import time
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from multi_agent.tools.investigation_tools import query_historical_rca_reports
+    from multi_agent.prompts.rca_prompts import build_rca_synthesis_prompt
+    import json
 
     alert_id = state.get('alert_id')
     equipment_id = state.get('equipment_id', 'Unknown')
@@ -406,99 +520,390 @@ async def rca_agent_tool(state: dict) -> dict:
     logger.info(f"🟣    Equipment: {equipment_id}, Excursion: {excursion_type}")
 
     try:
-        from services.rca_generator import RCAGenerator
+        # Connect to MongoDB
+        mongodb_uri = os.getenv("MONGODB_URI")
+        database_name = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
+        client = AsyncIOMotorClient(mongodb_uri)
+        db = client[database_name]
 
-        logger.info(f"🟣    🔄 Initializing RCAGenerator...")
-        logger.info(f"📊    Querying historical_knowledge collection...")
-        rca_gen = RCAGenerator()
+        # Fetch alert for context
+        alert = await db.alerts.find_one({"alert_id": alert_id})
+        if not alert:
+            client.close()
+            raise ValueError(f"Alert not found: {alert_id}")
 
-        logger.info(f"🟣    🔍 Running pattern-based RCA analysis...")
-        rca_data = await rca_gen.generate_rca_hints(alert_id)
+        # Extract monitoring and investigation data from state
+        monitoring_analysis = state.get('monitoring_agent_analysis') or {}
+        investigation_synthesis = state.get('investigation_synthesis') or {}
 
-        # Extract top recommendations
-        recommendations = rca_data.get('recommendations', [])
-        logger.info(f"🟣    📋 Generated {len(recommendations)} RCA recommendations")
+        # Extract pattern and defect information
+        llm_interpretation = monitoring_analysis.get('llm_interpretation') or {}
+        pattern_type = llm_interpretation.get('pattern_detected', excursion_type) if llm_interpretation else excursion_type
 
-        # Log top recommendations
-        for i, rec in enumerate(recommendations[:3], 1):
-            logger.info(f"🟣       {i}. {rec.get('title', 'Unknown')} "
-                       f"(confidence: {rec.get('confidence', 0):.0%})")
+        # Get defect pattern from investigation
+        defect_pattern = None
+        problematic_materials = investigation_synthesis.get('problematic_materials', [])
+        if problematic_materials:
+            defect_pattern = problematic_materials[0].get('type', None)
 
-        # Get investigation summary for validation context
-        investigation_summary = state.get('investigation_summary', '')
-        key_findings = state.get('key_findings', [])
-        correlation_confidence = state.get('correlation_results', {}).get('confidence_score', 0)
+        alert_context = {
+            "alert_id": alert_id,
+            "equipment_id": equipment_id,
+            "severity": alert.get('severity', 'UNKNOWN'),
+            "timestamp": alert.get('timestamp')
+        }
 
-        # Build context for LLM validation
-        recs_text = "\n".join([
-            f"{i+1}. {rec.get('title', 'Unknown')} ({rec.get('confidence', 0):.0%} confidence)"
-            for i, rec in enumerate(recommendations[:5])
-        ])
+        # ========== TOOL 1: Query Historical Knowledge (RAG) ==========
+        logger.info(f"🟣    🔍 TOOL 1: Query Historical Knowledge (RAG)")
+        logger.info(f"🟣       Excursion: {pattern_type}, Pattern: {defect_pattern}, Equipment: {equipment_id}")
 
-        findings_text = "\n".join([f"• {f}" for f in key_findings[:3]]) if key_findings else "No investigation findings available"
+        tool1_start = time.time()
+        historical_knowledge = await query_historical_rca_reports(
+            db=db,
+            excursion_type=pattern_type,
+            defect_pattern=defect_pattern,
+            equipment_id=equipment_id,
+            limit=5
+        )
+        tool1_elapsed = (time.time() - tool1_start) * 1000
 
-        # LLM validates and synthesizes recommendations
-        prompt = f"""You are analyzing root cause recommendations for a semiconductor manufacturing alert.
+        knowledge_docs_found = len(historical_knowledge.get('knowledge_documents', []))
+        logger.info(f"🟣       ✅ Found {knowledge_docs_found} historical RCA reports ({tool1_elapsed:.0f}ms)")
 
-PATTERN-BASED RCA RECOMMENDATIONS:
-{recs_text}
+        # ========== TOOL 2: Correlation Analysis (SKIPPED) ==========
+        logger.info(f"🟣    🔗 TOOL 2: Correlation Analysis (SKIPPED - same as sequential)")
 
-INVESTIGATION FINDINGS (from correlation analysis):
-{findings_text}
+        tool2_start = time.time()
+        correlation_analysis = {
+            "summary": {"overall_confidence": 0, "key_insights": []},
+            "temporal_correlation": {},
+            "batch_correlation": {},
+            "recipe_correlation": {},
+            "spatial_correlation": {},
+            "equipment_correlation": {}
+        }
+        tool2_elapsed = (time.time() - tool2_start) * 1000
 
-CORRELATION CONFIDENCE: {correlation_confidence:.0%}
+        # Close DB before LLM call
+        client.close()
 
-Your task:
-1. Do the RCA recommendations align with the investigation findings? (Yes/No + brief reason)
-2. Which top 2 root causes should be prioritized based on the evidence?
-3. Any additional insights to consider?
+        # ========== LLM SYNTHESIS: Validate Root Causes ==========
+        logger.info(f"🟣    🤖 LLM SYNTHESIS: Validate Root Causes")
 
-Respond in 3-4 sentences. Be concise and specific."""
+        synthesis_start = time.time()
 
-        logger.info(f"🟣    🤖 Calling Claude for RCA validation...")
-        validation_response = call_claude(prompt, temperature=0.3, max_tokens=300)
+        # Build comprehensive RCA prompt
+        prompt = build_rca_synthesis_prompt(
+            alert_context=alert_context,
+            monitoring_analysis=monitoring_analysis,
+            investigation_synthesis=investigation_synthesis,
+            historical_knowledge=historical_knowledge,
+            correlation_analysis=correlation_analysis
+        )
 
-        logger.info(f"🟣    ✅ RCA validation complete")
-        logger.info(f"🟣    📝 Validation: {validation_response[:150]}...")
+        logger.info(f"🟣       Calling Claude Haiku for root cause validation...")
 
-        # Extract validated causes (high confidence recommendations)
-        validated_causes = [
-            rec.get('title', 'Unknown')
-            for rec in recommendations[:3]
-            if rec.get('confidence', 0) > 0.5
-        ]
+        # Call Claude
+        llm_response = call_claude(
+            prompt=prompt,
+            model_id="anthropic.claude-3-haiku-20240307-v1:0",
+            temperature=0.2,
+            max_tokens=2000
+        )
 
-        logger.info(f"🟣    ✅ {len(validated_causes)} high-confidence root causes identified")
-        for i, cause in enumerate(validated_causes, 1):
-            logger.info(f"🟣       {i}. {cause}")
+        # Parse JSON response
+        try:
+            synthesis = json.loads(llm_response)
+            logger.info(f"🟣       ✅ LLM synthesis complete")
+            logger.info(f"🟣          Root causes: {len(synthesis.get('validated_root_causes', []))}")
+            logger.info(f"🟣          Confidence: {synthesis.get('overall_confidence', 0):.2f}")
+        except json.JSONDecodeError as e:
+            logger.error(f"🟣       ❌ Failed to parse LLM response: {e}")
+            synthesis = {
+                "validated_root_causes": [],
+                "overall_confidence": 0,
+                "reasoning": "LLM response parsing failed",
+                "recommendations": []
+            }
 
+        synthesis_elapsed = (time.time() - synthesis_start) * 1000
+
+        total_elapsed = tool1_elapsed + tool2_elapsed + synthesis_elapsed
+        logger.info(f"🟣    ✅ RCA agent complete ({total_elapsed:.0f}ms)")
         logger.info(f"🟣    🎯 Next stage: Supervisor")
 
-        # Return updated state
+        # Return structure with BOTH MongoDB fields and state fields
         return {
-            "rca_patterns": rca_data,
-            "rca_validation": validation_response,
-            "validated_causes": validated_causes,
-            "workflow_stage": "complete"  # RCA is final stage
+            # MongoDB persistence fields (for wrapper to save)
+            "historical_knowledge_output": {
+                "execution_time_ms": round(tool1_elapsed, 2),
+                "documents_found": knowledge_docs_found,
+                "search_parameters": {
+                    "excursion_type": pattern_type,
+                    "defect_pattern": defect_pattern,
+                    "equipment_id": equipment_id,
+                    "limit": 5
+                },
+                "raw_data": historical_knowledge
+            },
+            "correlation_output": {
+                "execution_time_ms": round(tool2_elapsed, 2),
+                "confidence_score": 0,
+                "raw_data": correlation_analysis
+            },
+            "rca_synthesis": synthesis,
+            "tool_execution_times": {
+                "historical_knowledge_ms": round(tool1_elapsed, 2),
+                "correlation_analysis_ms": round(tool2_elapsed, 2),
+                "llm_synthesis_ms": round(synthesis_elapsed, 2),
+                "total_ms": round(total_elapsed, 2)
+            },
+            # State fields for Supervisor agent (matching supervisor expectations)
+            "validated_causes": synthesis.get('validated_root_causes', []),  # Supervisor expects 'validated_causes'
+            "rca_validation": synthesis.get('reasoning', ''),  # Supervisor expects 'rca_validation'
+            "rca_patterns": {
+                "recommendations": synthesis.get('recommendations', [])  # Supervisor expects 'rca_patterns.recommendations'
+            },
+            "overall_confidence": synthesis.get('overall_confidence', 0),
+            "historical_precedent": synthesis.get('historical_precedent', ''),
+            "workflow_stage": "complete"
         }
 
     except ValueError as e:
-        # Alert not found error
         logger.error(f"🟣    ❌ Alert not found: {e}")
         return {
-            "rca_patterns": {},
-            "rca_validation": f"Alert {alert_id} not found in database",
-            "validated_causes": [],
+            "historical_knowledge_output": {},
+            "correlation_output": {},
+            "rca_synthesis": {"error": str(e)},
+            "validated_root_causes": [],
+            "overall_confidence": 0,
+            "recommendations": [],
             "workflow_stage": "complete"
         }
 
     except Exception as e:
-        logger.error(f"🟣    ❌ RCA agent error: {e}")
-        # Return minimal results
+        logger.error(f"🟣    ❌ RCA agent error: {e}", exc_info=True)
         return {
-            "rca_patterns": {},
-            "rca_validation": f"RCA analysis failed: {str(e)}",
+            "historical_knowledge_output": {},
+            "correlation_output": {},
+            "rca_synthesis": {"error": str(e)},
             "validated_causes": [],
+            "rca_validation": f"Error: {str(e)}",
+            "rca_patterns": {"recommendations": []},
+            "overall_confidence": 0,
+            "workflow_stage": "complete"
+        }
+
+
+async def supervisor_agent_tool(state: dict) -> dict:
+    """
+    Supervisor Agent (Worker 4): Comprehensive Quality Control Report with troubleshooting guidance
+
+    MATCHES SEQUENTIAL WORKFLOW:
+    - Tool 1: query_troubleshooting_guides() for RAG search on actionable solutions
+    - LLM Synthesis: build_supervisor_synthesis_prompt() with Claude Sonnet for comprehensive JSON report
+    - Returns: tool outputs + state fields for final response
+
+    This agent aggregates insights from:
+    - Monitoring Agent: Pattern detection and risk assessment
+    - Investigation Agent: Evidence gathering and problematic materials
+    - RCA Agent: Root cause validation and initial recommendations
+    - Troubleshooting Guides: Solution-oriented knowledge base (vector search)
+    """
+    import time
+    from motor.motor_asyncio import AsyncIOMotorClient
+    from multi_agent.tools.investigation_tools import query_troubleshooting_guides
+    from multi_agent.prompts.supervisor_prompts import build_supervisor_synthesis_prompt
+    import json
+
+    alert_id = state.get('alert_id')
+    equipment_id = state.get('equipment_id', 'Unknown')
+
+    try:
+        # Connect to MongoDB
+        mongodb_uri = os.getenv("MONGODB_URI")
+        database_name = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
+        client = AsyncIOMotorClient(mongodb_uri)
+        db = client[database_name]
+
+        # Fetch alert for context
+        alert = await db.alerts.find_one({"alert_id": alert_id})
+        if not alert:
+            client.close()
+            raise ValueError(f"Alert not found: {alert_id}")
+
+        logger.info(f"🟢 [SUPERVISOR AGENT] Starting comprehensive synthesis for alert {alert_id}")
+        logger.info(f"🟢    Equipment: {equipment_id}")
+
+        # Extract agent analyses from alert document
+        monitoring_analysis = alert.get('monitoring_agent_analysis') or {}
+        investigation_analysis = alert.get('investigation_agent_analysis') or {}
+        rca_analysis = alert.get('rca_agent_analysis') or {}
+
+        # Validate all previous agents have run
+        if not monitoring_analysis:
+            client.close()
+            raise ValueError("Monitoring agent has not run yet")
+        if not investigation_analysis:
+            client.close()
+            raise ValueError("Investigation agent has not run yet")
+        if not rca_analysis:
+            client.close()
+            raise ValueError("RCA agent has not run yet")
+
+        logger.info(f"🟢    ✅ All previous agents (Monitoring, Investigation, RCA) have completed")
+
+        alert_context = {
+            "alert_id": alert_id,
+            "equipment_id": equipment_id,
+            "severity": alert.get('severity', 'UNKNOWN'),
+            "timestamp": alert.get('timestamp')
+        }
+
+        # ========== TOOL 1: Query Troubleshooting Guides (RAG) ==========
+        logger.info(f"🟢    🔍 TOOL 1: Query Troubleshooting Guides (RAG)")
+
+        tool_start = time.time()
+
+        # Extract root causes from RCA analysis
+        rca_llm = rca_analysis.get('llm_synthesis', {})
+        validated_root_causes = rca_llm.get('validated_root_causes', [])
+        root_cause_descriptions = [rc.get('root_cause', '') for rc in validated_root_causes if rc.get('root_cause')]
+
+        # Extract defect types from investigation analysis
+        investigation_llm = investigation_analysis.get('llm_synthesis', {})
+        problematic_materials = investigation_llm.get('problematic_materials', [])
+        defect_types = list(set([pm.get('type', '') for pm in problematic_materials if pm.get('type')]))
+
+        logger.info(f"🟢       Root Causes: {len(root_cause_descriptions)}")
+        logger.info(f"🟢       Defect Types: {len(defect_types)}")
+        logger.info(f"🟢       Equipment ID: {equipment_id}")
+
+        # Query troubleshooting guides
+        troubleshooting_guides = await query_troubleshooting_guides(
+            db=db,
+            root_causes=root_cause_descriptions,
+            defect_types=defect_types,
+            equipment_id=equipment_id,
+            limit=10
+        )
+
+        tool_elapsed = (time.time() - tool_start) * 1000
+
+        guides_found = len(troubleshooting_guides.get('knowledge_documents', []))
+        logger.info(f"🟢       ✅ Found {guides_found} troubleshooting guides ({tool_elapsed:.0f}ms)")
+
+        # Close DB before LLM call
+        client.close()
+
+        # ========== LLM SYNTHESIS: Generate Comprehensive QC Report ==========
+        logger.info(f"🟢    🤖 LLM SYNTHESIS: Generate Comprehensive QC Report")
+
+        synthesis_start = time.time()
+
+        # Build comprehensive supervisor prompt
+        prompt = build_supervisor_synthesis_prompt(
+            alert_context=alert_context,
+            monitoring_analysis=monitoring_analysis,
+            investigation_analysis=investigation_analysis,
+            rca_analysis=rca_analysis,
+            troubleshooting_guides=troubleshooting_guides
+        )
+
+        logger.info(f"🟢       Calling Claude Sonnet for comprehensive synthesis...")
+        logger.info(f"🟢       Model: anthropic.claude-3-sonnet-20240229-v1:0")
+
+        # Call Claude Sonnet (more capable for comprehensive synthesis)
+        llm_response = call_claude(
+            prompt=prompt,
+            model_id="anthropic.claude-3-sonnet-20240229-v1:0",
+            temperature=0.2,
+            max_tokens=4000  # Comprehensive report needs more tokens
+        )
+
+        # Parse JSON response (strip markdown code blocks if present)
+        try:
+            # Remove markdown code blocks if present
+            response_text = llm_response.strip()
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]
+            if response_text.startswith("```"):
+                response_text = response_text[3:]
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]
+            response_text = response_text.strip()
+
+            synthesis = json.loads(response_text)
+            logger.info(f"🟢       ✅ LLM synthesis complete")
+            logger.info(f"🟢          Recommendations: {len(synthesis.get('recommendations', []))}")
+            logger.info(f"🟢          Overall confidence: {synthesis.get('overall_confidence', 0):.2f}")
+        except json.JSONDecodeError as e:
+            logger.error(f"🟢       ❌ Failed to parse LLM response: {e}")
+            synthesis = {
+                "executive_summary": "Error parsing LLM response",
+                "recommendations": [],
+                "overall_confidence": 0
+            }
+
+        synthesis_elapsed = (time.time() - synthesis_start) * 1000
+        total_elapsed = tool_elapsed + synthesis_elapsed
+
+        logger.info(f"🟢    ✅ Supervisor agent complete ({total_elapsed:.0f}ms)")
+        logger.info(f"🟢    🎯 Ready for final response")
+
+        # Return structure with BOTH MongoDB fields and state fields
+        # MongoDB fields stored in _metadata (won't conflict with state)
+        return {
+            # MongoDB persistence fields (stored separately, not in state)
+            "_troubleshooting_guides_output": {
+                "execution_time_ms": round(tool_elapsed, 2),
+                "documents_found": guides_found,
+                "search_parameters": {
+                    "root_causes_count": len(root_cause_descriptions),
+                    "defect_types_count": len(defect_types),
+                    "equipment_id": equipment_id,
+                    "limit": 10
+                },
+                "raw_data": troubleshooting_guides
+            },
+            "_supervisor_synthesis": synthesis,
+            "_tool_execution_times": {
+                "troubleshooting_guides_ms": round(tool_elapsed, 2),
+                "llm_synthesis_ms": round(synthesis_elapsed, 2),
+                "total_ms": round(total_elapsed, 2)
+            },
+            # State fields (must match AlertAnalysisState TypedDict)
+            "supervisor_synthesis": synthesis.get('executive_summary', ''),  # Text summary for state
+            "risk_level": synthesis.get('risk_assessment', {}).get('recurrence_risk', 'medium'),
+            "overall_confidence": synthesis.get('overall_confidence', 0),
+            "action_items": [
+                {"action": rec.get("action", ""), "priority": rec.get("priority", ""), "agent": "supervisor"}
+                for rec in synthesis.get('recommendations', [])[:10]
+            ],
+            "workflow_stage": "complete"
+        }
+
+    except ValueError as e:
+        logger.error(f"🟢    ❌ Validation error: {e}")
+        return {
+            "_troubleshooting_guides_output": {},
+            "_supervisor_synthesis": {"error": str(e)},
+            "supervisor_synthesis": f"Error: {str(e)}",
+            "risk_level": "unknown",
+            "overall_confidence": 0,
+            "action_items": [],
+            "workflow_stage": "complete"
+        }
+
+    except Exception as e:
+        logger.error(f"🟢    ❌ Supervisor agent error: {e}", exc_info=True)
+        return {
+            "_troubleshooting_guides_output": {},
+            "_supervisor_synthesis": {"error": str(e)},
+            "supervisor_synthesis": f"Error: {str(e)}",
+            "risk_level": "unknown",
+            "overall_confidence": 0,
+            "action_items": [],
             "workflow_stage": "complete"
         }
 

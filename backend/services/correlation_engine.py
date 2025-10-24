@@ -40,9 +40,16 @@ class CorrelationEngine:
     async def analyze_alert(self, alert_id: str) -> Dict[str, Any]:
         """Main entry point for analyzing an alert"""
         self.logger.info(f"Starting correlation analysis for alert {alert_id}")
-        
-        # Get alert details
-        alert = await self.alerts_collection.find_one({"_id": ObjectId(alert_id)})
+
+        # Get alert details - try by alert_id field first (for scenario alerts), then by _id ObjectId
+        alert = await self.alerts_collection.find_one({"alert_id": alert_id})
+        if not alert:
+            # Try legacy _id ObjectId format for backward compatibility
+            try:
+                alert = await self.alerts_collection.find_one({"_id": ObjectId(alert_id)})
+            except:
+                pass
+
         if not alert:
             raise ValueError(f"Alert {alert_id} not found")
         
@@ -127,9 +134,9 @@ class CorrelationEngine:
             "insights": insights
         }
         
-        # Store correlation results in alert
+        # Store correlation results in alert - use alert_id field (works for both scenario and legacy alerts)
         await self.alerts_collection.update_one(
-            {"_id": ObjectId(alert_id)},
+            {"alert_id": alert_id},
             {"$set": {"correlation_analysis": result}}
         )
         

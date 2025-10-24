@@ -381,6 +381,19 @@ export const aiAgentAPI = {
     return fetchAPI(`/ai-agents/analyze-alert/${alert_id}`, {
       method: 'POST'
     });
+  },
+
+  // Run LangGraph workflow for scenario analysis
+  // Can optionally provide an existing alert_id to analyze
+  runLangGraphWorkflow: async (scenario_id, alert_id = null) => {
+    const body = alert_id ? { alert_id } : {};
+    return fetchAPI(`/ai-agents/analyze-workflow/${scenario_id}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(body)
+    });
   }
 };
 

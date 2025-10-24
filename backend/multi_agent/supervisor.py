@@ -46,18 +46,21 @@ async def supervisor_synthesis_agent(
     logger.info(f"🟢 [SUPERVISOR] Starting synthesis for {equipment_id}")
     logger.info(f"🟢    Aggregating outputs from 3 worker agents...")
 
-    # Extract key information from each agent
-    monitoring_confidence = monitoring_result.get('monitoring_decision', {}).get('confidence', 0)
-    monitoring_pattern = monitoring_result.get('monitoring_decision', {}).get('pattern_detected', 'unknown')
-    monitoring_reasoning = monitoring_result.get('monitoring_decision', {}).get('reasoning', 'N/A')
+    # Extract key information from each agent (with defensive None checks)
+    monitoring_decision = monitoring_result.get('monitoring_decision') or {}
+    monitoring_confidence = monitoring_decision.get('confidence', 0)
+    monitoring_pattern = monitoring_decision.get('pattern_detected', 'unknown')
+    monitoring_reasoning = monitoring_decision.get('reasoning', 'N/A')
 
     logger.info(f"🟢    📊 Monitoring Agent Output:")
     logger.info(f"🟢       Pattern: {monitoring_pattern}, Confidence: {monitoring_confidence:.0%}")
     logger.info(f"🟢       Reasoning: {monitoring_reasoning[:100]}...")
 
-    key_findings = investigation_result.get('key_findings', [])
-    correlation_confidence = investigation_result.get('correlation_results', {}).get('confidence_score', 0)
-    affected_wafers = investigation_result.get('correlation_results', {}).get('affected_wafers', {}).get('total', 0)
+    key_findings = investigation_result.get('key_findings') or []
+    correlation_results = investigation_result.get('correlation_results') or {}
+    correlation_confidence = correlation_results.get('confidence_score', 0)
+    affected_wafers_data = correlation_results.get('affected_wafers') or {}
+    affected_wafers = affected_wafers_data.get('total', 0)
     investigation_summary = investigation_result.get('investigation_summary', 'No investigation data')
 
     logger.info(f"🟢    🔬 Investigation Agent Output:")
@@ -66,9 +69,9 @@ async def supervisor_synthesis_agent(
     for i, finding in enumerate(key_findings[:3], 1):
         logger.info(f"🟢          {i}. {finding[:80]}...")
 
-    validated_causes = rca_result.get('validated_causes', [])
+    validated_causes = rca_result.get('validated_causes') or []
     rca_validation = rca_result.get('rca_validation', 'No RCA validation')
-    rca_recommendations = rca_result.get('rca_patterns', {}).get('recommendations', [])
+    rca_recommendations = rca_result.get('rca_patterns', {}).get('recommendations') or []
 
     logger.info(f"🟢    🔍 RCA Agent Output:")
     logger.info(f"🟢       Validated Causes: {len(validated_causes)}")

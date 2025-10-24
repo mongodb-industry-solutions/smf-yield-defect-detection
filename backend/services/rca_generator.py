@@ -211,8 +211,15 @@ class RCAGenerator:
         Note: Method name kept as generate_rca_hints for backward compatibility"""
         self.logger.info(f"Generating RCA analysis for alert {alert_id}")
 
-        # Get alert and correlation analysis
-        alert = await self.alerts_collection.find_one({"_id": ObjectId(alert_id)})
+        # Get alert and correlation analysis - try by alert_id field first (for scenario alerts), then by _id ObjectId
+        alert = await self.alerts_collection.find_one({"alert_id": alert_id})
+        if not alert:
+            # Try legacy _id ObjectId format for backward compatibility
+            try:
+                alert = await self.alerts_collection.find_one({"_id": ObjectId(alert_id)})
+            except:
+                pass
+
         if not alert:
             raise ValueError(f"Alert {alert_id} not found")
 
@@ -254,9 +261,9 @@ class RCAGenerator:
             "suggested_priority": self._determine_priority(alert, recommendations)
         }
 
-        # Store RCA analysis in alert
+        # Store RCA analysis in alert - use alert_id field (works for both scenario and legacy alerts)
         await self.alerts_collection.update_one(
-            {"_id": ObjectId(alert_id)},
+            {"alert_id": alert_id},
             {"$set": {"rca_analysis": rca_analysis}}
         )
 

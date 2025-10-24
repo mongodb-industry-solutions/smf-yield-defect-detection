@@ -4,8 +4,8 @@ Handles AI multi-agent system control endpoints
 """
 import logging
 import os
-from typing import Any
-from fastapi import APIRouter, HTTPException
+from typing import Any, Dict, Optional
+from fastapi import APIRouter, HTTPException, Body
 from motor.motor_asyncio import AsyncIOMotorClient
 from multi_agent.workers import analyze_scenario_tool
 from multi_agent.tools.investigation_tools import query_process_context, query_wafer_defects, query_historical_rca_reports, query_troubleshooting_guides
@@ -1163,4 +1163,297 @@ async def run_supervisor_agent(alert_id: str):
         raise
     except Exception as e:
         logger.error(f"❌ POST /ai-agents/supervisor/{alert_id} - Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ============================================================================
+# LANGGRAPH WORKFLOW ENDPOINTS
+# ============================================================================
+
+
+@router.post("/analyze-workflow/{scenario_id}")
+async def analyze_with_langgraph_workflow(
+    scenario_id: str,
+    request: Optional[Dict] = Body(default=None)
+):
+    """
+    Run full 4-agent pipeline via LangGraph StateGraph (NEW!)
+
+    This endpoint uses LangGraph to orchestrate the entire multi-agent workflow:
+    1. Monitoring Agent - Pattern detection and false positive filtering
+    2. Investigation Agent - Evidence gathering (conditional, skipped if filtered)
+    3. RCA Agent - Root cause analysis with vector search
+    4. Supervisor Agent - Comprehensive QC report synthesis
+
+    Can work with:
+    - NEW alerts: Creates alert from scenario (default behavior)
+    - EXISTING alerts: Uses pre-created alert from lot processing (pass alert_id in body)
+
+    Benefits over manual sequential approach:
+    - Automatic state management (no manual state passing)
+    - Conditional routing (skips investigation if monitoring filters alert)
+    - Built-in observability and debugging
+    - Workflow visualization support
+    - Pause/resume capabilities (with checkpointing)
+
+    Args:
+        scenario_id: Scenario identifier (gradual_drift, sudden_spike, oscillating_pattern)
+        request: Optional JSON body with {"alert_id": "existing_alert_id"}
+
+    Returns:
+        Complete workflow result with all agent outputs in state
+    """
+    # Extract optional alert_id from request body
+    alert_id_from_request = request.get("alert_id") if request else None
+
+    logger.info("=" * 80)
+    logger.info(f"📥 POST /ai-agents/analyze-workflow/{scenario_id} (LangGraph)")
+    if alert_id_from_request:
+        logger.info(f"   🔄 Using existing alert: {alert_id_from_request}")
+    else:
+        logger.info(f"   🆕 Will create new alert from scenario")
+    logger.info("=" * 80)
+
+    try:
+        from multi_agent.workflow_graph import create_alert_workflow
+        from multi_agent.alert_analysis_state import create_initial_state
+
+        # Validate scenario_id
+        valid_scenarios = ["gradual_drift", "sudden_spike", "oscillating_pattern"]
+        if scenario_id not in valid_scenarios:
+            logger.warning(f"⚠️ Invalid scenario_id: {scenario_id}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid scenario_id. Must be one of: {', '.join(valid_scenarios)}"
+            )
+
+        # Connect to MongoDB
+        mongodb_uri = os.getenv("MONGODB_URI")
+        database_name = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
+
+        if not mongodb_uri:
+            raise HTTPException(status_code=500, detail="MONGODB_URI not configured")
+
+        logger.info(f"🔗 Connecting to MongoDB...")
+        client = AsyncIOMotorClient(mongodb_uri)
+        db = client[database_name]
+
+        # Load scenario metadata
+        logger.info(f"📊 Loading scenario metadata for: {scenario_id}")
+        scenario = await db.scenario_metadata.find_one({"scenario_id": scenario_id})
+
+        if not scenario:
+            client.close()
+            raise HTTPException(
+                status_code=404,
+                detail=f"Scenario {scenario_id} not found in database"
+            )
+
+        # Step 1: Monitoring Agent - either use existing alert or create new one
+        if alert_id_from_request:
+            # OPTION A: Use existing alert from lot processing
+            logger.info(f"🔄 Step 1: Using existing alert: {alert_id_from_request}")
+
+            # Verify alert exists
+            existing_alert = await db.alerts.find_one({"alert_id": alert_id_from_request})
+            if not existing_alert:
+                client.close()
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Alert {alert_id_from_request} not found in database"
+                )
+
+            # Run monitoring analysis on existing alert (updates monitoring_agent_analysis)
+            from multi_agent.workers import analyze_existing_alert_tool
+
+            monitoring_start = time.time()
+            monitoring_result = await analyze_existing_alert_tool(alert_id_from_request, db)
+            monitoring_elapsed = (time.time() - monitoring_start) * 1000
+
+            if "error" in monitoring_result:
+                client.close()
+                raise HTTPException(status_code=500, detail=monitoring_result["error"])
+
+            alert_id = alert_id_from_request
+            logger.info(f"✅ Step 1 complete: Updated existing alert with monitoring analysis")
+
+        else:
+            # OPTION B: Create new alert from scenario (current behavior)
+            logger.info(f"🆕 Step 1: Creating new alert from scenario...")
+            from multi_agent.workers import analyze_scenario_tool
+
+            monitoring_start = time.time()
+            monitoring_result = await analyze_scenario_tool(scenario_id, db)
+            monitoring_elapsed = (time.time() - monitoring_start) * 1000
+
+            if "error" in monitoring_result:
+                client.close()
+                raise HTTPException(status_code=500, detail=monitoring_result["error"])
+
+            # Extract alert_id created by monitoring agent
+            alert_id = monitoring_result["alert_info"]["alert_id"]
+            logger.info(f"✅ Step 1 complete: Alert created in DB: {alert_id}")
+
+        logger.info(f"   Monitoring time: {monitoring_elapsed:.0f}ms")
+        logger.info(f"   Alert ID: {alert_id}")
+
+        # Build initial state with alert_id (works for both existing and new alerts)
+        logger.info(f"🔧 Building initial state for LangGraph workflow...")
+        initial_state = create_initial_state(
+            alert_id=alert_id,
+            equipment_id=scenario.get('equipment_id', 'CMP_TOOL_01'),
+            excursion_type="particle",
+            severity="high",
+            metrics={"particle_count": 1500},
+            metadata={
+                "scenario_id": scenario_id,
+                "pattern_type": scenario.get('pattern_type', 'unknown'),
+                "source": "langgraph_workflow",
+                "used_existing_alert": bool(alert_id_from_request),
+                # Add slurry_batch and recipe_id for investigation agent
+                "slurry_batch": scenario.get('slurry_batch'),
+                "recipe_id": scenario.get('recipe_id')
+            }
+        )
+
+        # Pre-populate monitoring decision from analyze_scenario_tool result
+        initial_state["monitoring_decision"] = {
+            "create_alert": True,  # Always true since alert was created
+            "confidence": monitoring_result["agent_analysis"]["confidence"],
+            "pattern_detected": monitoring_result["agent_analysis"]["pattern_detected"],
+            "reasoning": str(monitoring_result["agent_analysis"].get("key_insights", []))
+        }
+        initial_state["workflow_stage"] = "investigation"  # Skip monitoring node
+
+        # Step 2-4: Run LangGraph workflow (Investigation → RCA → Supervisor)
+        logger.info(f"🚀 Step 2-4: Creating LangGraph workflow...")
+        workflow = create_alert_workflow(start_from="investigation")  # Start from investigation
+
+        logger.info(f"▶️  Executing workflow (3 remaining agents: investigation → rca → supervisor)...")
+        workflow_start = time.time()
+
+        # Run the workflow - starts at investigation node
+        result = await workflow.ainvoke(initial_state)
+
+        workflow_elapsed = (time.time() - workflow_start) * 1000
+        total_elapsed = monitoring_elapsed + workflow_elapsed
+
+        # Close MongoDB connection
+        client.close()
+        logger.info(f"🔌 MongoDB connection closed")
+
+        # Extract key results from final state
+        monitoring_decision = result.get("monitoring_decision", {})
+        supervisor_synthesis = result.get("supervisor_synthesis", "")
+        overall_confidence = result.get("overall_confidence", 0)
+        risk_level = result.get("risk_level", "Unknown")
+
+        # Extract monitoring analysis from monitoring_result (which came from analyze_scenario_tool)
+        monitoring_analysis = monitoring_result.get("agent_analysis", {})
+
+        # Debug: Log final state keys
+        logger.info(f"🔍 Final state keys: {list(result.keys())}")
+        logger.info(f"🔍 risk_level in state: {result.get('risk_level')}")
+        logger.info(f"🔍 overall_confidence in state: {result.get('overall_confidence')}")
+
+        logger.info("=" * 80)
+        logger.info(f"✅ LANGGRAPH WORKFLOW COMPLETE")
+        logger.info(f"   Scenario: {scenario_id}")
+        logger.info(f"   Alert ID: {result['alert_id']}")
+        logger.info(f"   Workflow Stage: {result.get('workflow_stage', 'unknown')}")
+        logger.info(f"   Risk Level: {risk_level}")
+        logger.info(f"   Overall Confidence: {overall_confidence:.2f}")
+        logger.info(f"   Total Execution Time: {total_elapsed:.0f}ms")
+        logger.info(f"      - Monitoring: {monitoring_elapsed:.0f}ms")
+        logger.info(f"      - LangGraph (Inv+RCA+Sup): {workflow_elapsed:.0f}ms")
+        logger.info("=" * 80)
+
+        # Build comprehensive response
+        response = {
+            "workflow_type": "langgraph",
+            "scenario_id": scenario_id,
+            "alert_id": result["alert_id"],
+            "used_existing_alert": bool(alert_id_from_request),
+            "execution_metrics": {
+                "total_time_ms": round(total_elapsed, 0),
+                "monitoring_time_ms": round(monitoring_elapsed, 0),
+                "workflow_time_ms": round(workflow_elapsed, 0),
+                "workflow_engine": "LangGraph StateGraph"
+            },
+            "monitoring": {
+                "pattern_detected": monitoring_analysis.get("pattern_detected", monitoring_decision.get("pattern_detected", "unknown")),
+                "confidence": monitoring_analysis.get("confidence", monitoring_decision.get("confidence", 0)),
+                "risk_level": monitoring_analysis.get("risk_level", "unknown"),
+                "key_insights": monitoring_analysis.get("key_insights", [])[:3]  # Top 3 insights
+            },
+            "investigation": {
+                "key_findings": result.get("key_findings", [])[:3],  # Top 3 findings
+                "correlation_confidence": (result.get("correlation_results") or {}).get("confidence_score", 0)
+            },
+            "rca": {
+                "validated_causes": result.get("validated_causes", [])[:3],  # Top 3 causes
+                "recommendations_count": len((result.get("rca_patterns") or {}).get("recommendations", []))
+            },
+            "supervisor": {
+                "risk_level": risk_level,
+                "overall_confidence": overall_confidence,
+                "synthesis": supervisor_synthesis[:500] if supervisor_synthesis else ""  # First 500 chars
+            },
+            "workflow_stage": result.get("workflow_stage", "unknown"),
+            "success": True
+        }
+
+        return response
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ POST /ai-agents/analyze-workflow/{scenario_id} - Error: {e}", exc_info=True)
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/workflow/graph")
+async def get_workflow_graph():
+    """
+    Visualize the LangGraph workflow as a graph
+
+    Returns workflow visualization in multiple formats:
+    - Mermaid diagram (for rendering in frontend)
+    - ASCII diagram (for terminal/logs)
+
+    This helps developers understand the agent flow and conditional routing logic.
+
+    Returns:
+        dict: Contains 'mermaid', 'ascii', and 'description' fields
+    """
+    logger.info("📥 GET /ai-agents/workflow/graph - Fetching workflow visualization")
+
+    try:
+        from multi_agent.workflow_graph import get_workflow_visualization
+
+        viz = get_workflow_visualization()
+
+        logger.info("✅ GET /ai-agents/workflow/graph - Visualization generated")
+        logger.info(f"   Nodes: 4 agents (monitoring, investigation, rca, supervisor)")
+        logger.info(f"   Conditional routing: monitoring → investigation (if create_alert=true)")
+
+        return {
+            "workflow_type": "langgraph",
+            "visualization": viz,
+            "nodes": [
+                "monitoring - Pattern detection and false positive filtering",
+                "investigation - Evidence gathering and correlation analysis",
+                "rca - Root cause analysis with vector search",
+                "supervisor - Comprehensive QC report synthesis"
+            ],
+            "conditional_edges": [
+                "monitoring → investigation (if create_alert=true)",
+                "monitoring → END (if create_alert=false, filtered)"
+            ]
+        }
+
+    except Exception as e:
+        logger.error(f"❌ GET /ai-agents/workflow/graph - Error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

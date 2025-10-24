@@ -351,111 +351,82 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     }
   };
 
-  // Handle AI Agent Pipeline Execution
+  // Handle AI Agent Pipeline Execution using LangGraph
   const handleRunAnalysis = async () => {
     setPipelineRunning(true);
     setPipelineError(null);
     setAnalysisComplete(false);
     setProgressPercent(0);
-    setCurrentAgent(null);
+    setCurrentAgent(1);
     setAlertId(null);
 
     try {
       let newAlertId = null;
-      let monitoringData = null;
+      let response = null;
 
-      // OPTION 1: Analyze existing lot processing alert
+      // Simulate progress updates for better UX
+      let progressInterval;
+      const startProgressSimulation = () => {
+        let currentProgress = 0;
+        progressInterval = setInterval(() => {
+          currentProgress += 2;
+          if (currentProgress <= 95) {
+            setProgressPercent(currentProgress);
+            // Update agent number based on progress
+            if (currentProgress < 25) setCurrentAgent(1);
+            else if (currentProgress < 50) setCurrentAgent(2);
+            else if (currentProgress < 75) setCurrentAgent(3);
+            else setCurrentAgent(4);
+          }
+        }, 1200);
+      };
+
+      // OPTION 1: Analyze existing lot processing alert with LangGraph
       if (selectedLotAlertId) {
-        console.log('🔄 Analyzing existing lot processing alert:', selectedLotAlertId);
-        setCurrentAgent(1);
-        setProgressPercent(25);
+        console.log('🔄 Running LangGraph workflow on existing alert:', selectedLotAlertId);
 
-        const response = await aiAgentAPI.analyzeAlert(selectedLotAlertId);
-        newAlertId = response.alert_id; // Same as selectedLotAlertId
-        monitoringData = response;
+        // Start progress simulation
+        startProgressSimulation();
 
-        console.log('✅ Agent 1 complete. Updated existing alert:', newAlertId);
-        console.log('📊 Monitoring Data:', JSON.stringify(monitoringData, null, 2));
-        setAlertId(newAlertId);
+        // Use LangGraph workflow with existing alert
+        response = await aiAgentAPI.runLangGraphWorkflow(selectedScenario, selectedLotAlertId);
+
+        clearInterval(progressInterval);
+        newAlertId = response.alert_id;
+
+        console.log('✅ LangGraph workflow complete. Used existing alert:', newAlertId);
+        console.log('📊 Workflow Response:', JSON.stringify(response, null, 2));
       }
-      // OPTION 2: Create new alert from scenario (legacy agentic mode)
+      // OPTION 2: Create new alert from scenario with LangGraph
       else {
-        console.log('🆕 Creating new alert for scenario:', selectedScenario);
-        setCurrentAgent(1);
-        setProgressPercent(25);
+        console.log('🆕 Running LangGraph workflow for new scenario:', selectedScenario);
 
-        const monitoringResponse = await fetch(
-          `/api/backend/ai-agents/analyze-scenario/${selectedScenario}`,
-          { method: 'POST' }
-        );
-        if (!monitoringResponse.ok) throw new Error('Monitoring Agent failed');
-        monitoringData = await monitoringResponse.json();
-        newAlertId = monitoringData.alert_info.alert_id;
+        // Start progress simulation
+        startProgressSimulation();
 
-        console.log(`✅ Agent 1 complete. Created new alert: ${newAlertId}`);
-        console.log('📊 Monitoring Data Structure:', JSON.stringify(monitoringData, null, 2));
-        setAlertId(newAlertId);
+        // Use LangGraph workflow without alert_id (will create new alert)
+        response = await aiAgentAPI.runLangGraphWorkflow(selectedScenario);
+
+        clearInterval(progressInterval);
+        newAlertId = response.alert_id;
+
+        console.log('✅ LangGraph workflow complete. Created new alert:', newAlertId);
+        console.log('📊 Workflow Response:', JSON.stringify(response, null, 2));
       }
 
-      // Notify parent Dashboard about the created alert
+      // Set final state
+      setAlertId(newAlertId);
+      setProgressPercent(100);
+      setCurrentAgent(4);
+
+      // Notify parent Dashboard about the created/analyzed alert
       if (onAnalysisComplete) {
         onAnalysisComplete(newAlertId);
       }
 
-      // Agent 2: Investigation Agent (21-26s)
-      console.log('🤖 Running Agent 2: Investigation Agent...');
-      setCurrentAgent(2);
-      setProgressPercent(50);
-
-      // Build investigation payload from monitoring output
-      // Safe access to nested properties with fallbacks
-      const llmInterpretation = monitoringData.mongodb_analysis?.llm_interpretation || monitoringData.output?.llm_interpretation;
-      const investigationPayload = {
-        alert_id: newAlertId,
-        scenario_id: selectedScenario,
-        equipment_id: monitoringData.scenario_metadata?.equipment_id || 'CMP_TOOL_01',
-        excursion_type: 'particle',
-        risk_level: llmInterpretation?.risk_level || 'HIGH',
-        pattern_detected: llmInterpretation?.pattern_detected || 'drift'
-      };
-      console.log('📤 Investigation Payload:', investigationPayload);
-
-      const investigationResponse = await fetch(
-        `/api/backend/ai-agents/investigate`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(investigationPayload)
-        }
-      );
-      if (!investigationResponse.ok) throw new Error('Investigation Agent failed');
-      console.log('✅ Agent 2 complete');
-
-      // Agent 3: RCA Agent (15-25s)
-      console.log('🤖 Running Agent 3: RCA Agent...');
-      setCurrentAgent(3);
-      setProgressPercent(75);
-      const rcaResponse = await fetch(
-        `/api/backend/ai-agents/rca/${newAlertId}`,
-        { method: 'POST' }
-      );
-      if (!rcaResponse.ok) throw new Error('RCA Agent failed');
-      console.log('✅ Agent 3 complete');
-
-      // Agent 4: Supervisor Agent (18-22s)
-      console.log('🤖 Running Agent 4: Supervisor Agent...');
-      setCurrentAgent(4);
-      setProgressPercent(100);
-      const supervisorResponse = await fetch(
-        `/api/backend/ai-agents/supervisor/${newAlertId}`,
-        { method: 'POST' }
-      );
-      if (!supervisorResponse.ok) throw new Error('Supervisor Agent failed');
-      console.log('✅ Agent 4 complete');
-
       // Pipeline complete!
       setAnalysisComplete(true);
-      console.log(`🎉 Full pipeline complete! Total time: ~66-88s. Alert ID: ${newAlertId}`);
+      console.log(`🎉 Full LangGraph pipeline complete! Alert ID: ${newAlertId}`);
 
     } catch (err) {
       console.error('Pipeline error:', err);

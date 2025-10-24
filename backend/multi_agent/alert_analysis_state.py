@@ -33,9 +33,16 @@ class AlertAnalysisState(TypedDict):
     # === Worker Agent Outputs ===
     monitoring_decision: Optional[Dict[str, Any]]  # {create_alert: bool, confidence: float, reasoning: str, statistical_context: dict}
     correlation_results: Optional[Dict[str, Any]]  # Full correlation engine output
+    investigation_summary: Optional[str]  # Investigation agent summary
+    key_findings: Optional[List[str]]  # Key findings from investigation
     rca_patterns: Optional[Dict[str, Any]]  # RCA generator output
+    rca_validation: Optional[str]  # RCA validation summary
+    validated_causes: Optional[List[str]]  # Validated root causes
 
     # === Supervisor Outputs ===
+    supervisor_synthesis: Optional[str]  # Comprehensive QC report
+    risk_level: Optional[str]  # Overall risk level assessment
+    overall_confidence: Optional[float]  # Overall confidence score (0-1)
     action_items: List[Dict[str, str]]  # [{action: str, priority: str, agent: str}]
 
     # === LangGraph Built-in ===
@@ -84,9 +91,16 @@ def create_initial_state(
         # Worker outputs (initialized as None)
         "monitoring_decision": None,
         "correlation_results": None,
+        "investigation_summary": None,
+        "key_findings": None,
         "rca_patterns": None,
+        "rca_validation": None,
+        "validated_causes": None,
 
         # Supervisor outputs
+        "supervisor_synthesis": None,
+        "risk_level": None,
+        "overall_confidence": None,
         "action_items": [],
 
         # Message history

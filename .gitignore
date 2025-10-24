@@ -242,3 +242,4 @@ backend/main.py.before_cleanup
 backend/main.py.bak2
 .cursor/rules/markdown-files-save.mdc
 backend/alert_analysis.json
+backend/alert-analysis-ALT-20251023115737.md
