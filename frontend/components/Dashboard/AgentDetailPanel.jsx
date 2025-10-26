@@ -8,6 +8,12 @@ import { H3, Body, Label, Description } from '@leafygreen-ui/typography';
 import styles from './AgentDetailPanel.module.css';
 import { alertAPI } from '@/lib/api';
 
+// Helper function to access nested object properties
+const getNestedValue = (obj, path) => {
+  if (!path || !obj) return null;
+  return path.split('.').reduce((current, key) => current?.[key], obj);
+};
+
 const AGENT_DETAILS = {
   1: {
     name: "Monitoring Agent",
@@ -23,11 +29,74 @@ const AGENT_DETAILS = {
       { label: "Analysis Window", value: "Last 1 hour", icon: "Calendar" },
       { label: "Noise Reduction", value: "60-70%", icon: "Checkmark" }
     ],
-    dataFlow: [
-      "process_sensor_ts → Statistical Aggregation ($avg, $stdDev)",
-      "Calculate deviation: Current vs. Historical",
-      "LLM Decision: Create Alert or Filter (>2.5σ threshold)",
-      "Output: Alert decision + confidence score"
+    progressSteps: [
+      {
+        id: "metadata",
+        label: "Load Scenario Metadata",
+        type: "tool",
+        icon: "Database",
+        description: "Fetch scenario details from scenario_metadata collection",
+        dataPath: null
+      },
+      {
+        id: "stats",
+        label: "Statistical Aggregation",
+        type: "mongodb",
+        icon: "Charts",
+        description: "Execute $facet aggregation for avg, min, max, stddev, violations",
+        operation: "$facet with $avg, $min, $max, $stdDevPop",
+        dataPath: "output.execution_metrics.stats_ms",
+        resultPath: "output.statistical_summary"
+      },
+      {
+        id: "rolling",
+        label: "Rolling Window Analysis",
+        type: "mongodb",
+        icon: "ActivityFeed",
+        description: "Calculate 5min, 10min, 30min rolling averages",
+        operation: "$setWindowFields with moving averages",
+        dataPath: "output.execution_metrics.rolling_ms",
+        resultPath: null
+      },
+      {
+        id: "trend",
+        label: "Trend Detection",
+        type: "mongodb",
+        icon: "TrendingUp",
+        description: "Compare first 30min vs last 30min to detect drift",
+        operation: "$facet with time-based $match + $group",
+        dataPath: "output.execution_metrics.trend_ms",
+        resultPath: "output.trend_analysis"
+      },
+      {
+        id: "comparative",
+        label: "Comparative Window Analysis",
+        type: "mongodb",
+        icon: "Diagram3",
+        description: "Analyze baseline vs anomaly vs recovery windows",
+        operation: "$facet with temporal window segmentation",
+        dataPath: "output.execution_metrics.comparative_ms",
+        resultPath: "output.comparative_windows"
+      },
+      {
+        id: "llm",
+        label: "LLM Analysis (Claude Haiku)",
+        type: "llm",
+        icon: "Sparkle",
+        description: "Generate risk assessment and key insights from MongoDB results",
+        model: "Claude Haiku",
+        dataPath: null,
+        resultPath: "output.llm_interpretation"
+      },
+      {
+        id: "alert",
+        label: "Create Alert Document",
+        type: "tool",
+        icon: "ImportantWithCircle",
+        description: "Store analysis results in alerts collection",
+        dataPath: null,
+        resultPath: null
+      }
     ],
     value: "Time Series collections enable 10-50ms statistical analysis on streaming sensor data, filtering false positives before they become alerts"
   },
@@ -45,11 +114,45 @@ const AGENT_DETAILS = {
       { label: "Correlation Types", value: "Temporal, Batch, Spatial", icon: "Diagram3" },
       { label: "Wafer Analysis", value: "1000s in seconds", icon: "Speedometer" }
     ],
-    dataFlow: [
-      "Multi-collection query: wafer_defects + process_context + alerts",
-      "Correlation Engine: Temporal, Batch, Spatial analysis",
-      "Statistical correlation scoring",
-      "LLM Interpretation: Convert data → Key findings"
+    progressSteps: [
+      {
+        id: "connect",
+        label: "Connect to MongoDB",
+        type: "tool",
+        icon: "Database",
+        description: "Establish connection to MongoDB for evidence gathering",
+        dataPath: "output.tool_execution_times.mongodb_connection_ms"
+      },
+      {
+        id: "process_context",
+        label: "Query Process Context",
+        type: "mongodb",
+        icon: "Folder",
+        description: "Multi-collection query: slurry_batches, etch_recipes, reticles",
+        operation: "$lookup joins on process_context collection",
+        dataPath: "output.tool_execution_times.process_context_ms",
+        resultPath: "output.process_context_evidence"
+      },
+      {
+        id: "wafer_defects",
+        label: "Vector Search Wafer Defects",
+        type: "vector",
+        icon: "Sparkle",
+        description: "Vector similarity search using voyage-multimodal-3 embeddings",
+        operation: "$vectorSearch on wafer_defects collection",
+        dataPath: "output.tool_execution_times.wafer_defects_ms",
+        resultPath: "output.wafer_defects_evidence"
+      },
+      {
+        id: "llm_synthesis",
+        label: "LLM Evidence Synthesis",
+        type: "llm",
+        icon: "Lightbulb",
+        description: "Claude Haiku synthesizes evidence into key findings",
+        model: "Claude Haiku",
+        dataPath: "output.tool_execution_times.synthesis_ms",
+        resultPath: "output.investigation_synthesis"
+      }
     ],
     value: "MongoDB's flexible document model and $lookup enable complex correlations across diverse data types without rigid schemas"
   },
@@ -67,11 +170,44 @@ const AGENT_DETAILS = {
       { label: "Relevance Threshold", value: "70%+", icon: "Target" },
       { label: "Knowledge Base", value: "1000s RCA reports", icon: "University" }
     ],
-    dataFlow: [
-      "Generate embedding for current issue description",
-      "Vector Search: $vectorSearch on historical_knowledge",
-      "Retrieve top similar past incidents (cosine similarity)",
-      "LLM Validation: Align recommendations with current context"
+    progressSteps: [
+      {
+        id: "connect",
+        label: "Connect to MongoDB",
+        type: "tool",
+        icon: "Database",
+        description: "Establish connection for RAG search",
+        dataPath: "output.tool_execution_times.mongodb_connection_ms"
+      },
+      {
+        id: "historical_knowledge",
+        label: "Query Historical RCA Reports",
+        type: "vector",
+        icon: "Sparkle",
+        description: "Vector search on historical_knowledge collection for similar incidents",
+        operation: "$vectorSearch with cosine similarity (voyage-multimodal-3)",
+        dataPath: "output.tool_execution_times.historical_knowledge_ms",
+        resultPath: "output.historical_knowledge_output"
+      },
+      {
+        id: "correlation",
+        label: "Correlation Analysis",
+        type: "tool",
+        icon: "Diagram3",
+        description: "Cross-reference temporal, batch, and spatial correlations",
+        operation: "Multi-collection aggregation (skipped in current implementation)",
+        dataPath: "output.tool_execution_times.correlation_analysis_ms"
+      },
+      {
+        id: "llm_synthesis",
+        label: "Root Cause Validation",
+        type: "llm",
+        icon: "Beaker",
+        description: "Claude Haiku validates root causes with historical context",
+        model: "Claude Haiku",
+        dataPath: "output.tool_execution_times.llm_synthesis_ms",
+        resultPath: "output.rca_synthesis"
+      }
     ],
     value: "Atlas Vector Search finds semantically similar historical incidents in <100ms, enabling AI to learn from past resolutions"
   },
@@ -89,11 +225,35 @@ const AGENT_DETAILS = {
       { label: "Output Format", value: "Executive Summary", icon: "File" },
       { label: "Action Items", value: "Prioritized", icon: "SortAscending" }
     ],
-    dataFlow: [
-      "Aggregate outputs from 3 worker agents",
-      "LLM Synthesis: Generate executive summary",
-      "Prioritize action items for yield improvement",
-      "Store complete analysis chain in alerts.correlation_data"
+    progressSteps: [
+      {
+        id: "connect",
+        label: "Connect to MongoDB",
+        type: "tool",
+        icon: "Database",
+        description: "Establish connection for final synthesis",
+        dataPath: "output.tool_execution_times.mongodb_connection_ms"
+      },
+      {
+        id: "troubleshooting_guides",
+        label: "Query Troubleshooting Guides",
+        type: "vector",
+        icon: "Sparkle",
+        description: "Vector search for actionable solutions from knowledge base",
+        operation: "$vectorSearch on historical_knowledge (type: troubleshooting_guide)",
+        dataPath: "output.tool_execution_times.troubleshooting_guides_ms",
+        resultPath: "output.troubleshooting_guides_output"
+      },
+      {
+        id: "llm_synthesis",
+        label: "Comprehensive QC Report",
+        type: "llm",
+        icon: "Beaker",
+        description: "Claude Sonnet synthesizes all agent outputs into executive summary",
+        model: "Claude Sonnet",
+        dataPath: "output.tool_execution_times.llm_synthesis_ms",
+        resultPath: "output.supervisor_synthesis"
+      }
     ],
     value: "MongoDB's flexible schema allows storing the complete multi-agent analysis chain without predefined structure constraints"
   }
@@ -112,6 +272,10 @@ const AgentDetailPanel = ({ selectedAgent, selectedAlertId }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [expandedQuery, setExpandedQuery] = useState(null); // For expandable MongoDB queries
+
+  // Real-time progress tracking state
+  const [completedSteps, setCompletedSteps] = useState(new Set());
+  const [stepExecutionTimes, setStepExecutionTimes] = useState({});
 
   // Debug logging for agentData
   useEffect(() => {
@@ -157,6 +321,72 @@ const AgentDetailPanel = ({ selectedAgent, selectedAlertId }) => {
 
     fetchAgentData();
   }, [selectedAlertId, selectedAgent]);
+
+  // WebSocket listener for real-time progress updates (All agents with progressSteps)
+  useEffect(() => {
+    // Only setup WebSocket for agents with progressSteps defined
+    const agent = AGENT_DETAILS[selectedAgent];
+    if (!agent || !agent.progressSteps) return;
+
+    console.log('[AgentDetailPanel] Setting up WebSocket for real-time progress tracking');
+    console.log('[AgentDetailPanel] Agent:', selectedAgent, 'Alert:', selectedAlertId);
+
+    // Reset progress state when agent or alert changes (new analysis starting)
+    setCompletedSteps(new Set());
+    setStepExecutionTimes({});
+
+    const ws = new WebSocket(`${process.env.NEXT_PUBLIC_API_URL.replace('http', 'ws')}/ws/agent`);
+
+    ws.onopen = () => {
+      console.log('[AgentDetailPanel] WebSocket connected for agent progress');
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'agent_progress') {
+          // Map agent name to agent ID
+          const agentMap = {
+            'monitoring': 1,
+            'investigation': 2,
+            'rca': 3,
+            'supervisor': 4
+          };
+
+          const agentId = agentMap[data.agent];
+
+          // Only process messages for the currently selected agent
+          if (agentId === selectedAgent) {
+            console.log('[AgentDetailPanel] Progress update:', data);
+
+            // Mark step as completed with animation
+            setCompletedSteps(prev => new Set([...prev, data.step]));
+
+            // Store execution time
+            setStepExecutionTimes(prev => ({
+              ...prev,
+              [data.step]: data.execution_time_ms
+            }));
+          }
+        }
+      } catch (err) {
+        console.error('[AgentDetailPanel] Error parsing WebSocket message:', err);
+      }
+    };
+
+    ws.onerror = (error) => {
+      console.error('[AgentDetailPanel] WebSocket error:', error);
+    };
+
+    ws.onclose = () => {
+      console.log('[AgentDetailPanel] WebSocket closed');
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, [selectedAgent, selectedAlertId]);
 
   if (!selectedAgent) {
     return (
@@ -222,20 +452,91 @@ const AgentDetailPanel = ({ selectedAgent, selectedAlertId }) => {
         </div>
       </div>
 
-      {/* Data Flow */}
-      <div className={styles.section}>
-        <Label className={styles.sectionTitle}>
-          <Icon glyph="Diagram3" size="small" /> Data Flow
-        </Label>
-        <div className={styles.dataFlow}>
-          {agent.dataFlow.map((step, idx) => (
-            <div key={idx} className={styles.flowStep}>
-              <div className={styles.stepNumber}>{idx + 1}</div>
-              <Body className={styles.stepText}>{step}</Body>
-            </div>
-          ))}
+      {/* Live Agent Progress (All agents with progressSteps) */}
+      {agent.progressSteps && (
+        <div className={styles.section}>
+          <Label className={styles.sectionTitle}>
+            <Icon glyph="ActivityFeed" size="small" /> Live Agent Progress
+          </Label>
+          <div className={styles.progressFlow}>
+            {agent.progressSteps.map((step, idx) => {
+              // Check real-time WebSocket progress first, fallback to agentData
+              const isCompletedLive = completedSteps.has(step.id);
+              const executionTimeLive = stepExecutionTimes[step.id];
+              const executionTimeStored = getNestedValue(agentData, step.dataPath);
+              const result = getNestedValue(agentData, step.resultPath);
+
+              // Priority: Live WebSocket > Stored data
+              const isCompleted = isCompletedLive || (agentData && (executionTimeStored !== null || result !== null));
+              const executionTime = executionTimeLive || executionTimeStored;
+
+              return (
+                <div key={step.id} className={`${styles.progressStep} ${isCompleted ? styles.stepCompleted : ''}`}>
+                  <div className={`${styles.stepIndicator} ${isCompleted ? styles.completed : styles.pending}`}>
+                    <div className={styles.stepIcon}>
+                      <Icon glyph={step.icon} size="small" />
+                    </div>
+                    {idx < agent.progressSteps.length - 1 && (
+                      <div className={styles.stepConnector} />
+                    )}
+                  </div>
+
+                  <div className={styles.stepContent}>
+                    <div className={styles.stepHeader}>
+                      <Body weight="medium">{step.label}</Body>
+                      {step.type && (
+                        <Badge variant={step.type === 'mongodb' ? 'blue' : step.type === 'llm' ? 'green' : 'darkgray'}>
+                          {step.type.toUpperCase()}
+                        </Badge>
+                      )}
+                      {executionTime && (
+                        <Body className={styles.executionTime}>{executionTime}ms</Body>
+                      )}
+                    </div>
+
+                    <Body className={styles.stepDescription}>{step.description}</Body>
+
+                    {step.operation && (
+                      <code className={styles.stepOperation}>{step.operation}</code>
+                    )}
+
+                    {step.model && agentData && (
+                      <Body className={styles.stepModel}>Model: {step.model}</Body>
+                    )}
+
+                    {result && typeof result === 'object' && (
+                      <div className={styles.stepResult}>
+                        <Body className={styles.resultLabel}>Result:</Body>
+                        <pre className={styles.resultPreview}>
+                          {JSON.stringify(result, null, 2).substring(0, 200)}
+                          {JSON.stringify(result).length > 200 && '...'}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Data Flow (Other agents) */}
+      {!agent.progressSteps && agent.dataFlow && (
+        <div className={styles.section}>
+          <Label className={styles.sectionTitle}>
+            <Icon glyph="Diagram3" size="small" /> Data Flow
+          </Label>
+          <div className={styles.dataFlow}>
+            {agent.dataFlow.map((step, idx) => (
+              <div key={idx} className={styles.flowStep}>
+                <div className={styles.stepNumber}>{idx + 1}</div>
+                <Body className={styles.stepText}>{step}</Body>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Real-Time Agent Execution Data (All Agents) */}
       {selectedAgent && (

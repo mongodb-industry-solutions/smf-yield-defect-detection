@@ -161,12 +161,14 @@ const Dashboard = ({ onModeChange }) => {
           )}
 
           {/* MongoDB Operations Console - Bottom of centerPanel */}
-          <MongoDBOperationsConsole
-            maxEvents={20}
-            autoScroll={true}
-            pauseOnHover={true}
-            defaultExpanded={false}
-          />
+          {dashboardMode !== 'agentic' && (
+            <MongoDBOperationsConsole
+              maxEvents={20}
+              autoScroll={true}
+              pauseOnHover={true}
+              defaultExpanded={false}
+            />
+          )}
         </div>
         <div className={`${styles.rightPanel} ${isAlertsCollapsed ? styles.rightPanelCollapsed : ''}`}>
           <AlertsPanel

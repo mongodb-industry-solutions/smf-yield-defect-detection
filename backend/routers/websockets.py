@@ -307,3 +307,41 @@ async def websocket_wafers(websocket: WebSocket):
         logger.error(f"❌ WebSocket /ws/wafers - Error for {client_id}: {e}", exc_info=True)
         await ws_manager_instance.disconnect(client_id)
 
+
+@router.websocket("/ws/agent")
+async def websocket_agent_progress(websocket: WebSocket):
+    """
+    WebSocket endpoint for real-time AI agent progress updates
+    Receives agent_progress messages broadcasted during multi-agent pipeline execution
+    """
+    # Validate dependencies
+    if ws_manager_instance is None:
+        logger.error("❌ WebSocket /ws/agent - ws_manager not initialized")
+        await websocket.close(code=1011, reason="Server not initialized")
+        return
+
+    # Connect with WebSocket manager
+    client_id = await ws_manager_instance.connect(
+        websocket=websocket,
+        connection_type=ConnectionType.AGENT
+    )
+
+    logger.info(f"🔌 WebSocket /ws/agent - Client {client_id} connected for agent progress tracking")
+    logger.debug(f"⚙️ Using connection type: {ConnectionType.AGENT}")
+
+    try:
+        while True:
+            # Keep connection alive and wait for messages
+            data = await websocket.receive_text()
+            logger.debug(f"📥 Message from {client_id}: {data[:50]}..." if len(data) > 50 else f"📥 Message from {client_id}: {data}")
+
+            # Handle client messages (subscriptions, filters, etc.)
+            await ws_manager_instance.handle_client_message(client_id, data)
+
+    except WebSocketDisconnect:
+        await ws_manager_instance.disconnect(client_id)
+        logger.info(f"🔌 WebSocket /ws/agent - Client {client_id} disconnected")
+    except Exception as e:
+        logger.error(f"❌ WebSocket /ws/agent - Error for {client_id}: {e}", exc_info=True)
+        await ws_manager_instance.disconnect(client_id)
+

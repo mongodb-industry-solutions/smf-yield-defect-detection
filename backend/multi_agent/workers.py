@@ -13,6 +13,7 @@ from multi_agent.simple_bedrock import call_claude
 from bson import ObjectId
 import time
 from datetime import timezone
+from services.websocket_manager import get_websocket_manager, ConnectionType
 
 logger = logging.getLogger(__name__)
 
@@ -306,6 +307,7 @@ async def investigation_agent_tool(state: dict) -> dict:
     alert_id = state['alert_id']
     equipment_id = state.get('equipment_id')
     excursion_type = state.get('excursion_type')
+    ws_manager = get_websocket_manager()
 
     try:
         # ========== STEP 1: Connect to MongoDB ==========
@@ -319,8 +321,23 @@ async def investigation_agent_tool(state: dict) -> dict:
             raise ValueError("MONGODB_URI not configured")
 
         logger.info(f"🟠    🔗 Connecting to MongoDB...")
+        connection_start = time.time()
         client = AsyncIOMotorClient(mongodb_uri)
         db = client[database_name]
+        connection_elapsed = (time.time() - connection_start) * 1000
+
+        # Emit WebSocket progress: Step 1 completed (MongoDB connection)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "investigation",
+            "step": "connect",
+            "step_number": 1,
+            "total_steps": 4,
+            "status": "completed",
+            "execution_time_ms": round(connection_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
 
         # Get slurry_batch and recipe_id from state metadata (passed from monitoring agent)
         # Fallback to fetching from alert document if not in state
@@ -363,6 +380,19 @@ async def investigation_agent_tool(state: dict) -> dict:
         logger.info(f"🟠    ⏱️  Tool 1 completed in {tool1_elapsed:.0f}ms")
         logger.info(f"🟠    📊 Process context: {process_context_evidence.get('problematic_items', 0)} problematic items")
 
+        # Emit WebSocket progress: Step 2 completed (Process context query)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "investigation",
+            "step": "process_context",
+            "step_number": 2,
+            "total_steps": 4,
+            "status": "completed",
+            "execution_time_ms": round(tool1_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
+
         # ========== STEP 3: Tool 2 - Query Wafer Defects (Vector Search) ==========
         logger.info("🟠    📦 Tool 2: query_wafer_defects() - VECTOR SEARCH")
         tool2_start = time.time()
@@ -379,6 +409,19 @@ async def investigation_agent_tool(state: dict) -> dict:
         tool2_elapsed = (time.time() - tool2_start) * 1000
         logger.info(f"🟠    ⏱️  Tool 2 completed in {tool2_elapsed:.0f}ms")
         logger.info(f"🟠    📊 Wafer defects: {wafer_defects_evidence.get('summary', {}).get('total_wafers_found', 0)} wafers found")
+
+        # Emit WebSocket progress: Step 3 completed (Wafer defects vector search)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "investigation",
+            "step": "wafer_defects",
+            "step_number": 3,
+            "total_steps": 4,
+            "status": "completed",
+            "execution_time_ms": round(tool2_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
 
         # Close MongoDB connection
         client.close()
@@ -430,6 +473,19 @@ async def investigation_agent_tool(state: dict) -> dict:
         logger.info(f"🟠    📊 Key findings: {len(synthesis.get('key_findings', []))}")
         logger.info(f"🟠    🚨 Problematic materials: {len(synthesis.get('problematic_materials', []))}")
         logger.info(f"🟠    🎯 Evidence quality: {synthesis.get('evidence_quality', 'unknown')}")
+
+        # Emit WebSocket progress: Step 4 completed (LLM evidence synthesis)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "investigation",
+            "step": "llm_synthesis",
+            "step_number": 4,
+            "total_steps": 4,
+            "status": "completed",
+            "execution_time_ms": round(synthesis_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
 
         # Calculate confidence score from evidence
         confidence_score = _map_evidence_quality_to_confidence(
@@ -515,16 +571,32 @@ async def rca_agent_tool(state: dict) -> dict:
     alert_id = state.get('alert_id')
     equipment_id = state.get('equipment_id', 'Unknown')
     excursion_type = state.get('excursion_type', 'Unknown')
+    ws_manager = get_websocket_manager()
 
     logger.info(f"🟣 [RCA AGENT] Starting root cause analysis for alert {alert_id}")
     logger.info(f"🟣    Equipment: {equipment_id}, Excursion: {excursion_type}")
 
     try:
         # Connect to MongoDB
+        connection_start = time.time()
         mongodb_uri = os.getenv("MONGODB_URI")
         database_name = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
         client = AsyncIOMotorClient(mongodb_uri)
         db = client[database_name]
+        connection_elapsed = (time.time() - connection_start) * 1000
+
+        # Emit WebSocket progress: Step 1 completed (MongoDB connection)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "rca",
+            "step": "connect",
+            "step_number": 1,
+            "total_steps": 4,
+            "status": "completed",
+            "execution_time_ms": round(connection_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
 
         # Fetch alert for context
         alert = await db.alerts.find_one({"alert_id": alert_id})
@@ -570,6 +642,19 @@ async def rca_agent_tool(state: dict) -> dict:
         knowledge_docs_found = len(historical_knowledge.get('knowledge_documents', []))
         logger.info(f"🟣       ✅ Found {knowledge_docs_found} historical RCA reports ({tool1_elapsed:.0f}ms)")
 
+        # Emit WebSocket progress: Step 2 completed (Historical knowledge vector search)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "rca",
+            "step": "historical_knowledge",
+            "step_number": 2,
+            "total_steps": 4,
+            "status": "completed",
+            "execution_time_ms": round(tool1_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
+
         # ========== TOOL 2: Correlation Analysis (SKIPPED) ==========
         logger.info(f"🟣    🔗 TOOL 2: Correlation Analysis (SKIPPED - same as sequential)")
 
@@ -583,6 +668,19 @@ async def rca_agent_tool(state: dict) -> dict:
             "equipment_correlation": {}
         }
         tool2_elapsed = (time.time() - tool2_start) * 1000
+
+        # Emit WebSocket progress: Step 3 completed (Correlation analysis - skipped but emitted for UI consistency)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "rca",
+            "step": "correlation",
+            "step_number": 3,
+            "total_steps": 4,
+            "status": "completed",
+            "execution_time_ms": round(tool2_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
 
         # Close DB before LLM call
         client.close()
@@ -627,6 +725,19 @@ async def rca_agent_tool(state: dict) -> dict:
             }
 
         synthesis_elapsed = (time.time() - synthesis_start) * 1000
+
+        # Emit WebSocket progress: Step 4 completed (LLM root cause validation)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "rca",
+            "step": "llm_synthesis",
+            "step_number": 4,
+            "total_steps": 4,
+            "status": "completed",
+            "execution_time_ms": round(synthesis_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
 
         total_elapsed = tool1_elapsed + tool2_elapsed + synthesis_elapsed
         logger.info(f"🟣    ✅ RCA agent complete ({total_elapsed:.0f}ms)")
@@ -718,13 +829,29 @@ async def supervisor_agent_tool(state: dict) -> dict:
 
     alert_id = state.get('alert_id')
     equipment_id = state.get('equipment_id', 'Unknown')
+    ws_manager = get_websocket_manager()
 
     try:
         # Connect to MongoDB
+        connection_start = time.time()
         mongodb_uri = os.getenv("MONGODB_URI")
         database_name = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
         client = AsyncIOMotorClient(mongodb_uri)
         db = client[database_name]
+        connection_elapsed = (time.time() - connection_start) * 1000
+
+        # Emit WebSocket progress: Step 1 completed (MongoDB connection)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "supervisor",
+            "step": "connect",
+            "step_number": 1,
+            "total_steps": 3,
+            "status": "completed",
+            "execution_time_ms": round(connection_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
 
         # Fetch alert for context
         alert = await db.alerts.find_one({"alert_id": alert_id})
@@ -793,6 +920,19 @@ async def supervisor_agent_tool(state: dict) -> dict:
         guides_found = len(troubleshooting_guides.get('knowledge_documents', []))
         logger.info(f"🟢       ✅ Found {guides_found} troubleshooting guides ({tool_elapsed:.0f}ms)")
 
+        # Emit WebSocket progress: Step 2 completed (Troubleshooting guides vector search)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "supervisor",
+            "step": "troubleshooting_guides",
+            "step_number": 2,
+            "total_steps": 3,
+            "status": "completed",
+            "execution_time_ms": round(tool_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
+
         # Close DB before LLM call
         client.close()
 
@@ -846,6 +986,20 @@ async def supervisor_agent_tool(state: dict) -> dict:
             }
 
         synthesis_elapsed = (time.time() - synthesis_start) * 1000
+
+        # Emit WebSocket progress: Step 3 completed (Comprehensive QC report synthesis)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "supervisor",
+            "step": "llm_synthesis",
+            "step_number": 3,
+            "total_steps": 3,
+            "status": "completed",
+            "execution_time_ms": round(synthesis_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
+
         total_elapsed = tool_elapsed + synthesis_elapsed
 
         logger.info(f"🟢    ✅ Supervisor agent complete ({total_elapsed:.0f}ms)")
@@ -965,16 +1119,82 @@ async def analyze_scenario_tool(scenario_id: str, db) -> dict:
     overall_start = time.time()
     alert_id = None
     alert_created = False  # Initialize to False, will be set to True when alert is created
-    
+    ws_manager = get_websocket_manager()
+
     try:
         # ===== Step 1: Load Scenario Metadata =====
+        metadata_start = time.time()
         metadata = await load_scenario_metadata(db, scenario_id)
         if not metadata:
             return {"error": f"Scenario {scenario_id} not found"}
-        
+
+        metadata_elapsed = (time.time() - metadata_start) * 1000
+
+        # Emit WebSocket progress: Step 1 completed
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id or "pending",
+            "agent": "monitoring",
+            "step": "metadata",
+            "step_number": 1,
+            "total_steps": 7,
+            "status": "completed",
+            "execution_time_ms": round(metadata_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
+
         # ===== Steps 2-5: Execute Comprehensive MongoDB Analysis FIRST =====
         # Execute MongoDB analysis before alert creation so we can include results in alert
         analysis_results = await perform_comprehensive_analysis(db, scenario_id)
+
+        # Emit WebSocket progress: Steps 2-5 completed (stats, rolling, trend, comparative)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id or "pending",
+            "agent": "monitoring",
+            "step": "stats",
+            "step_number": 2,
+            "total_steps": 7,
+            "status": "completed",
+            "execution_time_ms": round(analysis_results['execution_metrics']['stats_ms'], 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
+
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id or "pending",
+            "agent": "monitoring",
+            "step": "rolling",
+            "step_number": 3,
+            "total_steps": 7,
+            "status": "completed",
+            "execution_time_ms": round(analysis_results['execution_metrics']['rolling_ms'], 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
+
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id or "pending",
+            "agent": "monitoring",
+            "step": "trend",
+            "step_number": 4,
+            "total_steps": 7,
+            "status": "completed",
+            "execution_time_ms": round(analysis_results['execution_metrics']['trend_ms'], 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
+
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id or "pending",
+            "agent": "monitoring",
+            "step": "comparative",
+            "step_number": 5,
+            "total_steps": 7,
+            "status": "completed",
+            "execution_time_ms": round(analysis_results['execution_metrics']['comparative_ms'], 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
         
         # ===== Step 6: Claude Analysis (Before Alert Creation) =====
         logger.info(f"\n🧠 [STEP 6] Invoking Claude for insight generation...")
@@ -999,7 +1219,20 @@ async def analyze_scenario_tool(scenario_id: str, db) -> dict:
         logger.info(f"   🎯 Risk Level: {claude_analysis.get('risk_level', 'UNKNOWN')}")
         logger.info(f"   📊 Confidence: {claude_analysis.get('confidence', 0):.2f}")
         logger.info(f"   🔍 Pattern: {claude_analysis.get('pattern_detected', 'unknown')}")
-        
+
+        # Emit WebSocket progress: Step 6 completed (LLM analysis)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id or "pending",
+            "agent": "monitoring",
+            "step": "llm",
+            "step_number": 6,
+            "total_steps": 7,
+            "status": "completed",
+            "execution_time_ms": round(claude_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
+
         # Create comprehensive analysis summary for alert's monitoring_agent_analysis field
         # This includes BOTH MongoDB results AND Claude's LLM interpretation
         mongodb_analysis_for_alert = {
@@ -1042,12 +1275,27 @@ async def analyze_scenario_tool(scenario_id: str, db) -> dict:
         
         # Always create new alert with unique ID (no deduplication)
         # This allows multiple alerts for the same scenario
+        alert_creation_start = time.time()
         alert_id = await create_scenario_alert(db, scenario_id, metadata, mongodb_analysis_for_alert)
         alert_created = True
-        
+        alert_creation_elapsed = (time.time() - alert_creation_start) * 1000
+
         logger.info(f"   ✅ New alert created with ID: {alert_id}")
         logger.info(f"   ✅ alert_created flag set to: {alert_created}")
-        
+
+        # Emit WebSocket progress: Step 7 completed (Alert creation)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "monitoring",
+            "step": "alert",
+            "step_number": 7,
+            "total_steps": 7,
+            "status": "completed",
+            "execution_time_ms": round(alert_creation_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
+
         # ===== Final Summary =====
         overall_elapsed = (time.time() - overall_start) * 1000
         mongodb_time = analysis_results['execution_metrics']['mongodb_total_ms']
@@ -1188,19 +1436,35 @@ async def analyze_existing_alert_tool(alert_id: str, db) -> dict:
     logger.info("=" * 80)
 
     overall_start = time.time()
+    ws_manager = get_websocket_manager()
 
     try:
         # ===== Step 1: Fetch Existing Alert =====
         logger.info(f"\n📥 [STEP 1] Fetching existing alert from database...")
+        step1_start = time.time()
         alert = await db.alerts.find_one({"alert_id": alert_id})
 
         if not alert:
             logger.error(f"❌ Alert not found: {alert_id}")
             return {"error": f"Alert {alert_id} not found"}
 
+        step1_elapsed = (time.time() - step1_start) * 1000
         logger.info(f"   ✅ Alert found: {alert.get('title', 'Unknown')}")
         logger.info(f"   📋 Alert type: {alert.get('alert_type')}")
         logger.info(f"   🏷️  Severity: {alert.get('severity')}")
+
+        # Emit WebSocket progress: Step 1 completed (fetch alert metadata)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "monitoring",
+            "step": "metadata",
+            "step_number": 1,
+            "total_steps": 7,
+            "status": "completed",
+            "execution_time_ms": round(step1_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
 
         # ===== Step 2: Extract Scenario Info =====
         logger.info(f"\n🔍 [STEP 2] Extracting scenario metadata from alert...")
@@ -1229,6 +1493,55 @@ async def analyze_existing_alert_tool(alert_id: str, db) -> dict:
         logger.info(f"\n🗄️  [STEP 4-5] Running MongoDB analysis...")
         analysis_results = await perform_comprehensive_analysis(db, scenario_id)
 
+        # Emit WebSocket progress: Steps 2-5 completed (MongoDB aggregations)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "monitoring",
+            "step": "stats",
+            "step_number": 2,
+            "total_steps": 7,
+            "status": "completed",
+            "execution_time_ms": round(analysis_results['execution_metrics']['stats_ms'], 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
+
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "monitoring",
+            "step": "rolling",
+            "step_number": 3,
+            "total_steps": 7,
+            "status": "completed",
+            "execution_time_ms": round(analysis_results['execution_metrics']['rolling_ms'], 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
+
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "monitoring",
+            "step": "trend",
+            "step_number": 4,
+            "total_steps": 7,
+            "status": "completed",
+            "execution_time_ms": round(analysis_results['execution_metrics']['trend_ms'], 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
+
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "monitoring",
+            "step": "comparative",
+            "step_number": 5,
+            "total_steps": 7,
+            "status": "completed",
+            "execution_time_ms": round(analysis_results['execution_metrics']['comparative_ms'], 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
+
         # ===== Step 6: Claude Analysis =====
         logger.info(f"\n🧠 [STEP 6] Invoking Claude for insight generation...")
         claude_start = time.time()
@@ -1248,6 +1561,19 @@ async def analyze_existing_alert_tool(alert_id: str, db) -> dict:
         logger.info(f"⚡ [CLAUDE] Analysis completed in {claude_elapsed:.0f}ms")
         logger.info(f"   🎯 Risk Level: {claude_analysis.get('risk_level', 'UNKNOWN')}")
         logger.info(f"   📊 Confidence: {claude_analysis.get('confidence', 0):.2f}")
+
+        # Emit WebSocket progress: Step 6 completed (LLM analysis)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "monitoring",
+            "step": "llm",
+            "step_number": 6,
+            "total_steps": 7,
+            "status": "completed",
+            "execution_time_ms": round(claude_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
 
         # ===== Step 7: Build Monitoring Agent Analysis =====
         mongodb_analysis_for_alert = {
@@ -1285,6 +1611,7 @@ async def analyze_existing_alert_tool(alert_id: str, db) -> dict:
 
         # ===== Step 8: UPDATE Existing Alert (NOT Create New) =====
         logger.info(f"\n🔄 [STEP 8] Updating existing alert with monitoring agent analysis...")
+        update_start = time.time()
         update_result = await db.alerts.update_one(
             {"alert_id": alert_id},
             {
@@ -1294,12 +1621,26 @@ async def analyze_existing_alert_tool(alert_id: str, db) -> dict:
                 }
             }
         )
+        update_elapsed = (time.time() - update_start) * 1000
 
         if update_result.modified_count > 0:
             logger.info(f"   ✅ Alert updated successfully!")
             logger.info(f"   📊 Added monitoring_agent_analysis field")
         else:
             logger.warning(f"   ⚠️  Alert not modified (may already have analysis)")
+
+        # Emit WebSocket progress: Step 7 completed (Alert update)
+        await ws_manager.broadcast({
+            "type": "agent_progress",
+            "alert_id": alert_id,
+            "agent": "monitoring",
+            "step": "alert",
+            "step_number": 7,
+            "total_steps": 7,
+            "status": "completed",
+            "execution_time_ms": round(update_elapsed, 0),
+            "timestamp": datetime.utcnow().isoformat()
+        }, connection_type=ConnectionType.AGENT)
 
         # ===== Final Summary =====
         overall_elapsed = (time.time() - overall_start) * 1000

@@ -446,7 +446,7 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
           <div className={styles.scenarioSection}>
             {/* Option 1: Select existing lot processing alert */}
             <div style={{ marginBottom: '12px' }}>
-              <span className={styles.scenarioLabel}>📦 Analyze Lot Processing Alert</span>
+              <span className={styles.scenarioLabel}>Lot Processing Alerts</span>
               <select
                 className={styles.scenarioSelect}
                 value={selectedLotAlertId}
@@ -508,7 +508,7 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
                 disabled={pipelineRunning || loadingAlertData || loadingLotAlerts}
               >
                 <option value="">
-                  {loadingLotAlerts ? 'Loading...' : '-- Or create new analysis below --'}
+                  {loadingLotAlerts ? 'Loading...' : 'Select an alert to analyze...'}
                 </option>
                 {lotAlerts.map((alert) => {
                   const sourceData = alert.source_data || {};
@@ -525,58 +525,6 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
               {loadingLotAlerts && (
                 <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
                   Loading lot processing alerts...
-                </div>
-              )}
-            </div>
-
-            <div style={{ marginBottom: '12px' }}>
-              <span className={styles.scenarioLabel}>🤖 AI Analysis Scenario</span>
-              <select
-                className={styles.scenarioSelect}
-                value={selectedScenario}
-                onChange={(e) => {
-                  setSelectedScenario(e.target.value);
-                  // Clear lot alert selection when scenario is changed
-                  if (e.target.value) {
-                    setSelectedLotAlertId('');
-                    setSelectedAlertId('');
-                  }
-                }}
-                disabled={pipelineRunning || loadingAlertData || !!selectedLotAlertId}
-              >
-                <option value="gradual_drift">Gradual Drift Pattern</option>
-                <option value="sudden_spike">Sudden Spike Event</option>
-                <option value="oscillating_pattern">Oscillating Pattern</option>
-              </select>
-            </div>
-
-            {/* Previously Analyzed Alerts Selector */}
-            <div>
-              <span className={styles.scenarioLabel}>📂 Load Previous Analysis</span>
-              <select
-                className={styles.scenarioSelect}
-                value={selectedAlertId}
-                onChange={(e) => {
-                  handleAlertSelection(e.target.value);
-                  // Clear lot alert and scenario when loading previous analysis
-                  if (e.target.value) {
-                    setSelectedLotAlertId('');
-                  }
-                }}
-                disabled={pipelineRunning || loadingAlertData || loadingAnalyzedAlerts}
-              >
-                <option value="">
-                  {loadingAnalyzedAlerts ? 'Loading...' : 'Select a previous alert...'}
-                </option>
-                {analyzedAlerts.map((alert) => (
-                  <option key={alert.alert_id} value={alert.alert_id}>
-                    {alert.alert_id} | {alert.equipment_id} • {alert.severity?.toUpperCase()} • {new Date(alert.timestamp).toLocaleString()}
-                  </option>
-                ))}
-              </select>
-              {loadingAlertData && (
-                <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
-                  Loading alert analysis...
                 </div>
               )}
             </div>
@@ -669,18 +617,16 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
             {loading ? '...' : (status?.active ? 'Stop' : 'Start')}
           </Button>
 
-          {status?.active && (
-            <Button
-              variant="primary"
-              size="small"
-              disabled={resetLoading}
-              onClick={handleReset}
-              className={styles.compactReset}
-              style={{ marginLeft: '8px' }}
-            >
-              {resetLoading ? '...' : 'Reset Demo'}
-            </Button>
-          )}
+          <Button
+            variant="primary"
+            size="small"
+            disabled={resetLoading}
+            onClick={handleReset}
+            className={styles.compactReset}
+            style={{ marginLeft: '8px' }}
+          >
+            {resetLoading ? '...' : 'Reset Demo'}
+          </Button>
         </div>
 
         {/* Right: Auto-Excursions Toggle & Excursion Injection */}
