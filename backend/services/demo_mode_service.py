@@ -440,7 +440,7 @@ class DemoModeService:
                     logger.info(f"🔵 Processing wafer {self.wafer_counter}/25 in lot {self.lot_id}")
 
                 # Generate timestamp once for all equipment in this batch
-                timestamp = datetime.now(timezone.utc)
+                timestamp = datetime.utcnow()
 
                 # Collect data for all equipment
                 bulk_data = []

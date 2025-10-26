@@ -519,7 +519,8 @@ class AlertManager:
         severity: Optional[AlertSeverity] = None,
         alert_type: Optional[AlertType] = None,
         equipment_id: Optional[str] = None,
-        limit: int = 100
+        limit: int = 100,
+        minutes_ago: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         Get active alerts with optional filtering
@@ -529,6 +530,7 @@ class AlertManager:
             alert_type: Filter by alert type
             equipment_id: Filter by equipment
             limit: Maximum number of alerts to return
+            minutes_ago: Only return alerts from the last N minutes (default: None = all alerts)
             
         Returns:
             List of active alerts
@@ -548,6 +550,15 @@ class AlertManager:
                 query["alert_type"] = alert_type.value
             if equipment_id:
                 query["equipment_id"] = equipment_id
+            
+            # Add time filter if specified
+            if minutes_ago is not None:
+                from datetime import datetime, timedelta
+                # IMPORTANT: Use datetime.now() (local time) because MongoDB stores naive datetime in local timezone
+                # MongoDB BSON datetime is timezone-naive and stores as-is without timezone conversion
+                cutoff_time = datetime.now() - timedelta(minutes=minutes_ago)
+                query["timestamp"] = {"$gte": cutoff_time}
+                logger.debug(f"🕒 Time filter: alerts from last {minutes_ago} minutes (since {cutoff_time})")
             
             cursor = self.alerts_collection.find(query).sort([("timestamp", -1)])
             alerts = list(cursor.limit(limit))

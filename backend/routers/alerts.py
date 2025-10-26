@@ -130,12 +130,13 @@ async def get_alerts(
     severity: Optional[str] = Query(None, description="Filter by severity: critical, high, medium, low"),
     alert_type: Optional[str] = Query(None, description="Filter by alert type"),
     equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
-    limit: int = Query(100, description="Maximum number of alerts to return")
+    limit: int = Query(100, description="Maximum number of alerts to return"),
+    minutes_ago: Optional[int] = Query(30, description="Only show alerts from the last N minutes (default: 30)")
 ):
     """
     Get active alerts with optional filtering
     """
-    logger.info(f"📥 GET /alerts - Filters: severity={severity}, type={alert_type}, equipment={equipment_id}, limit={limit}")
+    logger.info(f"📥 GET /alerts - Filters: severity={severity}, type={alert_type}, equipment={equipment_id}, limit={limit}, minutes_ago={minutes_ago}")
     
     try:
         logger.debug(f"🔧 Getting active alerts with filters")
@@ -157,7 +158,8 @@ async def get_alerts(
             severity=severity_enum,
             alert_type=alert_type_enum,
             equipment_id=equipment_id,
-            limit=limit
+            limit=limit,
+            minutes_ago=minutes_ago
         )
 
         # Convert ObjectIds for JSON serialization

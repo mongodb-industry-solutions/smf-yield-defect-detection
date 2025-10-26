@@ -81,8 +81,15 @@ async def get_kpi_statistics():
             }}
         ]
         
+        # Calculate cutoff time for last 30 minutes (using local time for naive datetime comparison)
+        from datetime import datetime, timedelta
+        cutoff_time = datetime.now() - timedelta(minutes=30)
+
         alert_pipeline = [
-            {"$match": {"status": {"$in": ["open", "acknowledged"]}}},
+            {"$match": {
+                "status": {"$in": ["open", "acknowledged"]},
+                "timestamp": {"$gte": cutoff_time}  # Only alerts from last 30 minutes
+            }},
             {"$group": {
                 "_id": "$severity",
                 "count": {"$sum": 1}

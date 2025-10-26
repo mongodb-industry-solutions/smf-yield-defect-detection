@@ -1,11 +1,11 @@
 .container {
   position: fixed;
-  top: 60px; /* Position below global header */
+  top: 76px; /* Increased from 60px - more spacing below header */
   left: 0;
   right: 0; /* Expand to full width */
   width: 100%; /* Ensure full width */
   z-index: 1001; /* Above global header (1000) but below modals */
-  padding: 20px;
+  padding: 12px 20px; /* Reduced from 20px for compact design */
   box-sizing: border-box;
   background: transparent; /* Ensure it's above other content */
 }
@@ -15,9 +15,9 @@
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
   border: 1px solid rgba(255, 255, 255, 0.25) !important;
-  border-radius: 16px !important;
+  border-radius: 12px !important; /* Reduced from 16px */
   box-shadow: var(--shadow-md) !important;
-  padding: 24px 32px !important;
+  padding: 14px 28px !important; /* Slightly increased for better balance */
   position: relative;
   overflow: visible !important;
   transition: all var(--transition-normal) !important;
@@ -28,39 +28,56 @@
   box-shadow: var(--shadow-lg) !important;
 }
 
-/* Header Section */
+/* Header Section - Compact Single-Line Design */
 .header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid rgba(0, 104, 74, 0.1);
+  justify-content: center; /* Changed from space-between to center the content */
+  margin-bottom: 0; /* Removed spacing for inline design */
+  padding-bottom: 0; /* Removed spacing for inline design */
+  border-bottom: none; /* Removed separator for cleaner look */
+  gap: 16px; /* Space between header and metrics */
+  min-height: 44px; /* Ensure consistent height for vertical centering */
+  position: relative; /* For absolute positioning of children */
 }
 
 .headerLeft {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px; /* Slightly increased for better separation */
+  flex-shrink: 0; /* Prevent title from shrinking */
+  position: absolute; /* Position absolutely for centering metrics */
+  left: 24px; /* Align to left edge */
+  top: 50%; /* Vertically center */
+  transform: translateY(-50%); /* Center adjustment */
 }
 
 .headerRight {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 12px; /* Increased from 10px for better separation */
+  position: absolute; /* Position absolutely for centering metrics */
+  right: 24px; /* Align to right edge */
+  top: 50%; /* Vertically center */
+  transform: translateY(-50%); /* Center adjustment */
 }
 
 .title {
   margin: 0;
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 14px; /* Reduced from 18px for compact design */
+  font-weight: 700; /* Increased from 600 for better prominence */
   color: var(--color-primary-dark2);
+  white-space: nowrap; /* Prevent wrapping */
+  letter-spacing: 0.3px; /* Add slight letter spacing for clarity */
 }
 
 .mongoBadge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px; /* Reduced from 6px for tighter badge */
+  padding: 2px 8px; /* Add padding for better badge appearance */
+  background: rgba(0, 237, 100, 0.1); /* Light green background */
+  border-radius: 4px;
 }
 
 .queryButton {
@@ -109,48 +126,66 @@
 }
 
 .metricsGrid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 40px;
+  display: flex; /* Changed from grid to flex for inline layout */
+  flex-wrap: nowrap; /* Prevent wrapping to keep single line */
+  gap: 32px; /* Increased from 24px for better readability */
   align-items: center;
+  justify-content: center; /* Center the metrics */
 }
 
 .metric {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-direction: row; /* Changed from column for inline display */
+  align-items: center; /* Changed from baseline for better alignment */
+  gap: 8px; /* Increased from 6px for clearer separation */
+  white-space: nowrap; /* Prevent wrapping within metric */
+  padding: 0 16px; /* Add horizontal padding */
+  position: relative;
+}
+
+/* Add subtle separator between metrics */
+.metric:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  right: -16px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 20px;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.1);
 }
 
 .metricLabel {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 11px; /* Reduced from 12px */
+  font-weight: 500; /* Slightly lighter */
   color: var(--color-neutral-dark1);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  text-transform: none; /* Changed from uppercase for compact look */
+  letter-spacing: 0px; /* Remove letter spacing */
+  opacity: 0.8; /* Slightly faded for hierarchy */
 }
 
 .metricValue {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
+  align-items: center; /* Changed from baseline for better alignment */
+  gap: 6px; /* Reduced from 8px */
 }
 
 .value {
-  font-size: 32px;
-  font-weight: 700;
+  font-size: 18px; /* Reduced from 20px for more compact feel */
+  font-weight: 700; /* Increased from 600 for better readability */
   color: var(--color-neutral-dark3);
   line-height: 1;
   transition: color var(--transition-normal);
 }
 
 .trend {
-  font-size: 13px;
+  font-size: 10px; /* Reduced from 11px */
   font-weight: 600;
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 4px;
+  gap: 2px; /* Reduced from 3px */
+  padding: 2px 4px; /* Reduced from 2px 5px */
+  border-radius: 3px; /* Slightly smaller radius */
 }
 
 .trendUp {
@@ -207,15 +242,18 @@
   font-size: 14px;
 }
 
-/* Responsive design */
+/* Responsive design - Compact Layout */
 @media (max-width: 1400px) {
   .metricsGrid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 24px;
+    gap: 20px; /* Slightly reduced */
   }
 
   .value {
-    font-size: 28px;
+    font-size: 18px; /* Reduced from 28px */
+  }
+
+  .header {
+    flex-wrap: wrap; /* Allow header to wrap on medium screens */
   }
 }
 
@@ -223,19 +261,37 @@
   .container {
     right: 0;
     position: relative;
-    padding: 12px;
+    padding: 10px; /* Reduced from 12px */
   }
 
   .metricsGrid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 20px;
+    gap: 16px; /* Reduced from 20px */
+    flex-wrap: wrap; /* Ensure wrapping on mobile */
   }
 
   .value {
-    font-size: 24px;
+    font-size: 16px; /* Reduced from 24px */
   }
 
   .card {
-    padding: 16px !important;
+    padding: 10px 16px !important; /* Reduced from 16px */
+  }
+
+  .title {
+    font-size: 12px; /* Smaller on mobile */
+  }
+
+  .metricLabel {
+    font-size: 10px;
+  }
+
+  .trend {
+    font-size: 10px;
+    padding: 2px 4px;
+  }
+
+  .queryButton {
+    font-size: 11px;
+    padding: 4px 8px;
   }
 }

@@ -12,7 +12,7 @@ const AGENT_DETAILS = {
   1: {
     name: "Monitoring Agent",
     icon: "ActivityFeed",
-    purpose: "Statistical false positive filtering using real-time sensor data",
+    purpose: "Statistical Analysis using real-time sensor data",
     mongoFeatures: [
       { name: "Time Series Collections", type: "timeseries", icon: "Charts" },
       { name: "Aggregation Pipeline", type: "aggregation", icon: "Folder" }

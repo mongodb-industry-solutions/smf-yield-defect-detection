@@ -123,10 +123,11 @@ export const useSeedInitialization = () => {
     }
   }, []);
 
-  // Auto-initialize on mount
+  // Auto-initialize on mount (run once only)
   useEffect(() => {
     initialize();
-  }, [initialize]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Retry function
   const retry = useCallback(() => {

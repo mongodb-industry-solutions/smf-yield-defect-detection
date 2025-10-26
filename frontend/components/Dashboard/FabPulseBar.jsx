@@ -195,53 +195,56 @@ const FabPulseBar = () => {
   return (
     <div className={styles.container}>
       <Card className={styles.card}>
-        {/* MongoDB Branding Header */}
+        {/* Compact Single-Line Header with Inline Metrics */}
         <div className={styles.header}>
+          {/* Left: Title and Badge */}
           <div className={styles.headerLeft}>
-            <H3 className={styles.title}>Fab Pulse - Real-Time KPIs</H3>
+            <H3 className={styles.title}>Fab Pulse</H3>
             <Badge variant="green" className={styles.mongoBadge}>
-              <Icon glyph="Database" size="small" /> MongoDB Aggregation
+              <Icon glyph="Database" size="small" />
             </Badge>
           </div>
+
+          {/* Center: Inline KPI Metrics */}
+          <div className={styles.metricsGrid}>
+            {metrics.map(metric => (
+              <div key={metric.key} className={styles.metric}>
+                <span className={styles.metricLabel}>{metric.data.label}:</span>
+                <div className={styles.metricValue}>
+                  <span
+                    className={styles.value}
+                    style={{
+                      color: metric.highlight ? getMetricColor(metric.data, metric.data.value) : 'var(--color-neutral-dark3)'
+                    }}
+                  >
+                    {metric.format(metric.data.value)}
+                  </span>
+                  <span
+                    className={`${styles.trend} ${metric.data.trend === 'up' ? styles.trendUp : styles.trendDown}`}
+                  >
+                    {getTrendIcon(metric.data.trend)}
+                    {Math.abs(metric.data.trendValue)}%
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Right: LIVE indicator and Query button */}
           <div className={styles.headerRight}>
+            <div className={styles.pulseIndicator}>
+              <span className={styles.pulseDot}></span>
+              <span className={styles.pulseText}>LIVE</span>
+            </div>
             <button
               className={styles.queryButton}
               onClick={() => setShowQuery(!showQuery)}
               title="Show MongoDB Query"
             >
               <Icon glyph="Code" size="small" />
-              {showQuery ? 'Hide' : 'Show'} Query
+              Query
             </button>
-            <div className={styles.pulseIndicator}>
-              <span className={styles.pulseDot}></span>
-              <span className={styles.pulseText}>LIVE</span>
-            </div>
           </div>
-        </div>
-
-        {/* KPI Metrics Grid */}
-        <div className={styles.metricsGrid}>
-          {metrics.map(metric => (
-            <div key={metric.key} className={styles.metric}>
-              <div className={styles.metricLabel}>{metric.data.label}</div>
-              <div className={styles.metricValue}>
-                <span
-                  className={styles.value}
-                  style={{
-                    color: metric.highlight ? getMetricColor(metric.data, metric.data.value) : 'var(--color-neutral-dark3)'
-                  }}
-                >
-                  {metric.format(metric.data.value)}
-                </span>
-                <span
-                  className={`${styles.trend} ${metric.data.trend === 'up' ? styles.trendUp : styles.trendDown}`}
-                >
-                  {getTrendIcon(metric.data.trend)}
-                  {Math.abs(metric.data.trendValue)}%
-                </span>
-              </div>
-            </div>
-          ))}
         </div>
 
         {/* MongoDB Query Transparency */}
