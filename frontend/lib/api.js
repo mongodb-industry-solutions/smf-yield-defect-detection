@@ -128,7 +128,22 @@ export const alertAPI = {
     console.log('[alertAPI.getAlerts] URL being called:', `/alerts?${params}`);
     console.log('[alertAPI.getAlerts] minutes_ago value:', minutesAgo);
 
-    return fetchAPI(`/alerts?${params}`);
+    const data = await fetchAPI(`/alerts?${params}`);
+
+    // CLIENT-SIDE FILTER: Additional safety check for alert age (fixes timezone issues)
+    if (data.alerts && minutesAgo) {
+      const now = new Date();
+      const filteredAlerts = data.alerts.filter(alert => {
+        const alertTime = new Date(alert.timestamp);
+        const ageInMinutes = (now - alertTime) / 1000 / 60;
+        return ageInMinutes <= minutesAgo;
+      });
+
+      console.log(`[alertAPI.getAlerts] Client-side filter: ${data.alerts.length} → ${filteredAlerts.length} alerts`);
+      return { ...data, alerts: filteredAlerts };
+    }
+
+    return data;
   },
 
   // Alias for getAlerts (for consistency)
@@ -136,7 +151,21 @@ export const alertAPI = {
     const params = new URLSearchParams({ limit, minutes_ago: minutesAgo });
     if (severity) params.append('severity', severity);
 
-    return fetchAPI(`/alerts?${params}`);
+    const data = await fetchAPI(`/alerts?${params}`);
+
+    // CLIENT-SIDE FILTER: Additional safety check for alert age (fixes timezone issues)
+    if (data.alerts && minutesAgo) {
+      const now = new Date();
+      const filteredAlerts = data.alerts.filter(alert => {
+        const alertTime = new Date(alert.timestamp);
+        const ageInMinutes = (now - alertTime) / 1000 / 60;
+        return ageInMinutes <= minutesAgo;
+      });
+
+      return { ...data, alerts: filteredAlerts };
+    }
+
+    return data;
   },
 
   // Get alert by ID
