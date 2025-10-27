@@ -8,6 +8,12 @@
   padding: 12px 20px; /* Reduced from 20px for compact design */
   box-sizing: border-box;
   background: transparent; /* Ensure it's above other content */
+  transition: all var(--transition-normal);
+}
+
+/* Grayed out state when MongoDB panel is open */
+.container.grayed {
+  pointer-events: none; /* Disable interactions */
 }
 
 .card {
@@ -26,6 +32,18 @@
 .card:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-lg) !important;
+}
+
+/* Grayed out card when MongoDB panel is open */
+.card.cardGrayed {
+  opacity: 0.4;
+  filter: grayscale(0.5);
+  background: rgba(200, 200, 200, 0.5) !important;
+}
+
+.card.cardGrayed:hover {
+  transform: none; /* Disable hover effect when grayed out */
+  box-shadow: var(--shadow-md) !important;
 }
 
 /* Header Section - Compact Single-Line Design */

@@ -15,6 +15,7 @@ const FabPulseBar = () => {
   const [isLoading, setIsLoading] = useState(!isPreloaded);
   const [showQuery, setShowQuery] = useState(false);
   const [queryTime, setQueryTime] = useState(null);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
 
   // Add default/skeleton data for immediate display
   const defaultKPI = {
@@ -148,6 +149,19 @@ const FabPulseBar = () => {
     return () => clearInterval(interval);
   }, []); // Empty deps - run once on mount
 
+  // Listen for MongoDB panel state changes
+  useEffect(() => {
+    const handlePanelStateChange = (event) => {
+      setIsPanelOpen(event.detail.isOpen);
+    };
+
+    window.addEventListener('mongoPanelStateChange', handlePanelStateChange);
+
+    return () => {
+      window.removeEventListener('mongoPanelStateChange', handlePanelStateChange);
+    };
+  }, []);
+
   const getMetricColor = (metric, value) => {
     if (!metric.thresholds) return 'var(--color-status-good)';
 
@@ -193,8 +207,8 @@ const FabPulseBar = () => {
   ];
 
   return (
-    <div className={styles.container}>
-      <Card className={styles.card}>
+    <div className={`${styles.container} ${isPanelOpen ? styles.grayed : ''}`}>
+      <Card className={`${styles.card} ${isPanelOpen ? styles.cardGrayed : ''}`}>
         {/* Compact Single-Line Header with Inline Metrics */}
         <div className={styles.header}>
           {/* Left: Title and Badge */}

@@ -95,14 +95,14 @@ async def get_kpi_statistics():
                 "count": {"$sum": 1}
             }}
         ]
-        
+
+        # UPDATED: Resolution pipeline now focuses on alerts resolved in last 30 minutes
         resolution_pipeline = [
             {"$match": {
                 "status": "resolved",
-                "resolved_at": {"$exists": True},
+                "resolved_at": {"$exists": True, "$gte": cutoff_time},  # Resolved in last 30 min
                 "timestamp": {"$exists": True}
             }},
-            {"$limit": 50},
             {"$project": {
                 "resolution_time_ms": {
                     "$subtract": ["$resolved_at", "$timestamp"]
@@ -164,19 +164,30 @@ async def get_kpi_statistics():
         critical_alerts = alert_counts.get("critical", 0) + alert_counts.get("high", 0)
         logger.debug(f"⚙️ Alerts: {total_alerts} total ({critical_alerts} critical/high)")
         
-        # Calculate average resolution time
-        avg_resolution_minutes = 12  # Default
+        # Calculate average resolution time (only for alerts resolved in last 30 min)
+        avg_resolution_minutes = 0  # Default to 0 if no alerts resolved
+        alerts_resolved_count = 0
         if resolution_stats and resolution_stats[0].get("avg_resolution_ms"):
             avg_resolution_minutes = resolution_stats[0]["avg_resolution_ms"] / 60000
-        logger.debug(f"⚙️ MTTR: {avg_resolution_minutes:.1f} minutes")
+            alerts_resolved_count = resolution_stats[0].get("count", 0)
+        logger.debug(f"⚙️ MTTR: {avg_resolution_minutes:.1f} minutes ({alerts_resolved_count} alerts resolved in last 30 min)")
         
-        # Calculate cost savings
-        baseline_yield = 92.0
-        yield_improvement = max(0, current_yield - baseline_yield)
-        wafers_per_month = 10000
-        revenue_per_wafer = 5000  # $5000 per wafer
-        cost_savings = (yield_improvement / 100) * wafers_per_month * revenue_per_wafer
-        logger.debug(f"⚙️ Cost savings: ${cost_savings/1000000:.1f}M")
+        # Calculate cost savings based on fast alert resolution
+        # Faster resolution = less downtime = more wafers processed = higher savings
+        # Formula: Alerts resolved quickly prevent defects and save cost per alert
+        cost_per_alert_prevented = 100000  # $100K per alert resolved quickly (prevents 20 bad wafers @ $5K each)
+        base_resolution_target = 30  # minutes (ideal MTTR)
+
+        if alerts_resolved_count > 0 and avg_resolution_minutes > 0:
+            # Savings based on alerts resolved in last 30 min
+            # Faster resolution (< 30 min) gets bonus multiplier
+            speed_bonus = max(1.0, min(3.0, base_resolution_target / avg_resolution_minutes))
+            cost_savings = alerts_resolved_count * cost_per_alert_prevented * speed_bonus
+        else:
+            # No alerts resolved recently = no immediate savings
+            cost_savings = 0
+
+        logger.debug(f"⚙️ Cost savings: ${cost_savings/1000000:.1f}M ({alerts_resolved_count} alerts, avg {avg_resolution_minutes:.1f} min)")
         
         # Calculate equipment utilization
         total_utilization = 0
@@ -221,22 +232,23 @@ async def get_kpi_statistics():
                 },
                 "mttr": {
                     "label": "Avg Resolution Time",
-                    "value": round(avg_resolution_minutes),
+                    "value": round(avg_resolution_minutes) if avg_resolution_minutes > 0 else 0,
                     "unit": "min",
-                    "trend": "down",
-                    "trendValue": max(0, 30 - avg_resolution_minutes),
-                    "trendLabel": "% improvement",
+                    "trend": "down" if avg_resolution_minutes <= 30 else "up",
+                    "trendValue": abs(round(avg_resolution_minutes - 30)) if avg_resolution_minutes > 0 else 0,
+                    "count": alerts_resolved_count,
                     "thresholds": {"critical": 60, "warning": 30, "good": 15}
                 },
                 "savings": {
                     "label": "Cost Savings",
-                    "value": round(cost_savings / 1000000, 1),
+                    "value": round(cost_savings / 1000000, 1) if cost_savings > 0 else 0,
                     "unit": "M",
                     "prefix": "$",
-                    "trend": "up" if cost_savings > 2000000 else "down",
-                    "trendValue": round((cost_savings / 2000000) * 100 - 100),
-                    "period": "This Month",
-                    "thresholds": {"critical": 0, "warning": 1, "good": 2}
+                    "trend": "up" if alerts_resolved_count > 0 else "neutral",
+                    "trendValue": alerts_resolved_count * 100 if alerts_resolved_count > 0 else 0,  # % based on alert count
+                    "period": "Last 30 min",
+                    "count": alerts_resolved_count,
+                    "thresholds": {"critical": 0, "warning": 0.5, "good": 1}
                 },
                 "utilization": {
                     "label": "Equipment Utilization",

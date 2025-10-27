@@ -258,3 +258,255 @@
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+
+/* MongoDB Panel - Fixed position right below header, above FabPulseBar */
+.mongoPanel {
+  position: fixed;
+  top: 60px; /* Right below the main header */
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: calc(100vh - 60px); /* Full height minus header */
+  z-index: 10002; /* Above FabPulseBar (1001) */
+  background: rgba(0, 0, 0, 0.5); /* Semi-transparent backdrop */
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: fadeIn 0.2s ease-out;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.mongoPanelContent {
+  position: relative;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  padding: 32px;
+  padding-right: 24px; /* Reduced to accommodate scrollbar */
+  width: 100%;
+  max-width: 1200px;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  animation: slideDown 0.3s ease-out;
+  margin-top: 40px; /* Space from top */
+}
+
+/* Custom scrollbar styling */
+.mongoPanelContent::-webkit-scrollbar {
+  width: 8px;
+}
+
+.mongoPanelContent::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mongoPanelContent::-webkit-scrollbar-thumb {
+  background: rgba(0, 104, 74, 0.3);
+  border-radius: 4px;
+}
+
+.mongoPanelContent::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 104, 74, 0.6);
+}
+
+.mongoPanelContent h2 {
+  margin: 0 0 24px 0;
+  color: #1e2d3d;
+  font-size: 28px;
+  font-weight: 700;
+  border-bottom: 3px solid #00684a;
+  padding-bottom: 16px;
+}
+
+.mongoPanelContent h3 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  color: #00684a;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.mongoPanelContent h3::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 24px;
+  background: #00684a;
+  border-radius: 2px;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-30px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Close button */
+.closeButton {
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  background: #f7f9fb;
+  border: 2px solid #e0e4e7;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 300;
+  color: #6b778c;
+  transition: all 0.2s;
+  z-index: 10;
+  line-height: 1;
+}
+
+.closeButton:hover {
+  background: #ffffff;
+  color: #DC382D;
+  border-color: #DC382D;
+  transform: rotate(90deg) scale(1.05);
+  box-shadow: 0 4px 12px rgba(220, 56, 45, 0.2);
+}
+
+.closeButton:active {
+  transform: rotate(90deg) scale(0.95);
+}
+
+/* Content sections */
+.mongoSection {
+  background: #fafbfc;
+  padding: 24px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  border: 1px solid #e0e4e7;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.mongoTable {
+  width: 100%;
+  font-size: 14px;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.mongoTable tbody tr {
+  border-bottom: 1px solid #e0e4e7;
+  transition: background 0.15s;
+}
+
+.mongoTable tbody tr:last-child {
+  border-bottom: none;
+}
+
+.mongoTable tbody tr:hover {
+  background: #f7f9fb;
+}
+
+.mongoTable td:first-child {
+  padding: 14px 16px;
+  font-weight: 600;
+  color: #5e6c84;
+  width: 35%;
+  font-size: 13px;
+}
+
+.mongoTable td:last-child {
+  padding: 14px 16px;
+  color: #1e2d3d;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.jsonPre {
+  background: #1e2d3d;
+  color: #00ed64;
+  padding: 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  line-height: 1.6;
+  overflow: auto;
+  max-height: 400px;
+  margin: 0;
+  font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+  border: 1px solid #00684a;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+/* Custom scrollbar for JSON viewer */
+.jsonPre::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.jsonPre::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.jsonPre::-webkit-scrollbar-thumb {
+  background: rgba(0, 237, 100, 0.3);
+  border-radius: 4px;
+}
+
+.jsonPre::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 237, 100, 0.5);
+}
+
+.jsonPre::-webkit-scrollbar-corner {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.infoNote {
+  background: linear-gradient(135deg, #fffbea 0%, #fff3cd 100%);
+  padding: 20px;
+  border-radius: 10px;
+  font-size: 14px;
+  border: 2px solid #ffc107;
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
+}
+
+.infoNote .emoji {
+  font-size: 24px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.infoNote .content {
+  color: #5e4a00;
+  line-height: 1.6;
+}
+
+.infoNote strong {
+  color: #3d2f00;
+  font-weight: 700;
+}

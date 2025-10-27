@@ -42,6 +42,7 @@ from routers import equipment as equipment_router
 from routers import kpi as kpi_router
 from routers import websockets as websockets_router
 from routers import dashboard as dashboard_router
+from routers import search as search_router
 
 import os
 from dotenv import load_dotenv
@@ -211,6 +212,10 @@ logger.info("✅ WebSocket router included")
 # Include Dashboard Preload router (with /api prefix)
 app.include_router(dashboard_router.router, prefix="/api")
 logger.info("✅ Dashboard preload router included")
+
+# Include Unified Search router
+app.include_router(search_router.router)
+logger.info("✅ Unified search router included")
 
 # ============================================================================
 
