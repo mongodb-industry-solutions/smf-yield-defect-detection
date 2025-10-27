@@ -554,18 +554,20 @@ class AlertManager:
             # Add time filter if specified
             if minutes_ago is not None:
                 from datetime import datetime, timedelta
-                # IMPORTANT: Use datetime.now() (local time) because MongoDB stores naive datetime in local timezone
-                # MongoDB BSON datetime is timezone-naive and stores as-is without timezone conversion
-                cutoff_time = datetime.now() - timedelta(minutes=minutes_ago)
+                # FIX: Use UTC consistently to avoid timezone mismatches
+                cutoff_time = datetime.utcnow() - timedelta(minutes=minutes_ago)
+                # Add upper bound to exclude timestamps that appear to be "in the future"
+                # This filters out old IST timestamps (e.g., 10:50 AM) when comparing to UTC (e.g., 5:30 AM)
+                max_time = datetime.utcnow() + timedelta(minutes=10)  # Allow 10 min clock skew
 
                 # DETAILED LOGGING FOR DEBUGGING TIME FILTER ISSUE
                 logger.info(f"⏰ [TIME FILTER DEBUG] minutes_ago parameter: {minutes_ago}")
-                logger.info(f"⏰ [TIME FILTER DEBUG] Current server time (datetime.now()): {datetime.now()}")
-                logger.info(f"⏰ [TIME FILTER DEBUG] Current UTC time (datetime.utcnow()): {datetime.utcnow()}")
-                logger.info(f"⏰ [TIME FILTER DEBUG] Cutoff time calculated: {cutoff_time}")
-                logger.info(f"⏰ [TIME FILTER DEBUG] Query filter: timestamp >= {cutoff_time}")
+                logger.info(f"⏰ [TIME FILTER DEBUG] Current UTC time: {datetime.utcnow()}")
+                logger.info(f"⏰ [TIME FILTER DEBUG] Cutoff time (lower bound): {cutoff_time}")
+                logger.info(f"⏰ [TIME FILTER DEBUG] Max time (upper bound): {max_time}")
+                logger.info(f"⏰ [TIME FILTER DEBUG] Query filter: {cutoff_time} <= timestamp <= {max_time}")
 
-                query["timestamp"] = {"$gte": cutoff_time}
+                query["timestamp"] = {"$gte": cutoff_time, "$lte": max_time}
             else:
                 logger.info(f"⏰ [TIME FILTER DEBUG] No time filter - minutes_ago is None, will return all alerts")
 
@@ -588,7 +590,7 @@ class AlertManager:
                     alert_time = alert.get('timestamp', 'NO_TIMESTAMP')
                     alert_id = alert.get('alert_id', alert.get('_id', 'NO_ID'))
                     if minutes_ago and isinstance(alert_time, datetime):
-                        age_minutes = (datetime.now() - alert_time).total_seconds() / 60
+                        age_minutes = (datetime.utcnow() - alert_time).total_seconds() / 60
                         logger.info(f"   Alert #{i+1} ({alert_id}): {alert_time} (age: {age_minutes:.1f} min)")
                     else:
                         logger.info(f"   Alert #{i+1} ({alert_id}): {alert_time}")
