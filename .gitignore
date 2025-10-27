@@ -244,3 +244,9 @@ backend/main.py.bak2
 backend/alert_analysis.json
 backend/alert-analysis-ALT-20251023115737.md
 backend/alert.json
+smf-yield-defect.process_context.json
+backend/phase3_embedding_summary.json
+.gitignore
+backend/data_generation/enhanced/wafer_defects_enhanced.json
+backend/data_generation/enhanced/process_context_enhanced.json
+backend/enhanced/process_context_enhanced.json

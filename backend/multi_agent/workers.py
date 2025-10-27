@@ -238,12 +238,16 @@ Valid pattern_detected values: "drift", "spike", "oscillation", "normal_variatio
 def _map_evidence_quality_to_confidence(
     evidence_quality: str,
     problematic_items: int,
-    wafers_found: int
+    wafers_found: int,
+    root_causes_found: int = 0,
+    scenario_correlations: int = 0,
+    impact_assessments: int = 0
 ) -> float:
     """
     Map evidence quality from investigation synthesis to numeric confidence score
     
     Evidence quality comes from LLM synthesis:
+    - "high": High confidence with clear evidence and enhanced data
     - "strong": High confidence with clear evidence
     - "moderate": Some evidence but not conclusive  
     - "weak": Limited evidence
@@ -253,15 +257,21 @@ def _map_evidence_quality_to_confidence(
         evidence_quality: Quality assessment from investigation synthesis
         problematic_items: Count of problematic materials found
         wafers_found: Count of similar wafer defects found via vector search
+        root_causes_found: Count of specific root causes identified (from enhanced data)
+        scenario_correlations: Count of scenario correlations (from enhanced data)
+        impact_assessments: Count of impact assessments (from enhanced data)
         
     Returns:
         Confidence score between 0.0 and 1.0
     """
-    # Base confidence from evidence quality
+    # Base confidence from evidence quality (updated to include "high")
     base_confidence = {
+        "high": 0.85,     # NEW: When enhanced data provides high confidence
         "strong": 0.80,
         "moderate": 0.60,
+        "medium": 0.60,   # Support alternate naming
         "weak": 0.40,
+        "low": 0.40,      # Support alternate naming
         "unknown": 0.50
     }.get(evidence_quality.lower(), 0.50)
     
@@ -271,6 +281,18 @@ def _map_evidence_quality_to_confidence(
     
     # Boost confidence if similar wafer defects found (pattern evidence)
     if wafers_found >= 5:
+        base_confidence = min(1.0, base_confidence + 0.05)
+    
+    # NEW: Boost confidence if enhanced data provides specific root causes
+    if root_causes_found > 0:
+        base_confidence = min(1.0, base_confidence + 0.10)
+    
+    # NEW: Boost confidence if scenario correlations found
+    if scenario_correlations > 0:
+        base_confidence = min(1.0, base_confidence + 0.05)
+    
+    # NEW: Boost confidence if impact assessments available
+    if impact_assessments > 0:
         base_confidence = min(1.0, base_confidence + 0.05)
     
     return round(base_confidence, 2)
@@ -363,7 +385,6 @@ async def investigation_agent_tool(state: dict) -> dict:
 
         # ========== STEP 2: Tool 1 - Query Process Context ==========
         logger.info("🟠    📦 Tool 1: query_process_context()")
-        import time
         tool1_start = time.time()
 
         from multi_agent.tools.investigation_tools import query_process_context
@@ -487,13 +508,25 @@ async def investigation_agent_tool(state: dict) -> dict:
             "timestamp": datetime.utcnow().isoformat()
         }, connection_type=ConnectionType.AGENT)
 
-        # Calculate confidence score from evidence
+        # Calculate confidence score from evidence (including enhanced data)
+        # Extract enhanced data counts for confidence calculation
+        root_causes_count = len(process_context_evidence.get("root_causes", []))
+        scenario_correlations_count = len(process_context_evidence.get("scenario_correlations", []))
+        impact_assessments_count = len(process_context_evidence.get("impact_assessments", []))
+
         confidence_score = _map_evidence_quality_to_confidence(
             synthesis.get("evidence_quality", "unknown"),
             process_context_evidence.get("problematic_items", 0),
-            wafer_defects_evidence.get("summary", {}).get("total_wafers_found", 0)
+            wafer_defects_evidence.get("summary", {}).get("total_wafers_found", 0),
+            root_causes_found=root_causes_count,
+            scenario_correlations=scenario_correlations_count,
+            impact_assessments=impact_assessments_count
         )
         logger.info(f"🟠    📈 Calculated correlation confidence: {confidence_score:.2f}")
+
+        # Log enhanced data usage
+        if root_causes_count > 0 or scenario_correlations_count > 0 or impact_assessments_count > 0:
+            logger.info(f"🟠    ✨ Using enhanced data: {root_causes_count} root causes, {scenario_correlations_count} scenario correlations, {impact_assessments_count} impact assessments")
 
         logger.info(f"🟠    ✅ Investigation complete")
         logger.info(f"🟠    🎯 Next stage: RCA")
