@@ -31,12 +31,6 @@ sidecarContainers:
       - name: APP_NAME
         value: smf-yield-defect-staging
 
-      - name: DEMO_MODE_ENABLED
-        value: "true"
-
-      - name: DEMO_MODE_ENABLED
-        value: "true"
-
       - name: DEMO_EXCURSION_PROBABILITY
         value: "0.3"
 

@@ -12,6 +12,7 @@ import DashboardModeToggle from './DashboardModeToggle';
 import AgenticWorkflowView from './AgenticWorkflowView';
 import AgentWorkflowBar from './AgentWorkflowBar';
 import AgentDetailPanel from './AgentDetailPanel';
+import AgentErrorBoundary from './AgentErrorBoundary';
 import LiveParticleMonitor from './LiveParticleMonitor';
 import LiveTemperatureMonitor from './LiveTemperatureMonitor';
 import LiveRFPowerMonitor from './LiveRFPowerMonitor';
@@ -153,10 +154,12 @@ const Dashboard = ({ onModeChange }) => {
               />
 
               {/* Agent Detail Panel */}
-              <AgentDetailPanel
-                selectedAgent={selectedAgent}
-                selectedAlertId={selectedAlertId}
-              />
+              <AgentErrorBoundary>
+                <AgentDetailPanel
+                  selectedAgent={selectedAgent}
+                  selectedAlertId={selectedAlertId}
+                />
+              </AgentErrorBoundary>
             </>
           )}
 

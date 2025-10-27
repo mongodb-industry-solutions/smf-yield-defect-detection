@@ -119,16 +119,16 @@ export const equipmentAPI = {
 // Alert APIs
 export const alertAPI = {
   // Get alerts
-  getAlerts: async (severity = null, limit = 100) => {
-    const params = new URLSearchParams({ limit });
+  getAlerts: async (severity = null, limit = 100, minutesAgo = 30) => {
+    const params = new URLSearchParams({ limit, minutes_ago: minutesAgo });
     if (severity) params.append('severity', severity);
 
     return fetchAPI(`/alerts?${params}`);
   },
 
   // Alias for getAlerts (for consistency)
-  getAll: async (limit = 100, severity = null) => {
-    const params = new URLSearchParams({ limit });
+  getAll: async (limit = 100, severity = null, minutesAgo = 30) => {
+    const params = new URLSearchParams({ limit, minutes_ago: minutesAgo });
     if (severity) params.append('severity', severity);
 
     return fetchAPI(`/alerts?${params}`);
