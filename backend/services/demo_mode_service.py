@@ -43,7 +43,7 @@ class DemoModeService:
         mongodb_uri: str,
         database_name: str,
         demo_interval_seconds: int = 60,
-        demo_excursion_probability: float = 0.05
+        demo_excursion_probability: float = 0.2
     ):
         """
         Initialize Demo Mode Service
@@ -760,33 +760,33 @@ class DemoModeService:
 
             # Define excursion patterns (aligned with scenario_metadata.json)
             if scenario == "lot_processing_drift":
-                # Aligned with gradual_drift scenario: linear drift from 950→1150
+                # Aligned with gradual_drift scenario: linear drift from 1200→1600
+                # Increased to exceed HIGH threshold (1500) and reach near-CRITICAL (2000)
                 # Represents compressed view of scenario anomaly window (minutes 75-120)
-                # Peak at 1150 matches scenario ground truth
                 scripted_excursions = [
-                    {"wafer": 10, "equipment": "CMP_TOOL_01", "type": "particle", "value": 950},
-                    {"wafer": 11, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1020},  # MEDIUM (first breach)
-                    {"wafer": 12, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1040},
-                    {"wafer": 13, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1055},
-                    {"wafer": 14, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1070},
-                    {"wafer": 15, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1085},
-                    {"wafer": 16, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1095},
-                    {"wafer": 17, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1105},
-                    {"wafer": 18, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1115},
-                    {"wafer": 19, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1130},
-                    {"wafer": 20, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1140},
-                    {"wafer": 21, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1145},
-                    {"wafer": 22, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1148},
-                    {"wafer": 23, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1150},  # Peak (matches scenario)
-                    {"wafer": 24, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1150},
-                    {"wafer": 25, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1150},
+                    {"wafer": 10, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1200},
+                    {"wafer": 11, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1270},  # MEDIUM (first breach)
+                    {"wafer": 12, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1320},
+                    {"wafer": 13, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1360},
+                    {"wafer": 14, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1400},
+                    {"wafer": 15, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1440},
+                    {"wafer": 16, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1480},
+                    {"wafer": 17, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1510},  # HIGH threshold exceeded
+                    {"wafer": 18, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1540},
+                    {"wafer": 19, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1565},
+                    {"wafer": 20, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1585},
+                    {"wafer": 21, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1595},
+                    {"wafer": 22, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},
+                    {"wafer": 23, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},  # Peak (sustained)
+                    {"wafer": 24, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},
+                    {"wafer": 25, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},
                 ]
             elif scenario == "lot_processing_spike":
                 # Aligned with sudden_spike scenario: single spike to 1200, then return to normal
                 # Equipment: ETCH_01 (matches scenario metadata)
                 # Peak at 1200 matches scenario ground truth
                 scripted_excursions = [
-                    {"wafer": 15, "equipment": "ETCH_01", "type": "particle", "value": 1200},  # MEDIUM (single spike)
+                    {"wafer": 15, "equipment": "ETCH_01", "type": "particle", "value": 1600},  # MEDIUM (single spike)
                     {"wafer": 16, "equipment": "ETCH_01", "type": "particle", "value": 450},   # Return to normal
                     {"wafer": 17, "equipment": "ETCH_01", "type": "particle", "value": 460},
                 ]
@@ -797,20 +797,20 @@ class DemoModeService:
                 scripted_excursions = [
                     # Cycle 1: Rising to first peak
                     {"wafer": 5, "equipment": "CMP_TOOL_02", "type": "particle", "value": 950},
-                    {"wafer": 6, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1000},  # Peak 1 (at threshold)
+                    {"wafer": 6, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1600},  # Peak 1 (at threshold)
                     {"wafer": 7, "equipment": "CMP_TOOL_02", "type": "particle", "value": 900},
                     {"wafer": 8, "equipment": "CMP_TOOL_02", "type": "particle", "value": 650},
 
                     # Cycle 2: Rising but stay below threshold
                     {"wafer": 11, "equipment": "CMP_TOOL_02", "type": "particle", "value": 920},
-                    {"wafer": 12, "equipment": "CMP_TOOL_02", "type": "particle", "value": 980},  # Near threshold but below
+                    {"wafer": 12, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1400},  # Near threshold but below
                     {"wafer": 13, "equipment": "CMP_TOOL_02", "type": "particle", "value": 850},
                     {"wafer": 14, "equipment": "CMP_TOOL_02", "type": "particle", "value": 630},
 
                     # Cycle 3: Rising to second peak (breach)
                     {"wafer": 17, "equipment": "CMP_TOOL_02", "type": "particle", "value": 940},
-                    {"wafer": 18, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1020},
-                    {"wafer": 19, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1050},  # Peak 2 (ONLY breach)
+                    {"wafer": 18, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1450},
+                    {"wafer": 19, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1350},  # Peak 2 (ONLY breach)
                     {"wafer": 20, "equipment": "CMP_TOOL_02", "type": "particle", "value": 880},
                     {"wafer": 21, "equipment": "CMP_TOOL_02", "type": "particle", "value": 670},
 
@@ -1101,7 +1101,7 @@ class DemoModeService:
             logger.error(f"❌ Failed to start demo mode: {e}", exc_info=True)
             raise Exception(f"Failed to start demo mode: {str(e)}")
     
-    async def stop_demo_mode(self, restore_probability: float = 0.05) -> Dict[str, Any]:
+    async def stop_demo_mode(self, restore_probability: float = 0.2) -> Dict[str, Any]:
         """
         Stop demo mode data generation
 

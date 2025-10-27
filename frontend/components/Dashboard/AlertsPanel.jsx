@@ -22,6 +22,8 @@ const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onT
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [showQuery, setShowQuery] = useState(false);
   const [queryTime, setQueryTime] = useState(null);
+  const [groupByLot, setGroupByLot] = useState(false);
+  const [expandedLots, setExpandedLots] = useState(new Set());
 
   useEffect(() => {
     if (dataAlerts) {
@@ -216,6 +218,41 @@ const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onT
     return `${Math.floor(diff / 3600)}h ago`;
   };
 
+  // Group alerts by lot_id
+  const groupAlertsByLot = () => {
+    const grouped = {};
+    alerts.forEach(alert => {
+      const lotId = alert.lot_id || 'No Lot Assigned';
+      if (!grouped[lotId]) {
+        grouped[lotId] = [];
+      }
+      grouped[lotId].push(alert);
+    });
+    return grouped;
+  };
+
+  // Toggle lot expansion
+  const toggleLot = (lotId) => {
+    setExpandedLots(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(lotId)) {
+        newSet.delete(lotId);
+      } else {
+        newSet.add(lotId);
+      }
+      return newSet;
+    });
+  };
+
+  // Get severity counts for a lot
+  const getLotSeverityCounts = (lotAlerts) => {
+    return lotAlerts.reduce((acc, alert) => {
+      const severity = alert.severity?.toLowerCase() || 'unknown';
+      acc[severity] = (acc[severity] || 0) + 1;
+      return acc;
+    }, {});
+  };
+
   // MongoDB Alert Query Pipeline
   const alertQueryPipeline = [
     {
@@ -305,6 +342,13 @@ const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onT
             </Badge>
             <div className={styles.headerActions}>
               <IconButton
+                aria-label={groupByLot ? "Show chronological view" : "Group by lot"}
+                onClick={() => setGroupByLot(!groupByLot)}
+                className={styles.iconButton}
+              >
+                <Icon glyph={groupByLot ? "Clock" : "Folder"} />
+              </IconButton>
+              <IconButton
                 aria-label="Show MongoDB query"
                 onClick={() => setShowQuery(!showQuery)}
                 className={styles.queryButton}
@@ -347,7 +391,184 @@ const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onT
               <Description>✅ All systems operating normally</Description>
             </div>
           </Card>
+        ) : groupByLot ? (
+          // Grouped by Lot View
+          <div className={styles.alertsList}>
+            {Object.entries(groupAlertsByLot()).map(([lotId, lotAlerts]) => {
+              const isLotExpanded = expandedLots.has(lotId);
+              const severityCounts = getLotSeverityCounts(lotAlerts);
+              const highestSeverity = lotAlerts.reduce((max, alert) => {
+                const severities = ['critical', 'high', 'warning', 'medium', 'info', 'low'];
+                const alertSeverity = alert.severity?.toLowerCase();
+                const maxIndex = severities.indexOf(max?.toLowerCase());
+                const alertIndex = severities.indexOf(alertSeverity);
+                return alertIndex < maxIndex ? alertSeverity : max;
+              }, 'low');
+
+              return (
+                <div key={lotId} className={styles.lotGroup}>
+                  {/* Lot Header */}
+                  <Card
+                    className={`${styles.lotHeader} ${isLotExpanded ? styles.expanded : ''}`}
+                    onClick={() => toggleLot(lotId)}
+                  >
+                    <div className={styles.lotHeaderInner}>
+                      <div className={styles.lotHeaderLeft}>
+                        <Icon
+                          glyph={isLotExpanded ? "ChevronDown" : "ChevronRight"}
+                          size="small"
+                          className={styles.expandIcon}
+                        />
+                        <Body weight="medium" className={styles.lotTitle}>
+                          Lot: {lotId}
+                        </Body>
+                        <Badge variant={getSeverityVariant(highestSeverity)}>
+                          {lotAlerts.length} Alert{lotAlerts.length !== 1 ? 's' : ''}
+                        </Badge>
+                      </div>
+                      <div className={styles.lotHeaderRight}>
+                        {severityCounts.critical && (
+                          <Badge variant="red" className={styles.severityBadge}>
+                            {severityCounts.critical} Critical
+                          </Badge>
+                        )}
+                        {severityCounts.high && (
+                          <Badge variant="red" className={styles.severityBadge}>
+                            {severityCounts.high} High
+                          </Badge>
+                        )}
+                        {severityCounts.warning && (
+                          <Badge variant="yellow" className={styles.severityBadge}>
+                            {severityCounts.warning} Warning
+                          </Badge>
+                        )}
+                        {severityCounts.medium && (
+                          <Badge variant="yellow" className={styles.severityBadge}>
+                            {severityCounts.medium} Medium
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+
+                  {/* Lot Alerts */}
+                  {isLotExpanded && (
+                    <div className={styles.lotAlerts}>
+                      {lotAlerts.map(alert => {
+                        const isExpanded = expandedAlerts.has(alert.id);
+                        return (
+                          <Card
+                            key={alert.id}
+                            className={`${styles.alertCard} ${isExpanded ? styles.expanded : ''}`}
+                            onClick={() => toggleAlert(alert.id)}
+                          >
+                            <div
+                              className={styles.severityBar}
+                              style={{ backgroundColor: getSeverityColor(alert.severity) }}
+                            />
+
+                            <div className={styles.alertInner}>
+                              {/* Header with severity and time - Always visible */}
+                              <div className={styles.alertHeader}>
+                                <div className={styles.alertHeaderLeft}>
+                                  <div className={styles.alertBadgeGroup}>
+                                    <Badge variant={getSeverityVariant(alert.severity)}>
+                                      {alert.severity?.toUpperCase()}
+                                    </Badge>
+                                    {isExpanded && (
+                                      <Badge variant="lightgray">
+                                        {alert.alert_type?.toUpperCase()}
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <Body weight="medium" className={styles.alertTitleCompact}>
+                                    {alert.title}
+                                  </Body>
+                                </div>
+                                <div className={styles.alertHeaderRight}>
+                                  <Description className={styles.timestamp}>
+                                    {formatTime(alert.timestamp)}
+                                  </Description>
+                                  <Icon
+                                    glyph={isExpanded ? "ChevronDown" : "ChevronRight"}
+                                    size="small"
+                                    className={styles.expandIcon}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Collapsible content */}
+                              {isExpanded && (
+                                <div className={styles.alertExpandedContent}>
+                                  {/* Description */}
+                                  {alert.description && alert.description !== alert.title && (
+                                    <Description className={styles.alertDescription}>
+                                      {alert.description}
+                                    </Description>
+                                  )}
+
+                                  {/* Key details */}
+                                  <div className={styles.alertMetadata}>
+                                    <div className={styles.metadataRow}>
+                                      <span className={styles.metadataLabel}>Equipment:</span>
+                                      <span className={styles.metadataValue}>{alert.equipment_id}</span>
+                                    </div>
+                                    {alert.wafer_id && (
+                                      <div className={styles.metadataRow}>
+                                        <span className={styles.metadataLabel}>Wafer ID:</span>
+                                        <span className={styles.metadataValue}>{alert.wafer_id}</span>
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  {/* Metrics if available */}
+                                  {alert.metrics && Object.keys(alert.metrics).length > 0 && (
+                                    <div className={styles.alertMetrics}>
+                                      <Description className={styles.metricsTitle}>Current Metrics:</Description>
+                                      <div className={styles.metricsGrid}>
+                                        {Object.entries(alert.metrics).slice(0, 6).map(([key, value]) => (
+                                          <div key={key} className={styles.metricItem}>
+                                            <span className={styles.metricLabel}>
+                                              {key.replace(/_/g, ' ')}
+                                            </span>
+                                            <span className={styles.metricValue}>
+                                              {typeof value === 'number' ? value.toFixed(1) : value}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Action buttons and Alert ID at bottom */}
+                                  <div className={styles.alertFooter}>
+                                    <Description className={styles.alertId}>ID: {alert.alert_id}</Description>
+                                    <Button
+                                      variant="primary"
+                                      size="small"
+                                      rightGlyph={<Icon glyph="ArrowRight" />}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openAnalysisModal(alert);
+                                      }}
+                                    >
+                                      Analyze Alert
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         ) : (
+          // Chronological View (Original)
           <div className={styles.alertsList}>
             {alerts.map(alert => {
               const isExpanded = expandedAlerts.has(alert.id);
