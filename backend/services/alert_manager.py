@@ -557,12 +557,42 @@ class AlertManager:
                 # IMPORTANT: Use datetime.now() (local time) because MongoDB stores naive datetime in local timezone
                 # MongoDB BSON datetime is timezone-naive and stores as-is without timezone conversion
                 cutoff_time = datetime.now() - timedelta(minutes=minutes_ago)
+
+                # DETAILED LOGGING FOR DEBUGGING TIME FILTER ISSUE
+                logger.info(f"⏰ [TIME FILTER DEBUG] minutes_ago parameter: {minutes_ago}")
+                logger.info(f"⏰ [TIME FILTER DEBUG] Current server time (datetime.now()): {datetime.now()}")
+                logger.info(f"⏰ [TIME FILTER DEBUG] Current UTC time (datetime.utcnow()): {datetime.utcnow()}")
+                logger.info(f"⏰ [TIME FILTER DEBUG] Cutoff time calculated: {cutoff_time}")
+                logger.info(f"⏰ [TIME FILTER DEBUG] Query filter: timestamp >= {cutoff_time}")
+
                 query["timestamp"] = {"$gte": cutoff_time}
-                logger.debug(f"🕒 Time filter: alerts from last {minutes_ago} minutes (since {cutoff_time})")
-            
+            else:
+                logger.info(f"⏰ [TIME FILTER DEBUG] No time filter - minutes_ago is None, will return all alerts")
+
+            # Log the complete query for debugging
+            logger.info(f"🔍 [QUERY DEBUG] MongoDB query: {query}")
+
+            # Get total count before applying limit
+            total_matching = self.alerts_collection.count_documents(query)
+            logger.info(f"📊 [QUERY DEBUG] Total alerts matching query (before limit): {total_matching}")
+
             cursor = self.alerts_collection.find(query).sort([("timestamp", -1)])
             alerts = list(cursor.limit(limit))
-            
+
+            logger.info(f"✅ [QUERY DEBUG] Alerts returned after limit({limit}): {len(alerts)}")
+
+            # Log sample timestamps of returned alerts for debugging
+            if alerts and len(alerts) > 0:
+                logger.info(f"📅 [TIMESTAMP DEBUG] Sample alert timestamps:")
+                for i, alert in enumerate(alerts[:5]):  # Log first 5
+                    alert_time = alert.get('timestamp', 'NO_TIMESTAMP')
+                    alert_id = alert.get('alert_id', alert.get('_id', 'NO_ID'))
+                    if minutes_ago and isinstance(alert_time, datetime):
+                        age_minutes = (datetime.now() - alert_time).total_seconds() / 60
+                        logger.info(f"   Alert #{i+1} ({alert_id}): {alert_time} (age: {age_minutes:.1f} min)")
+                    else:
+                        logger.info(f"   Alert #{i+1} ({alert_id}): {alert_time}")
+
             return alerts
             
         except Exception as e:

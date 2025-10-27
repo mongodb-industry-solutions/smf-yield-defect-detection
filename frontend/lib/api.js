@@ -123,6 +123,11 @@ export const alertAPI = {
     const params = new URLSearchParams({ limit, minutes_ago: minutesAgo });
     if (severity) params.append('severity', severity);
 
+    // DEBUG LOGGING for time filter
+    console.log('[alertAPI.getAlerts] Parameters:', { severity, limit, minutesAgo });
+    console.log('[alertAPI.getAlerts] URL being called:', `/alerts?${params}`);
+    console.log('[alertAPI.getAlerts] minutes_ago value:', minutesAgo);
+
     return fetchAPI(`/alerts?${params}`);
   },
 

@@ -1472,10 +1472,10 @@ const AgentDetailPanel = ({ selectedAgent, selectedAlertId }) => {
                       {Object.entries(agentData.output.llm_synthesis.quality_control_report.quality_metrics).map(([key, value]) => (
                         <div key={key} style={{ padding: '8px', background: '#f9f9f9', borderRadius: '4px' }}>
                           <Body style={{ fontSize: '11px', color: '#666', textTransform: 'capitalize' }}>
-                            {key.replace(/_/g, ' ')}
+                            {key ? key.replace(/_/g, ' ') : ''}
                           </Body>
                           <Body style={{ fontSize: '12px', fontWeight: 'bold' }}>
-                            {typeof value === 'string' ? value.replace(/_/g, ' ') : value}
+                            {typeof value === 'string' && value ? value.replace(/_/g, ' ') : value || 'N/A'}
                           </Body>
                         </div>
                       ))}
@@ -1494,17 +1494,21 @@ const AgentDetailPanel = ({ selectedAgent, selectedAlertId }) => {
                     {agentData.output.llm_synthesis.recommendations.map((rec, idx) => (
                       <div key={idx} style={{ padding: '12px', background: '#f9f9f9', borderRadius: '4px', borderLeft: '3px solid #00684A' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
-                          <Badge variant="blue">{rec.category?.replace(/_/g, ' ').toUpperCase()}</Badge>
-                          <Badge variant={
-                            rec.priority === 'critical' ? 'red' :
-                            rec.priority === 'high' ? 'yellow' :
-                            rec.priority === 'medium' ? 'blue' : 'lightgray'
-                          }>
-                            {rec.priority?.toUpperCase()} Priority
-                          </Badge>
-                          <Body style={{ fontSize: '11px', color: '#666' }}>
-                            {rec.responsible_team}
-                          </Body>
+                          {rec.category && <Badge variant="blue">{rec.category.replace(/_/g, ' ').toUpperCase()}</Badge>}
+                          {rec.priority && (
+                            <Badge variant={
+                              rec.priority === 'critical' ? 'red' :
+                              rec.priority === 'high' ? 'yellow' :
+                              rec.priority === 'medium' ? 'blue' : 'lightgray'
+                            }>
+                              {rec.priority.toUpperCase()} Priority
+                            </Badge>
+                          )}
+                          {rec.responsible_team && (
+                            <Body style={{ fontSize: '11px', color: '#666' }}>
+                              {rec.responsible_team}
+                            </Body>
+                          )}
                         </div>
 
                         <Body style={{ fontSize: '13px', marginBottom: '8px' }}>
