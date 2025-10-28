@@ -9,6 +9,7 @@ import ProcessHealthMatrix from './ProcessHealthMatrix';
 import AlertsPanel from './AlertsPanel';
 import DemoControlPanel from './DemoControlPanel';
 import DashboardModeToggle from './DashboardModeToggle';
+import UnifiedSearchPanel from './UnifiedSearchPanel';
 import AgenticWorkflowView from './AgenticWorkflowView';
 import AgentWorkflowBar from './AgentWorkflowBar';
 import AgentDetailPanel from './AgentDetailPanel';
@@ -108,14 +109,21 @@ const Dashboard = ({ onModeChange }) => {
             onModeChange={handleModeChange}
           />
 
-          {/* Demo Control Panel */}
-          <DemoControlPanel
-            dashboardMode={dashboardMode}
-            onAnalysisComplete={handleAnalysisComplete}
-          />
+          {/* Demo Control Panel - Hide in search mode */}
+          {dashboardMode !== 'search' && (
+            <DemoControlPanel
+              dashboardMode={dashboardMode}
+              onAnalysisComplete={handleAnalysisComplete}
+            />
+          )}
 
           {/* Conditional Content Based on Mode */}
-          {dashboardMode === 'normal' ? (
+          {dashboardMode === 'search' ? (
+            <>
+              {/* Search Mode: Unified Search Panel */}
+              <UnifiedSearchPanel />
+            </>
+          ) : dashboardMode === 'normal' ? (
             <>
               {/* Normal Mode: 5 Charts */}
               <div className={styles.chartsRowThree}>
@@ -163,8 +171,8 @@ const Dashboard = ({ onModeChange }) => {
             </>
           )}
 
-          {/* MongoDB Operations Console - Bottom of centerPanel */}
-          {dashboardMode !== 'agentic' && (
+          {/* MongoDB Operations Console - Bottom of centerPanel (hide in search & agentic modes) */}
+          {dashboardMode === 'normal' && (
             <MongoDBOperationsConsole
               maxEvents={20}
               autoScroll={true}

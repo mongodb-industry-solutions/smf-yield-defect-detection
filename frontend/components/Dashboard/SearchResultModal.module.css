@@ -1,0 +1,175 @@
+.modalContent {
+  background: #FFFFFF;
+  padding: 20px;
+  max-height: 65vh;
+  overflow-y: auto;
+}
+
+.detailsContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  color: #001E2B;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #E8EDEB;
+  color: #001E2B;
+}
+
+.badges {
+  display: flex;
+  gap: 8px;
+}
+
+.section {
+  padding: 12px;
+  background: #F9FBFA;
+  border-radius: 6px;
+  border: 1px solid #E8EDEB;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.infoGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.infoItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: #001E2B;
+}
+
+.imageContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+}
+
+.waferImage {
+  width: 200px;
+  height: 200px;
+  border-radius: 6px;
+  border: 1px solid #C1C7CD;
+}
+
+.jsonView {
+  margin-top: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.jsonView pre {
+  background: #F9FBFA;
+  padding: 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: #001E2B;
+  overflow-x: auto;
+  border: 1px solid #E8EDEB;
+}
+
+.defectList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.defectCoord {
+  background: #F9FBFA;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-family: monospace;
+  color: #001E2B;
+  border: 1px solid #E8EDEB;
+}
+
+.issueCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: #FFF4F1;
+  border: 1px solid #FFC7BA;
+  border-radius: 4px;
+  margin-top: 8px;
+}
+
+.solutionCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: #E3FCF7;
+  border: 1px solid #00ED64;
+  border-radius: 4px;
+  margin-top: 8px;
+}
+
+.content {
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  color: #001E2B;
+  font-size: 14px;
+}
+
+.highlight {
+  color: #00684A !important;
+  font-weight: 600;
+}
+
+.modalFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 16px;
+  margin-top: 12px;
+  border-top: 1px solid #E8EDEB;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+  .waferImage {
+    width: 180px;
+    height: 180px;
+  }
+}
+
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .infoGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .waferImage {
+    width: 150px;
+    height: 150px;
+  }
+
+  .modalContent {
+    padding: 16px;
+  }
+}

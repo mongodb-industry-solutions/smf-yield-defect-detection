@@ -255,7 +255,13 @@ class UnifiedSearchService:
                     "severity": defect_summary.get("severity"),
                     "equipment_id": doc.get("equipment_id"),
                     "inspection_timestamp": doc.get("inspection_timestamp"),
-                    "score": round(doc.get("score", 0), 4)
+                    "score": round(doc.get("score", 0), 4),
+                    # Full visualization data for frontend
+                    "ink_map": doc.get("ink_map"),  # 25x25 grid + thumbnails
+                    "defects": doc.get("defects", []),  # Defect coordinates array
+                    "defect_summary": defect_summary,  # Full summary object
+                    "description": doc.get("description"),  # Defect description
+                    "process_context": doc.get("process_context", {})  # Equipment/recipe context
                 }
                 formatted_results.append(formatted)
 
@@ -373,10 +379,14 @@ class UnifiedSearchService:
                     "context_id": doc.get("context_id"),
                     "is_problematic": doc.get("is_problematic", False),
                     "known_issues": doc.get("known_issues", []),
-                    "score": 0.8  # Fixed relevance score for text matches
+                    "score": 0.8,  # Fixed relevance score for text matches
+                    # Full nested objects for frontend visualization
+                    "slurry_details": doc.get("slurry_details", {}),
+                    "recipe_details": doc.get("recipe_details", {}),
+                    "reticle_details": doc.get("reticle_details", {})
                 }
 
-                # Add type-specific details
+                # Add type-specific quick access fields (for backward compatibility)
                 if context_type == "slurry_batch":
                     slurry = doc.get("slurry_details", {})
                     formatted.update({
@@ -465,7 +475,7 @@ class UnifiedSearchService:
 
         Returns:
             Dict containing:
-                - results: List of RCA reports/guides with scores
+                - results: List of RCA reports/guides with scores + full content
                 - summary: Search statistics
                 - search_metadata: Query execution details
         """
@@ -532,10 +542,16 @@ class UnifiedSearchService:
                     "title": doc.get("title"),
                     "process_area": metadata.get("process_area"),
                     "defect_type": metadata.get("defect_type"),
-                    "score": round(doc.get("score", 0), 4)
+                    "score": round(doc.get("score", 0), 4),
+                    
+                    # Full document content for frontend visualization
+                    "content": doc.get("content"),  # Full RCA/guide text
+                    "findings": findings,  # Complete findings object
+                    "metadata": metadata,  # Full metadata
+                    "solutions": doc.get("solutions", [])  # Full solutions array
                 }
 
-                # Add type-specific fields
+                # Add type-specific fields (backward compatibility)
                 if doc_type == "rca_report":
                     formatted.update({
                         "root_cause": findings.get("root_cause"),
@@ -545,7 +561,6 @@ class UnifiedSearchService:
                 elif doc_type == "troubleshooting_guide":
                     formatted.update({
                         "problem_type": metadata.get("problem_type"),
-                        "solutions": doc.get("solutions", []),
                         "estimated_resolution_time": metadata.get("estimated_resolution_time")
                     })
 

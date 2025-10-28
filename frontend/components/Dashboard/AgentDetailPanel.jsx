@@ -108,7 +108,7 @@ const AGENT_DETAILS = {
       { name: "Multi-Collection Queries", type: "query", icon: "Database" },
       { name: "$lookup Joins", type: "aggregation", icon: "Folder" }
     ],
-    collections: ["wafer_defects", "process_context", "alerts", "process_sensor_ts"],
+    collections: ["wafer_defects", "process_context"],
     metrics: [
       { label: "Collections Joined", value: "4", icon: "Connect" },
       { label: "Correlation Types", value: "Temporal, Batch, Spatial", icon: "Diagram3" },

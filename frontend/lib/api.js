@@ -249,6 +249,56 @@ export const searchAPI = {
       method: 'POST',
       body: JSON.stringify({ wafer_id: waferId, threshold })
     });
+  },
+
+  // ========== UNIFIED SEARCH APIs (New) ==========
+
+  // Unified search across all collections (wafers, process_context, knowledge)
+  searchAll: async (query, limitPerCollection = 5) => {
+    return fetchAPI('/search/unified', {
+      method: 'POST',
+      body: JSON.stringify({
+        query,
+        limit_per_collection: limitPerCollection
+      })
+    });
+  },
+
+  // Search wafer defects only
+  searchWafers: async (query, equipmentId = null, limit = 10) => {
+    const payload = { query, limit };
+    if (equipmentId) payload.equipment_id = equipmentId;
+
+    return fetchAPI('/search/wafers', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+
+  // Search process context only
+  searchProcessContext: async (query, contextTypes = null, limit = 10) => {
+    const payload = { query, limit };
+    if (contextTypes && contextTypes.length > 0) {
+      payload.context_types = contextTypes;
+    }
+
+    return fetchAPI('/search/process-context', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
+  },
+
+  // Search historical knowledge only
+  searchKnowledge: async (query, documentTypes = null, limit = 10) => {
+    const payload = { query, limit };
+    if (documentTypes && documentTypes.length > 0) {
+      payload.document_types = documentTypes;
+    }
+
+    return fetchAPI('/search/knowledge', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
   }
 };
 

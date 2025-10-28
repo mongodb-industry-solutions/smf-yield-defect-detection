@@ -13,6 +13,9 @@ const DashboardModeToggle = ({ mode, onModeChange }) => {
         onChange={(value) => onModeChange(value)}
         aria-controls="dashboard-content"
       >
+        <SegmentedControlOption value="search" aria-controls="dashboard-content">
+          Search
+        </SegmentedControlOption>
         <SegmentedControlOption value="normal" aria-controls="dashboard-content">
           Charts
         </SegmentedControlOption>

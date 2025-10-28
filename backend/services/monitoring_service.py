@@ -14,7 +14,7 @@ All business logic extracted from main.py for better separation of concerns.
 import logging
 import asyncio
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, Optional
 
 from bson import ObjectId
@@ -102,12 +102,13 @@ class MonitoringService:
         self.monitoring_active = False
         logger.info("🛑 Monitoring service stopped")
     
-    def _is_duplicate_alert(self, equipment_id: str, excursion_type: str) -> bool:
+    def _is_duplicate_alert(self, async_db, equipment_id: str, excursion_type: str) -> bool:
         """
         Check if an alert was recently created for this equipment/excursion.
         Uses MongoDB to detect duplicates across multiple monitoring instances.
 
         Args:
+            async_db: Async MongoDB database instance
             equipment_id: Equipment identifier
             excursion_type: Type of excursion
 
@@ -115,16 +116,41 @@ class MonitoringService:
             True if a duplicate alert was created within deduplication window
         """
         # Check MongoDB for recent alerts (global deduplication across all instances)
+        # MongoDB stores datetimes as naive UTC, so we need naive datetime for comparison
         cutoff_time = datetime.now(timezone.utc) - timedelta(seconds=self.deduplication_window_seconds)
+        cutoff_time_naive = cutoff_time.replace(tzinfo=None)  # Remove timezone for MongoDB query
 
-        recent_alert = self.alerts_collection.find_one({
+        # Use synchronous MongoDB client from alert_manager for immediate check
+        # (AlertManager uses sync MongoClient for performance)
+        import pymongo
+        sync_client = pymongo.MongoClient(self.mdb_uri)
+        sync_db = sync_client[self.mdb_database_name]
+        alerts_collection = sync_db["alerts"]
+
+        recent_alert = alerts_collection.find_one({
             "equipment_id": equipment_id,
             "alert_type": "excursion",
-            "timestamp": {"$gte": cutoff_time}
-        }, sort=[("timestamp", -1)])
+            "timestamp": {"$gte": cutoff_time_naive}
+        }, sort=[("timestamp", pymongo.DESCENDING)])
+
+        sync_client.close()
 
         if recent_alert:
-            time_diff = (datetime.now(timezone.utc) - recent_alert["timestamp"]).total_seconds()
+            # MongoDB returns naive datetimes, make it timezone-aware for comparison
+            alert_timestamp = recent_alert["timestamp"]
+            if alert_timestamp.tzinfo is None:
+                alert_timestamp = alert_timestamp.replace(tzinfo=timezone.utc)
+
+            time_diff = (datetime.now(timezone.utc) - alert_timestamp).total_seconds()
+
+            # Handle edge case: if time_diff is negative, the alert has wrong timezone
+            # This can happen with old alerts created before timezone fixes
+            # Skip deduplication for these old alerts (they're from different timezone)
+            if time_diff < 0:
+                logger.warning(f"⚠️  Found old alert with timezone mismatch (time_diff={time_diff:.1f}s), "
+                             f"skipping deduplication for alert_id={recent_alert.get('alert_id', 'unknown')}")
+                return False
+
             logger.info(f"🚫 DUPLICATE ALERT BLOCKED: {excursion_type} on {equipment_id} "
                        f"(last alert {time_diff:.1f}s ago, alert_id={recent_alert.get('alert_id', 'unknown')})")
             return True
@@ -440,7 +466,7 @@ class MonitoringService:
                                 # === DEDUPLICATION CHECK ===
                                 # Skip if same equipment/excursion within 5 seconds
                                 # (Prevents duplicates from demo mode + manual injection collisions)
-                                if self._is_duplicate_alert(equipment_id, excursion_type):
+                                if self._is_duplicate_alert(async_db, equipment_id, excursion_type):
                                     continue
 
                                 # Create alert
