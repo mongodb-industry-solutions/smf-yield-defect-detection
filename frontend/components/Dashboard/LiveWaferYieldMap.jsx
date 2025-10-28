@@ -24,8 +24,9 @@ const LiveWaferYieldMap = () => {
     const wafersWithDieMaps = await Promise.all(
       wafers.slice(0, 5).map(async (wafer) => {
         try {
+          // Using direct fetch through proxy since waferAPI doesn't have getVisualization method
           const vizResponse = await fetch(
-            `http://localhost:8000/wafers/${wafer.wafer_id}/visualization`
+            `/api/backend/wafers/${wafer.wafer_id}/visualization`
           );
           const vizData = await vizResponse.json();
           return { ...wafer, die_map: vizData.die_map };

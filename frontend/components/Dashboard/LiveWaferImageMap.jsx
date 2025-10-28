@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Card from '@leafygreen-ui/card';
 import Badge from '@leafygreen-ui/badge';
+import { waferAPI } from '@/lib/api';
 import styles from './LiveWaferYieldMap.module.css';
 
 const LiveWaferImageMap = () => {
@@ -15,8 +16,7 @@ const LiveWaferImageMap = () => {
   const fetchWaferData = async () => {
     console.log('Fetching latest wafer data with images...');
     try {
-      const response = await fetch('http://localhost:8000/wafers/latest?limit=3');
-      const data = await response.json();
+      const data = await waferAPI.getLatestWafers(3);
 
       if (data.wafers && data.wafers.length > 0) {
         console.log(`Fetched ${data.wafers.length} wafers with thumbnails`);

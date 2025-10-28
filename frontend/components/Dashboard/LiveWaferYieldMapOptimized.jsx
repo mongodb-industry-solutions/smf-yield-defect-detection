@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Card from '@leafygreen-ui/card';
 import Badge from '@leafygreen-ui/badge';
+import { waferAPI } from '@/lib/api';
 import styles from './LiveWaferYieldMap.module.css';
 
 // Cache for die map data
@@ -22,8 +23,7 @@ const LiveWaferYieldMapOptimized = () => {
   const fetchWaferList = async () => {
     console.log('Fetching latest wafer data...');
     try {
-      const response = await fetch('http://localhost:8000/wafers/latest?limit=3'); // Reduced from 5 to 3
-      const data = await response.json();
+      const data = await waferAPI.getLatestWafers(3); // Reduced from 5 to 3
 
       if (data.wafers && data.wafers.length > 0) {
         console.log(`Fetched ${data.wafers.length} wafers:`, data.wafers.map(w => w.wafer_id));
@@ -49,7 +49,8 @@ const LiveWaferYieldMapOptimized = () => {
     setCurrentDieMap(null); // Clear current map to show loading
 
     try {
-      const response = await fetch(`http://localhost:8000/wafers/${waferId}/visualization`);
+      // Using direct fetch through proxy since waferAPI doesn't have getVisualization method
+      const response = await fetch(`/api/backend/wafers/${waferId}/visualization`);
       const data = await response.json();
 
       console.log(`Die map fetched for ${waferId}`);

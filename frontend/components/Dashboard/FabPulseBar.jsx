@@ -7,6 +7,7 @@ import Icon from '@leafygreen-ui/icon';
 import { H3, Description } from '@leafygreen-ui/typography';
 import QueryTransparencyCard from '@/components/common/QueryTransparencyCard';
 import { useDashboardData } from '@/contexts/DashboardDataProvider';
+import { kpiAPI } from '@/lib/api';
 import styles from './FabPulseBar.module.css';
 
 const FabPulseBar = () => {
@@ -28,8 +29,7 @@ const FabPulseBar = () => {
   const fetchKPIData = async () => {
     const startTime = performance.now();
     try {
-      const response = await fetch('http://localhost:8000/kpi/statistics');
-      const data = await response.json();
+      const data = await kpiAPI.getKPIStatistics();
       const endTime = performance.now();
 
       setKpiData(data.kpi);

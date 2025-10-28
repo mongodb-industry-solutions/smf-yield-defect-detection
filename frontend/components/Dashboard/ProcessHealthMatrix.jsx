@@ -9,6 +9,7 @@ import IconButton from '@leafygreen-ui/icon-button';
 import QueryTransparencyCard from '@/components/common/QueryTransparencyCard';
 import EquipmentDetailsPanel from './EquipmentDetailsPanel';
 import { useDashboardData } from '@/contexts/DashboardDataProvider';
+import { equipmentAPI } from '@/lib/api';
 import styles from './ProcessHealthMatrix.module.css';
 
 const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
@@ -21,8 +22,7 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
 
   const fetchEquipmentStatus = async () => {
     try {
-      const response = await fetch('http://localhost:8000/equipment/status');
-      const data = await response.json();
+      const data = await equipmentAPI.getEquipmentStatus();
       setEquipmentData(data);
       setIsLoading(false);
       setLastRefresh(new Date());

@@ -8,6 +8,7 @@ import IconButton from '@leafygreen-ui/icon-button';
 import Button from '@leafygreen-ui/button';
 import { H3, Body, Description } from '@leafygreen-ui/typography';
 import { useDashboardData } from '@/contexts/DashboardDataProvider';
+import { alertAPI } from '@/lib/api';
 import AlertAnalysisModal from './AlertAnalysisModal';
 import QueryTransparencyCard from '@/components/common/QueryTransparencyCard';
 import styles from './AlertsPanel.module.css';
@@ -189,7 +190,8 @@ const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onT
   // Resolve all alerts
   const handleResolveAll = async () => {
     try {
-      const response = await fetch('http://localhost:8000/alerts/resolve-all', {
+      // Note: alertAPI doesn't have resolveAll method, using direct fetch through proxy
+      const response = await fetch('/api/backend/alerts/resolve-all', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

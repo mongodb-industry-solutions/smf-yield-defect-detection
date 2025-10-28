@@ -9,6 +9,7 @@ import { Tab, Tabs } from '@leafygreen-ui/tabs';
 import Card from '@leafygreen-ui/card';
 import { H2, H3, Body, Description } from '@leafygreen-ui/typography';
 import Code from '@leafygreen-ui/code';
+import { alertAPI } from '@/lib/api';
 import styles from './AlertAnalysisModal.module.css';
 
 const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed, aiEnabled = true }) => {
@@ -29,12 +30,8 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed, aiEnabled = 
 
     setIsAnalyzing(true);
     try {
-      const response = await fetch(`http://localhost:8000/alerts/${alert.alert_id}/analyze`, {
-        method: 'POST'
-      });
-      if (response.ok) {
-        // Analysis triggered, data will be in alert object after refresh
-      }
+      await alertAPI.analyzeAlert(alert.alert_id);
+      // Analysis triggered, data will be in alert object after refresh
     } catch (error) {
       console.error('Error analyzing alert:', error);
     } finally {
@@ -51,7 +48,8 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed, aiEnabled = 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
-      const response = await fetch(`http://localhost:8000/alerts/${alert.alert_id}/fix`, {
+      // Using direct fetch through proxy since alertAPI doesn't have fix method
+      const response = await fetch(`/api/backend/alerts/${alert.alert_id}/fix`, {
         method: 'POST',
         signal: controller.signal
       });

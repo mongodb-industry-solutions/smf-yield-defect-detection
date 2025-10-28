@@ -5,6 +5,7 @@ import Card from '@leafygreen-ui/card';
 import Badge from '@leafygreen-ui/badge';
 import Button from '@leafygreen-ui/button';
 import { SAMPLE_WAFER_MONGO_DATA } from '@/lib/sampleWaferData';
+import { waferAPI } from '@/lib/api';
 import styles from './LiveWaferImageMapCompact.module.css';
 
 const LiveWaferImageMapCompact = () => {
@@ -20,14 +21,9 @@ const LiveWaferImageMapCompact = () => {
 
     try {
       const fetchStart = performance.now();
-      const response = await fetch('http://localhost:8000/wafers/latest?limit=3&include_visualization=true');
+      const data = await waferAPI.getLatestWafers(3);
       const fetchEnd = performance.now();
       console.log(`[LiveWaferImageMapCompact] ⏱️  Fetch request completed in ${(fetchEnd - fetchStart).toFixed(0)}ms`);
-
-      const parseStart = performance.now();
-      const data = await response.json();
-      const parseEnd = performance.now();
-      console.log(`[LiveWaferImageMapCompact] 📦 JSON parsing completed in ${(parseEnd - parseStart).toFixed(0)}ms`);
       console.log(`[LiveWaferImageMapCompact] 📊 Received ${data.wafers?.length || 0} wafers`);
 
       if (data.wafers && data.wafers.length > 0) {
