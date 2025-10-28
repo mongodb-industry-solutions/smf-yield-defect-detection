@@ -3,7 +3,7 @@ Alert Management System for Phase 2
 Handles alert lifecycle, storage, and notification management
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 from enum import Enum
 import logging
@@ -149,8 +149,8 @@ class AlertManager:
             Alert ID
         """
         try:
-            alert_id = f"ALT-{datetime.now().strftime('%Y%m%d%H%M%S')}-{ObjectId()}"
-            
+            alert_id = f"ALT-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{ObjectId()}"
+
             alert_doc = {
                 "alert_id": alert_id,
                 "alert_type": alert_type.value,
@@ -158,7 +158,7 @@ class AlertManager:
                 "status": AlertStatus.OPEN.value,
                 "title": title,
                 "description": description,
-                "timestamp": datetime.now(),
+                "timestamp": datetime.now(timezone.utc),
                 "acknowledged_at": None,
                 "resolved_at": None,
                 "closed_at": None,
@@ -343,7 +343,7 @@ class AlertManager:
                 {
                     "$set": {
                         "rca_analysis.similar_historical_cases": historical_cases,
-                        "rca_analysis.historical_context_retrieved_at": datetime.now()
+                        "rca_analysis.historical_context_retrieved_at": datetime.now(timezone.utc)
                     }
                 }
             )
@@ -376,7 +376,7 @@ class AlertManager:
                 {
                     "$set": {
                         "status": AlertStatus.ACKNOWLEDGED.value,
-                        "acknowledged_at": datetime.now(),
+                        "acknowledged_at": datetime.now(timezone.utc),
                         "assigned_to": acknowledged_by,
                         "acknowledgment_notes": notes
                     }
@@ -419,7 +419,7 @@ class AlertManager:
         try:
             update_doc = {
                 "status": status.value,
-                f"{status.value}_at": datetime.now()
+                f"{status.value}_at": datetime.now(timezone.utc)
             }
             
             if notes:
@@ -461,7 +461,7 @@ class AlertManager:
                 {
                     "$set": {
                         "correlation_data": correlation_data,
-                        "correlation_updated_at": datetime.now()
+                        "correlation_updated_at": datetime.now(timezone.utc)
                     }
                 }
             )
@@ -496,7 +496,7 @@ class AlertManager:
                 {
                     "$set": {
                         "rca_recommendations": recommendations,
-                        "rca_updated_at": datetime.now()
+                        "rca_updated_at": datetime.now(timezone.utc)
                     }
                 }
             )
@@ -554,12 +554,12 @@ class AlertManager:
             # Add time filter if specified
             if minutes_ago is not None:
                 from datetime import datetime, timedelta
-                # Use datetime.now() to match how alerts are created (server local time)
-                cutoff_time = datetime.now() - timedelta(minutes=minutes_ago)
+                # Use datetime.now(timezone.utc) to match how alerts are created (server local time)
+                cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
 
                 # DETAILED LOGGING FOR DEBUGGING TIME FILTER ISSUE
                 logger.info(f"⏰ [TIME FILTER DEBUG] minutes_ago parameter: {minutes_ago}")
-                logger.info(f"⏰ [TIME FILTER DEBUG] Current server time: {datetime.now()}")
+                logger.info(f"⏰ [TIME FILTER DEBUG] Current server time: {datetime.now(timezone.utc)}")
                 logger.info(f"⏰ [TIME FILTER DEBUG] Cutoff time: {cutoff_time}")
 
                 query["timestamp"] = {"$gte": cutoff_time}
@@ -585,7 +585,7 @@ class AlertManager:
                     alert_time = alert.get('timestamp', 'NO_TIMESTAMP')
                     alert_id = alert.get('alert_id', alert.get('_id', 'NO_ID'))
                     if minutes_ago and isinstance(alert_time, datetime):
-                        age_minutes = (datetime.now() - alert_time).total_seconds() / 60
+                        age_minutes = (datetime.now(timezone.utc) - alert_time).total_seconds() / 60
                         logger.info(f"   Alert #{i+1} ({alert_id}): {alert_time} (age: {age_minutes:.1f} min)")
                     else:
                         logger.info(f"   Alert #{i+1} ({alert_id}): {alert_time}")
@@ -661,7 +661,7 @@ class AlertManager:
                 {
                     "$set": {
                         "severity": new_severity,
-                        "escalated_at": datetime.now(),
+                        "escalated_at": datetime.now(timezone.utc),
                         "escalation_reason": reason
                     },
                     "$inc": {"escalation_level": 1}
@@ -696,7 +696,7 @@ class AlertManager:
             Number of alerts closed
         """
         try:
-            cutoff_date = datetime.now() - timedelta(days=age_days)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=age_days)
             
             result = self.alerts_collection.update_many(
                 {
@@ -706,7 +706,7 @@ class AlertManager:
                 {
                     "$set": {
                         "status": AlertStatus.CLOSED.value,
-                        "closed_at": datetime.now(),
+                        "closed_at": datetime.now(timezone.utc),
                         "auto_closed": True
                     }
                 }
@@ -732,7 +732,7 @@ class AlertManager:
             Alert statistics
         """
         try:
-            cutoff_time = datetime.now() - timedelta(hours=time_window_hours)
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=time_window_hours)
             
             pipeline = [
                 {"$match": {"timestamp": {"$gte": cutoff_time}}},
@@ -819,7 +819,7 @@ class AlertManager:
         try:
             history_entry = {
                 "alert_id": alert_id,
-                "timestamp": datetime.now(),
+                "timestamp": datetime.now(timezone.utc),
                 "action": action,
                 "description": description
             }
@@ -839,7 +839,7 @@ class AlertManager:
             {
                 "$push": {
                     "notifications_sent": {
-                        "timestamp": datetime.now(),
+                        "timestamp": datetime.now(timezone.utc),
                         "type": "initial",
                         "severity": severity.value
                     }
@@ -856,7 +856,7 @@ class AlertManager:
             {
                 "$push": {
                     "notifications_sent": {
-                        "timestamp": datetime.now(),
+                        "timestamp": datetime.now(timezone.utc),
                         "type": "escalation",
                         "severity": severity,
                         "reason": reason
@@ -891,7 +891,7 @@ if __name__ == "__main__":
         source_data={
             "equipment_id": "CMP-01",
             "particle_count": 1567,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         },
         equipment_id="CMP-01",
         lot_id="LOT-2024-001"

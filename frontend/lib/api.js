@@ -118,15 +118,13 @@ export const equipmentAPI = {
 
 // Alert APIs
 export const alertAPI = {
-  // Get alerts
-  getAlerts: async (severity = null, limit = 100, minutesAgo = 120) => {
-    const params = new URLSearchParams({ limit, minutes_ago: minutesAgo });
+  // Get alerts (no time filtering - returns all alerts)
+  getAlerts: async (severity = null, limit = 100) => {
+    const params = new URLSearchParams({ limit });
     if (severity) params.append('severity', severity);
 
-    // DEBUG LOGGING for time filter
-    console.log('[alertAPI.getAlerts] Parameters:', { severity, limit, minutesAgo });
+    console.log('[alertAPI.getAlerts] Parameters:', { severity, limit });
     console.log('[alertAPI.getAlerts] URL being called:', `/alerts?${params}`);
-    console.log('[alertAPI.getAlerts] minutes_ago value:', minutesAgo);
 
     const data = await fetchAPI(`/alerts?${params}`);
 
@@ -136,8 +134,8 @@ export const alertAPI = {
   },
 
   // Alias for getAlerts (for consistency)
-  getAll: async (limit = 100, severity = null, minutesAgo = 120) => {
-    const params = new URLSearchParams({ limit, minutes_ago: minutesAgo });
+  getAll: async (limit = 100, severity = null) => {
+    const params = new URLSearchParams({ limit });
     if (severity) params.append('severity', severity);
 
     const data = await fetchAPI(`/alerts?${params}`);

@@ -130,13 +130,12 @@ async def get_alerts(
     severity: Optional[str] = Query(None, description="Filter by severity: critical, high, medium, low"),
     alert_type: Optional[str] = Query(None, description="Filter by alert type"),
     equipment_id: Optional[str] = Query(None, description="Filter by equipment ID"),
-    limit: int = Query(100, description="Maximum number of alerts to return"),
-    minutes_ago: Optional[int] = Query(30, description="Only show alerts from the last N minutes (default: 30)")
+    limit: int = Query(100, description="Maximum number of alerts to return")
 ):
     """
     Get active alerts with optional filtering
     """
-    logger.info(f"📥 GET /alerts - Filters: severity={severity}, type={alert_type}, equipment={equipment_id}, limit={limit}, minutes_ago={minutes_ago}")
+    logger.info(f"📥 GET /alerts - Filters: severity={severity}, type={alert_type}, equipment={equipment_id}, limit={limit}")
     
     try:
         logger.debug(f"🔧 Getting active alerts with filters")
@@ -153,13 +152,13 @@ async def get_alerts(
         if alert_type_enum:
             logger.debug(f"🔍 Alert type filter: {alert_type} -> {alert_type_enum}")
         
-        # Fetch alerts with filters
+        # Fetch alerts with filters (no time filter)
         alerts = alert_manager.get_active_alerts(
             severity=severity_enum,
             alert_type=alert_type_enum,
             equipment_id=equipment_id,
             limit=limit,
-            minutes_ago=minutes_ago
+            minutes_ago=None  # Always fetch all alerts regardless of age
         )
 
         # Convert ObjectIds for JSON serialization

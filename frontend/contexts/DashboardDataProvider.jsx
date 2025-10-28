@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { alertAPI, equipmentAPI } from '../lib/api';
+import { alertAPI, equipmentAPI, kpiAPI } from '../lib/api';
 
 // Create context
 const DashboardDataContext = createContext();
@@ -32,8 +32,11 @@ export const DashboardDataProvider = ({ children, mode = 'normal', preloadedData
     const startTime = Date.now();
 
     try {
-      // Always fetch alerts (2-hour window to match backend default)
-      const promises = [alertAPI.getAlerts(null, 20, 120)];
+      // Always fetch alerts and KPIs (no time filter - get all alerts)
+      const promises = [
+        alertAPI.getAlerts(null, 20),
+        kpiAPI.getKPIStatistics()
+      ];
 
       // Only fetch equipment status in normal mode (skip in agentic mode)
       if (mode === 'normal') {
@@ -42,7 +45,8 @@ export const DashboardDataProvider = ({ children, mode = 'normal', preloadedData
 
       const results = await Promise.all(promises);
       const alertsData = results[0];
-      const equipmentData = results[1] || null;
+      const kpisData = results[1];
+      const equipmentData = results[2] || null;
 
       const fetchTime = Date.now() - startTime;
       console.log(`Data fetched in ${fetchTime}ms`);
@@ -68,11 +72,13 @@ export const DashboardDataProvider = ({ children, mode = 'normal', preloadedData
 
       // Update state with all data
       console.log('[DashboardDataProvider] Setting alerts:', alertsData?.alerts?.length, alertsData?.alerts);
+      console.log('[DashboardDataProvider] Setting KPIs:', kpisData?.kpi);
 
       setData(prev => ({
         ...prev,
         alerts: alertsData?.alerts || [],
         equipmentStatus: equipmentList,
+        kpis: kpisData?.kpi || null,
         isLoading: false,
         lastFetch: Date.now()
       }));

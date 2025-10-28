@@ -87,8 +87,8 @@ async def get_kpi_statistics():
 
         alert_pipeline = [
             {"$match": {
-                "status": {"$in": ["open", "acknowledged"]},
-                "timestamp": {"$gte": cutoff_time}  # Only alerts from last 30 minutes
+                "status": {"$in": ["open", "acknowledged"]}
+                # Count ALL open alerts regardless of timestamp
             }},
             {"$group": {
                 "_id": "$severity",

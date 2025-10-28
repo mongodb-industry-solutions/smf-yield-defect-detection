@@ -1,6 +1,6 @@
 from bson import ObjectId
 from typing import Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 def convert_objectids(item: Any) -> Any:
     """
@@ -22,6 +22,10 @@ def convert_objectids(item: Any) -> Any:
     elif isinstance(item, ObjectId):
         return str(item)
     elif isinstance(item, datetime):
+        # MongoDB stores all datetimes as UTC but returns them as naive datetimes
+        # Add timezone info if missing so frontend knows it's UTC
+        if item.tzinfo is None:
+            item = item.replace(tzinfo=timezone.utc)
         return item.isoformat()
     else:
         return item
@@ -50,6 +54,10 @@ def format_document(item: Any, max_array_length: int = 10) -> Any:
     elif isinstance(item, ObjectId):
         return str(item)
     elif isinstance(item, datetime):
+        # MongoDB stores all datetimes as UTC but returns them as naive datetimes
+        # Add timezone info if missing so frontend knows it's UTC
+        if item.tzinfo is None:
+            item = item.replace(tzinfo=timezone.utc)
         return item.isoformat()
     elif isinstance(item, bytes):
         # Convert binary data to a hex string

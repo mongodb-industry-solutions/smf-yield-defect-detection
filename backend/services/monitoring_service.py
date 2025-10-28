@@ -87,17 +87,15 @@ class MonitoringService:
         
         # State management
         self.monitoring_active = False
-        
-        # Alert deduplication tracking (equipment_id -> last_alert_timestamp)
-        # Prevents duplicate alerts from demo mode + manual injection collisions
-        self.recent_alerts = {}  # {equipment_id: {"timestamp": datetime, "excursion_type": str}}
+
+        # Alert deduplication window (MongoDB-based, global across all instances)
         self.deduplication_window_seconds = 5  # Skip alerts within 5 seconds
-        
+
         logger.info("✅ MonitoringService initialized")
         logger.info(f"   🔗 CorrelationEngine: Reusing existing instance (connection pool)")
         logger.info(f"   🔗 RCAGenerator: Reusing existing instance (connection pool)")
         logger.info(f"   🤖 AI Multi-Agent System: {'ENABLED' if self.use_ai_agents else 'DISABLED'}")
-        logger.info(f"   🔒 Alert Deduplication: {self.deduplication_window_seconds}s window")
+        logger.info(f"   🔒 Alert Deduplication: {self.deduplication_window_seconds}s window (MongoDB-based)")
     
     def stop_monitoring(self):
         """Stop all monitoring loops by setting the active flag to False."""
@@ -107,54 +105,42 @@ class MonitoringService:
     def _is_duplicate_alert(self, equipment_id: str, excursion_type: str) -> bool:
         """
         Check if an alert was recently created for this equipment/excursion.
-        
+        Uses MongoDB to detect duplicates across multiple monitoring instances.
+
         Args:
             equipment_id: Equipment identifier
             excursion_type: Type of excursion
-            
+
         Returns:
             True if a duplicate alert was created within deduplication window
         """
-        if equipment_id not in self.recent_alerts:
-            return False
-        
-        recent = self.recent_alerts[equipment_id]
-        time_diff = (datetime.utcnow() - recent["timestamp"]).total_seconds()
-        
-        # Check if within deduplication window and same excursion type
-        if time_diff <= self.deduplication_window_seconds and recent["excursion_type"] == excursion_type:
+        # Check MongoDB for recent alerts (global deduplication across all instances)
+        cutoff_time = datetime.now(timezone.utc) - timedelta(seconds=self.deduplication_window_seconds)
+
+        recent_alert = self.alerts_collection.find_one({
+            "equipment_id": equipment_id,
+            "alert_type": "excursion",
+            "timestamp": {"$gte": cutoff_time}
+        }, sort=[("timestamp", -1)])
+
+        if recent_alert:
+            time_diff = (datetime.now(timezone.utc) - recent_alert["timestamp"]).total_seconds()
             logger.info(f"🚫 DUPLICATE ALERT BLOCKED: {excursion_type} on {equipment_id} "
-                       f"(last alert {time_diff:.1f}s ago)")
+                       f"(last alert {time_diff:.1f}s ago, alert_id={recent_alert.get('alert_id', 'unknown')})")
             return True
-        
+
         return False
     
     def _record_alert_creation(self, equipment_id: str, excursion_type: str):
         """
-        Record that an alert was created for deduplication tracking.
-        
+        No-op function kept for backward compatibility.
+        Deduplication now uses MongoDB queries instead of in-memory cache.
+
         Args:
             equipment_id: Equipment identifier
             excursion_type: Type of excursion
         """
-        self.recent_alerts[equipment_id] = {
-            "timestamp": datetime.utcnow(),
-            "excursion_type": excursion_type
-        }
-
-        # Cleanup old entries (older than 60 seconds)
-        cutoff_time = datetime.utcnow()
-        to_remove = []
-        for equip_id, info in self.recent_alerts.items():
-            age_seconds = (cutoff_time - info["timestamp"]).total_seconds()
-            if age_seconds > 60:
-                to_remove.append(equip_id)
-        
-        for equip_id in to_remove:
-            del self.recent_alerts[equip_id]
-        
-        if to_remove:
-            logger.debug(f"🧹 Cleaned up {len(to_remove)} old alert tracking entries")
+        pass  # MongoDB-based deduplication doesn't need in-memory tracking
     
     # ============================================================================
     # Helper Methods

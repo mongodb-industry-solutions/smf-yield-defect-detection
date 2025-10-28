@@ -47,34 +47,35 @@ const FabPulseBar = () => {
       console.log('✅ FabPulseBar: Using preloaded KPI data');
       
       // Transform preloaded data to match expected format
+      // Handle both old format (active_alerts.total) and new format (alerts.value)
       const transformedData = {
         yield: {
           label: 'Current Yield',
-          value: preloadedKpis.yield?.current || 0,
+          value: preloadedKpis.yield?.value || preloadedKpis.yield?.current || 0,
           unit: '%',
           trend: preloadedKpis.yield?.trend || 'up',
-          trendValue: Math.abs(preloadedKpis.yield?.current - preloadedKpis.yield?.average) || 0
+          trendValue: preloadedKpis.yield?.trendValue || Math.abs(preloadedKpis.yield?.current - preloadedKpis.yield?.average) || 0
         },
         alerts: {
           label: 'Active Alerts',
-          value: preloadedKpis.active_alerts?.total || 0,
+          value: preloadedKpis.alerts?.value || preloadedKpis.active_alerts?.total || 0,
           unit: '',
-          trend: 'up',
-          trendValue: preloadedKpis.active_alerts?.critical || 0
+          trend: preloadedKpis.alerts?.trend || 'up',
+          trendValue: preloadedKpis.alerts?.trendValue || preloadedKpis.active_alerts?.critical || 0
         },
         mttr: {
           label: 'Avg Resolution Time',
-          value: 45, // Placeholder - can calculate from alerts if needed
+          value: preloadedKpis.mttr?.value || 45,
           unit: 'min',
-          trend: 'down',
-          trendValue: 5
+          trend: preloadedKpis.mttr?.trend || 'down',
+          trendValue: preloadedKpis.mttr?.trendValue || 5
         },
         savings: {
           label: 'Cost Savings',
-          value: '2.1',
+          value: preloadedKpis.savings?.value || '2.1',
           unit: 'M',
-          trend: 'up',
-          trendValue: 15
+          trend: preloadedKpis.savings?.trend || 'up',
+          trendValue: preloadedKpis.savings?.trendValue || 15
         }
       };
       
