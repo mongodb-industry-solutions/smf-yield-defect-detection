@@ -130,41 +130,17 @@ export const alertAPI = {
 
     const data = await fetchAPI(`/alerts?${params}`);
 
-    // CLIENT-SIDE FILTER: Additional safety check for alert age (fixes timezone issues)
-    if (data.alerts && minutesAgo) {
-      const now = new Date();
-      const filteredAlerts = data.alerts.filter(alert => {
-        const alertTime = new Date(alert.timestamp);
-        const ageInMinutes = (now - alertTime) / 1000 / 60;
-        return ageInMinutes <= minutesAgo;
-      });
-
-      console.log(`[alertAPI.getAlerts] Client-side filter: ${data.alerts.length} → ${filteredAlerts.length} alerts`);
-      return { ...data, alerts: filteredAlerts };
-    }
+    console.log(`[alertAPI.getAlerts] Received ${data.alerts?.length || 0} alerts from backend`);
 
     return data;
   },
 
   // Alias for getAlerts (for consistency)
-  getAll: async (limit = 100, severity = null, minutesAgo = 30) => {
+  getAll: async (limit = 100, severity = null, minutesAgo = 120) => {
     const params = new URLSearchParams({ limit, minutes_ago: minutesAgo });
     if (severity) params.append('severity', severity);
 
     const data = await fetchAPI(`/alerts?${params}`);
-
-    // CLIENT-SIDE FILTER: Additional safety check for alert age (fixes timezone issues)
-    if (data.alerts && minutesAgo) {
-      const now = new Date();
-      const filteredAlerts = data.alerts.filter(alert => {
-        const alertTime = new Date(alert.timestamp);
-        const ageInMinutes = (now - alertTime) / 1000 / 60;
-        return ageInMinutes <= minutesAgo;
-      });
-
-      return { ...data, alerts: filteredAlerts };
-    }
-
     return data;
   },
 
