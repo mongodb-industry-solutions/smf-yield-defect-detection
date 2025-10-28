@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { alertAPI, equipmentAPI } from '../lib/api';
 
 // Create context
@@ -26,14 +26,14 @@ export const DashboardDataProvider = ({ children, mode = 'normal', preloadedData
     lastFetch: preloadedData ? Date.now() : null
   });
 
-  // Fetch all dashboard data
-  const fetchAllData = async () => {
+  // Fetch all dashboard data (memoized to prevent unnecessary re-creation)
+  const fetchAllData = useCallback(async () => {
     console.log(`Fetching dashboard data (mode: ${mode})...`);
     const startTime = Date.now();
 
     try {
-      // Always fetch alerts
-      const promises = [alertAPI.getAlerts(null, 20)];
+      // Always fetch alerts (2-hour window to match backend default)
+      const promises = [alertAPI.getAlerts(null, 20, 120)];
 
       // Only fetch equipment status in normal mode (skip in agentic mode)
       if (mode === 'normal') {
@@ -67,6 +67,8 @@ export const DashboardDataProvider = ({ children, mode = 'normal', preloadedData
       }
 
       // Update state with all data
+      console.log('[DashboardDataProvider] Setting alerts:', alertsData?.alerts?.length, alertsData?.alerts);
+
       setData(prev => ({
         ...prev,
         alerts: alertsData?.alerts || [],
@@ -78,7 +80,7 @@ export const DashboardDataProvider = ({ children, mode = 'normal', preloadedData
       console.error('Error fetching dashboard data:', error);
       setData(prev => ({ ...prev, isLoading: false }));
     }
-  };
+  }, [mode]); // Only recreate if mode changes
 
   // Initialize with preloaded data if available
   useEffect(() => {
@@ -123,11 +125,11 @@ export const DashboardDataProvider = ({ children, mode = 'normal', preloadedData
     }
   }, [mode, preloadedData]);
 
-  // Provide refresh function for manual updates
-  const refresh = () => {
+  // Provide refresh function for manual updates (memoized to prevent re-renders)
+  const refresh = useCallback(() => {
     setData(prev => ({ ...prev, isLoading: true }));
     fetchAllData();
-  };
+  }, [fetchAllData]); // Depends on fetchAllData which only changes when mode changes
 
   const value = {
     ...data,

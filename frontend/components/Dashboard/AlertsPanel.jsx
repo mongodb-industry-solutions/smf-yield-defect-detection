@@ -27,12 +27,16 @@ const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onT
   const [expandedLots, setExpandedLots] = useState(new Set());
 
   useEffect(() => {
+    console.log('[AlertsPanel] dataAlerts received:', dataAlerts?.length, dataAlerts);
+
     if (dataAlerts) {
       // Transform backend alerts to display format with all details
       // Remove duplicates based on alert_id
       const uniqueAlerts = Array.from(
         new Map(dataAlerts.map(alert => [alert.alert_id || alert._id, alert])).values()
       );
+
+      console.log('[AlertsPanel] Unique alerts:', uniqueAlerts.length, uniqueAlerts);
 
       const formattedAlerts = uniqueAlerts.map(alert => ({
         id: alert._id || alert.alert_id,
@@ -65,6 +69,7 @@ const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onT
       // Sort by timestamp (most recent first)
       formattedAlerts.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
+      console.log('[AlertsPanel] Formatted alerts to display:', formattedAlerts.length, formattedAlerts);
       setAlerts(formattedAlerts);
       setLastRefresh(new Date());
     }

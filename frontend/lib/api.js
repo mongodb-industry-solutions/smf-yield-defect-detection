@@ -119,7 +119,7 @@ export const equipmentAPI = {
 // Alert APIs
 export const alertAPI = {
   // Get alerts
-  getAlerts: async (severity = null, limit = 100, minutesAgo = 30) => {
+  getAlerts: async (severity = null, limit = 100, minutesAgo = 120) => {
     const params = new URLSearchParams({ limit, minutes_ago: minutesAgo });
     if (severity) params.append('severity', severity);
 
