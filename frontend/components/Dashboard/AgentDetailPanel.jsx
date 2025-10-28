@@ -335,9 +335,11 @@ const AgentDetailPanel = ({ selectedAgent, selectedAlertId }) => {
     setCompletedSteps(new Set());
     setStepExecutionTimes({});
 
-    // FIX: Ensure NEXT_PUBLIC_API_URL is defined before calling .replace()
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    const ws = new WebSocket(`${apiUrl.replace('http', 'ws')}/ws/agent`);
+    // Use same host as frontend for WebSocket connection
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const wsUrl = `${protocol}//${host}/ws/agent`;
+    const ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
       console.log('[AgentDetailPanel] WebSocket connected for agent progress');

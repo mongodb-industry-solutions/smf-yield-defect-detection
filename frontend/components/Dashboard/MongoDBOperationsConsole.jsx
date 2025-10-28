@@ -24,7 +24,12 @@ const MongoDBOperationsConsole = ({
   // WebSocket connection for MongoDB operations
   useEffect(() => {
     const connectWebSocket = () => {
-      const ws = new WebSocket('ws://localhost:8000/ws/alerts');
+      // Use same host as frontend for WebSocket connection
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      const wsUrl = `${protocol}//${host}/ws/alerts`;
+
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
