@@ -270,45 +270,45 @@ class MonitoringService:
         except Exception as e:
             logger.error(f"❌ Correlation failed for {alert_id}: {e}", exc_info=True)
     
-    async def run_alert_rca(self, alert_id: str, severity: AlertSeverity):
-        """
-        Run RCA for critical alerts.
+    # async def run_alert_rca(self, alert_id: str, severity: AlertSeverity):
+    #     """
+    #     Run RCA for critical alerts.
         
-        Args:
-            alert_id: Alert ID to run RCA analysis for
-            severity: Alert severity level
-        """
-        if severity != AlertSeverity.CRITICAL:
-            logger.debug(f"   ⏭️  Skipping RCA for non-critical alert {alert_id} (severity: {severity.value})")
-            return
+    #     Args:
+    #         alert_id: Alert ID to run RCA analysis for
+    #         severity: Alert severity level
+    #     """
+    #     if severity != AlertSeverity.CRITICAL:
+    #         logger.debug(f"   ⏭️  Skipping RCA for non-critical alert {alert_id} (severity: {severity.value})")
+    #         return
 
-        try:
-            start_time = time.time()
-            logger.info(f"🔍 Starting RCA analysis for critical alert {alert_id}")
+    #     try:
+    #         start_time = time.time()
+    #         logger.info(f"🔍 Starting RCA analysis for critical alert {alert_id}")
             
-            alert = self.alert_manager.get_alert_by_id(alert_id)
-            if not alert:
-                logger.warning(f"⚠️  Alert {alert_id} not found for RCA")
-                return
+    #         alert = self.alert_manager.get_alert_by_id(alert_id)
+    #         if not alert:
+    #             logger.warning(f"⚠️  Alert {alert_id} not found for RCA")
+    #             return
 
-            # Use existing RCAGenerator instance - NO new connection!
-            logger.debug(f"   ♻️  Reusing RCAGenerator connection pool")
-            mongo_id = str(alert["_id"]) if "_id" in alert else alert_id
-            rca_results = await self.rca_generator.generate_rca_hints(mongo_id)
+    #         # Use existing RCAGenerator instance - NO new connection!
+    #         logger.debug(f"   ♻️  Reusing RCAGenerator connection pool")
+    #         mongo_id = str(alert["_id"]) if "_id" in alert else alert_id
+    #         rca_results = await self.rca_generator.generate_rca_hints(mongo_id)
 
-            elapsed_ms = (time.time() - start_time) * 1000
-            logger.info(f"✅ RCA analysis completed for alert {alert_id} in {elapsed_ms:.0f}ms")
-            logger.debug(f"   📋 Generated {len(rca_results.get('recommendations', []))} recommendations")
+    #         elapsed_ms = (time.time() - start_time) * 1000
+    #         logger.info(f"✅ RCA analysis completed for alert {alert_id} in {elapsed_ms:.0f}ms")
+    #         logger.debug(f"   📋 Generated {len(rca_results.get('recommendations', []))} recommendations")
 
-            # Notify via WebSocket
-            await self.notify_websocket_clients({
-                "type": "rca_complete",
-                "alert_id": alert_id,
-                "rca": rca_results
-            })
+    #         # Notify via WebSocket
+    #         await self.notify_websocket_clients({
+    #             "type": "rca_complete",
+    #             "alert_id": alert_id,
+    #             "rca": rca_results
+    #         })
 
-        except Exception as e:
-            logger.error(f"❌ RCA failed for {alert_id}: {e}", exc_info=True)
+    #     except Exception as e:
+    #         logger.error(f"❌ RCA failed for {alert_id}: {e}", exc_info=True)
     
     async def generate_delayed_wafer_defect(self, excursion_data: Dict[str, Any], delay_seconds: int = 10):
         """
@@ -497,14 +497,6 @@ class MonitoringService:
                                     "timestamp": sensor_data.get("timestamp").isoformat() if hasattr(sensor_data.get("timestamp"), 'isoformat') else str(sensor_data.get("timestamp"))
                                 })
 
-                                # Trigger correlation analysis for all alerts (skip if AI agents enabled)
-                                if not self.use_ai_agents:
-                                    asyncio.create_task(self.run_alert_correlation(alert_id))
-
-                                # Trigger RCA for critical alerts only (skip if AI agents enabled)
-                                if not self.use_ai_agents:
-                                    asyncio.create_task(self.run_alert_rca(alert_id, severity))
-
                                 # Schedule wafer defect generation (with delay to simulate inspection)
                                 asyncio.create_task(self.generate_delayed_wafer_defect({
                                     'alert_id': alert_id,
@@ -514,7 +506,7 @@ class MonitoringService:
                                     'timestamp': sensor_data.get('timestamp'),
                                     'metrics': metrics,
                                     'metadata': sensor_data.get('metadata', {})  # Pass metadata for process context!
-                                }, delay_seconds=10))  # 10 seconds for demo, can be 7200 for realistic
+                                }, delay_seconds=0))  # 10 seconds for demo, can be 7200 for realistic
 
                             # Also check if this is just a normal update to broadcast
                             elif not excursion_detected:

@@ -152,7 +152,7 @@ class WaferGenerator:
             excursion_time = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
         else:
             excursion_time = timestamp
-        inspection_time = excursion_time + timedelta(hours=delay_hours)
+        inspection_time = excursion_time
 
         # lot_id already set from metadata above (line 109), skip regeneration
 

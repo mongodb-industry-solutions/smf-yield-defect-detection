@@ -74,6 +74,7 @@ coverage.xml
 .pytest_cache/
 cover/
 backend/backup
+backend/data_generation/cmp_*/
 
 # Legacy agent system (moved to backup/)
 backend/backup/agent_*.py
