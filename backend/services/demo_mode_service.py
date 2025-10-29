@@ -43,7 +43,7 @@ class DemoModeService:
         mongodb_uri: str,
         database_name: str,
         demo_interval_seconds: int = 60,
-        demo_excursion_probability: float = 0.2
+        demo_excursion_probability: float = 0.1
     ):
         """
         Initialize Demo Mode Service
@@ -141,25 +141,6 @@ class DemoModeService:
             "note": f"Parallel mode: All {equipment_count} standardized equipment report simultaneously each interval"
         }
 
-        # Add lot processing specific status
-        if self.demo_scenario.startswith("lot_processing_"):
-            if self.demo_start_time:
-                elapsed_seconds = (datetime.now(timezone.utc) - self.demo_start_time).total_seconds()
-                remaining_seconds = max(0, (self.demo_duration_seconds or 0) - elapsed_seconds)
-            else:
-                elapsed_seconds = 0
-                remaining_seconds = self.demo_duration_seconds or 0
-
-            status["lot_processing"] = {
-                "lot_id": self.lot_id,
-                "current_wafer": self.wafer_counter,
-                "total_wafers": 25,
-                "elapsed_seconds": round(elapsed_seconds),
-                "remaining_seconds": round(remaining_seconds),
-                "duration_seconds": self.demo_duration_seconds,
-                "progress_percentage": round((self.wafer_counter / 25) * 100) if self.wafer_counter > 0 else 0
-            }
-        
         logger.debug(f"📊 Demo mode status: active={status['active']}, task_running={task_running}")
         return status
     
@@ -724,181 +705,181 @@ class DemoModeService:
             logger.error(f"❌ Failed to reset demo collections: {e}", exc_info=True)
             raise
 
-    async def bulk_insert_lot_scenario(self, scenario: str) -> Dict[str, Any]:
-        """
-        Bulk insert all sensor data for a lot processing scenario at once (no 3-minute wait).
-        Creates only ONE alert per lot for drift scenarios.
+    # async def bulk_insert_lot_scenario(self, scenario: str) -> Dict[str, Any]:
+    #     """
+    #     Bulk insert all sensor data for a lot processing scenario at once (no 3-minute wait).
+    #     Creates only ONE alert per lot for drift scenarios.
 
-        Args:
-            scenario: "lot_processing_drift", "lot_processing_spike", or "lot_processing_oscillation"
+    #     Args:
+    #         scenario: "lot_processing_drift", "lot_processing_spike", or "lot_processing_oscillation"
 
-        Returns:
-            Dict with lot_id, total_wafers, pattern, and sensor data insertion status
-        """
-        try:
-            import random
-            from datetime import timedelta
+    #     Returns:
+    #         Dict with lot_id, total_wafers, pattern, and sensor data insertion status
+    #     """
+    #     try:
+    #         import random
+    #         from datetime import timedelta
 
-            # Generate unique lot number
-            lot_number = random.randint(101, 999)
-            lot_id = f"LOT_2025_{lot_number:03d}"
-            lot_num = str(lot_number).zfill(3)
+    #         # Generate unique lot number
+    #         lot_number = random.randint(101, 999)
+    #         lot_id = f"LOT_2025_{lot_number:03d}"
+    #         lot_num = str(lot_number).zfill(3)
 
-            # Extract pattern
-            pattern = scenario.split("_")[-1]  # drift, spike, oscillation
+    #         # Extract pattern
+    #         pattern = scenario.split("_")[-1]  # drift, spike, oscillation
 
-            # Map lot processing scenarios to standard agentic AI scenario IDs
-            # This enables reusing lot processing alerts in agentic AI mode
-            SCENARIO_MAPPING = {
-                "lot_processing_drift": "gradual_drift",
-                "lot_processing_spike": "sudden_spike",
-                "lot_processing_oscillation": "oscillating_pattern"
-            }
-            scenario_id_for_agents = SCENARIO_MAPPING.get(scenario, "gradual_drift")
+    #         # Map lot processing scenarios to standard agentic AI scenario IDs
+    #         # This enables reusing lot processing alerts in agentic AI mode
+    #         SCENARIO_MAPPING = {
+    #             "lot_processing_drift": "gradual_drift",
+    #             "lot_processing_spike": "sudden_spike",
+    #             "lot_processing_oscillation": "oscillating_pattern"
+    #         }
+    #         scenario_id_for_agents = SCENARIO_MAPPING.get(scenario, "gradual_drift")
 
-            logger.info(f"📦 Scenario mapping: {scenario} → {scenario_id_for_agents} (agentic AI compatible)")
+    #         logger.info(f"📦 Scenario mapping: {scenario} → {scenario_id_for_agents} (agentic AI compatible)")
 
-            # Define excursion patterns (aligned with scenario_metadata.json)
-            if scenario == "lot_processing_drift":
-                # Aligned with gradual_drift scenario: linear drift from 1200→1600
-                # Increased to exceed HIGH threshold (1500) and reach near-CRITICAL (2000)
-                # Represents compressed view of scenario anomaly window (minutes 75-120)
-                scripted_excursions = [
-                    {"wafer": 10, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1200},
-                    {"wafer": 11, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1270},  # MEDIUM (first breach)
-                    {"wafer": 12, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1320},
-                    {"wafer": 13, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1360},
-                    {"wafer": 14, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1400},
-                    {"wafer": 15, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1440},
-                    {"wafer": 16, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1480},
-                    {"wafer": 17, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1510},  # HIGH threshold exceeded
-                    {"wafer": 18, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1540},
-                    {"wafer": 19, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1565},
-                    {"wafer": 20, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1585},
-                    {"wafer": 21, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1595},
-                    {"wafer": 22, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},
-                    {"wafer": 23, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},  # Peak (sustained)
-                    {"wafer": 24, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},
-                    {"wafer": 25, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},
-                ]
-            elif scenario == "lot_processing_spike":
-                # Aligned with sudden_spike scenario: single spike to 1200, then return to normal
-                # Equipment: ETCH_01 (matches scenario metadata)
-                # Peak at 1200 matches scenario ground truth
-                scripted_excursions = [
-                    {"wafer": 15, "equipment": "ETCH_01", "type": "particle", "value": 1600},  # MEDIUM (single spike)
-                    {"wafer": 16, "equipment": "ETCH_01", "type": "particle", "value": 450},   # Return to normal
-                    {"wafer": 17, "equipment": "ETCH_01", "type": "particle", "value": 460},
-                ]
-            elif scenario == "lot_processing_oscillation":
-                # Aligned with oscillating_pattern scenario: oscillates 600-1100, ~6-wafer period
-                # Equipment: CMP_TOOL_02 (matches scenario metadata)
-                # Only 1-2 peaks cross threshold at ~1050 (matches scenario peak value)
-                scripted_excursions = [
-                    # Cycle 1: Rising to first peak
-                    {"wafer": 5, "equipment": "CMP_TOOL_02", "type": "particle", "value": 950},
-                    {"wafer": 6, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1600},  # Peak 1 (at threshold)
-                    {"wafer": 7, "equipment": "CMP_TOOL_02", "type": "particle", "value": 900},
-                    {"wafer": 8, "equipment": "CMP_TOOL_02", "type": "particle", "value": 650},
+    #         # Define excursion patterns (aligned with scenario_metadata.json)
+    #         if scenario == "lot_processing_drift":
+    #             # Aligned with gradual_drift scenario: linear drift from 1200→1600
+    #             # Increased to exceed HIGH threshold (1500) and reach near-CRITICAL (2000)
+    #             # Represents compressed view of scenario anomaly window (minutes 75-120)
+    #             scripted_excursions = [
+    #                 {"wafer": 10, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1200},
+    #                 {"wafer": 11, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1270},  # MEDIUM (first breach)
+    #                 {"wafer": 12, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1320},
+    #                 {"wafer": 13, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1360},
+    #                 {"wafer": 14, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1400},
+    #                 {"wafer": 15, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1440},
+    #                 {"wafer": 16, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1480},
+    #                 {"wafer": 17, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1510},  # HIGH threshold exceeded
+    #                 {"wafer": 18, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1540},
+    #                 {"wafer": 19, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1565},
+    #                 {"wafer": 20, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1585},
+    #                 {"wafer": 21, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1595},
+    #                 {"wafer": 22, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},
+    #                 {"wafer": 23, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},  # Peak (sustained)
+    #                 {"wafer": 24, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},
+    #                 {"wafer": 25, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1600},
+    #             ]
+    #         elif scenario == "lot_processing_spike":
+    #             # Aligned with sudden_spike scenario: single spike to 1200, then return to normal
+    #             # Equipment: ETCH_01 (matches scenario metadata)
+    #             # Peak at 1200 matches scenario ground truth
+    #             scripted_excursions = [
+    #                 {"wafer": 15, "equipment": "ETCH_01", "type": "particle", "value": 1600},  # MEDIUM (single spike)
+    #                 {"wafer": 16, "equipment": "ETCH_01", "type": "particle", "value": 450},   # Return to normal
+    #                 {"wafer": 17, "equipment": "ETCH_01", "type": "particle", "value": 460},
+    #             ]
+    #         elif scenario == "lot_processing_oscillation":
+    #             # Aligned with oscillating_pattern scenario: oscillates 600-1100, ~6-wafer period
+    #             # Equipment: CMP_TOOL_02 (matches scenario metadata)
+    #             # Only 1-2 peaks cross threshold at ~1050 (matches scenario peak value)
+    #             scripted_excursions = [
+    #                 # Cycle 1: Rising to first peak
+    #                 {"wafer": 5, "equipment": "CMP_TOOL_02", "type": "particle", "value": 950},
+    #                 {"wafer": 6, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1600},  # Peak 1 (at threshold)
+    #                 {"wafer": 7, "equipment": "CMP_TOOL_02", "type": "particle", "value": 900},
+    #                 {"wafer": 8, "equipment": "CMP_TOOL_02", "type": "particle", "value": 650},
 
-                    # Cycle 2: Rising but stay below threshold
-                    {"wafer": 11, "equipment": "CMP_TOOL_02", "type": "particle", "value": 920},
-                    {"wafer": 12, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1400},  # Near threshold but below
-                    {"wafer": 13, "equipment": "CMP_TOOL_02", "type": "particle", "value": 850},
-                    {"wafer": 14, "equipment": "CMP_TOOL_02", "type": "particle", "value": 630},
+    #                 # Cycle 2: Rising but stay below threshold
+    #                 {"wafer": 11, "equipment": "CMP_TOOL_02", "type": "particle", "value": 920},
+    #                 {"wafer": 12, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1400},  # Near threshold but below
+    #                 {"wafer": 13, "equipment": "CMP_TOOL_02", "type": "particle", "value": 850},
+    #                 {"wafer": 14, "equipment": "CMP_TOOL_02", "type": "particle", "value": 630},
 
-                    # Cycle 3: Rising to second peak (breach)
-                    {"wafer": 17, "equipment": "CMP_TOOL_02", "type": "particle", "value": 940},
-                    {"wafer": 18, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1450},
-                    {"wafer": 19, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1350},  # Peak 2 (ONLY breach)
-                    {"wafer": 20, "equipment": "CMP_TOOL_02", "type": "particle", "value": 880},
-                    {"wafer": 21, "equipment": "CMP_TOOL_02", "type": "particle", "value": 670},
+    #                 # Cycle 3: Rising to second peak (breach)
+    #                 {"wafer": 17, "equipment": "CMP_TOOL_02", "type": "particle", "value": 940},
+    #                 {"wafer": 18, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1450},
+    #                 {"wafer": 19, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1350},  # Peak 2 (ONLY breach)
+    #                 {"wafer": 20, "equipment": "CMP_TOOL_02", "type": "particle", "value": 880},
+    #                 {"wafer": 21, "equipment": "CMP_TOOL_02", "type": "particle", "value": 670},
 
-                    # Cycle 4: Partial cycle ending
-                    {"wafer": 24, "equipment": "CMP_TOOL_02", "type": "particle", "value": 850},
-                ]
-            else:
-                scripted_excursions = []
+    #                 # Cycle 4: Partial cycle ending
+    #                 {"wafer": 24, "equipment": "CMP_TOOL_02", "type": "particle", "value": 850},
+    #             ]
+    #         else:
+    #             scripted_excursions = []
 
-            # Create lookup dict for excursions
-            excursion_map = {exc["wafer"]: exc for exc in scripted_excursions}
+    #         # Create lookup dict for excursions
+    #         excursion_map = {exc["wafer"]: exc for exc in scripted_excursions}
 
-            # Generate sensor data for all 25 wafers
-            base_time = datetime.now(timezone.utc)
-            bulk_data = []
+    #         # Generate sensor data for all 25 wafers
+    #         base_time = datetime.now(timezone.utc)
+    #         bulk_data = []
 
-            logger.info(f"📦 Bulk generating {pattern} scenario for lot {lot_id} (25 wafers)")
+    #         logger.info(f"📦 Bulk generating {pattern} scenario for lot {lot_id} (25 wafers)")
 
-            for wafer_num in range(1, 26):
-                # Each wafer gets a timestamp 7.2s apart (simulates 3-minute processing)
-                timestamp = base_time + timedelta(seconds=(wafer_num - 1) * 7.2)
+    #         for wafer_num in range(1, 26):
+    #             # Each wafer gets a timestamp 7.2s apart (simulates 3-minute processing)
+    #             timestamp = base_time + timedelta(seconds=(wafer_num - 1) * 7.2)
 
-                # Generate data for all equipment at this wafer's timestamp
-                for equipment_id in self.equipment_ids:
-                    # Check if this wafer/equipment has scripted excursion
-                    is_excursion = False
-                    metrics = self.generate_demo_metrics(equipment_id, False)
+    #             # Generate data for all equipment at this wafer's timestamp
+    #             for equipment_id in self.equipment_ids:
+    #                 # Check if this wafer/equipment has scripted excursion
+    #                 is_excursion = False
+    #                 metrics = self.generate_demo_metrics(equipment_id, False)
 
-                    if wafer_num in excursion_map and equipment_id == excursion_map[wafer_num]["equipment"]:
-                        exc = excursion_map[wafer_num]
-                        if exc["type"] == "particle":
-                            metrics["particle_count"] = exc["value"]
-                            is_excursion = True
+    #                 if wafer_num in excursion_map and equipment_id == excursion_map[wafer_num]["equipment"]:
+    #                     exc = excursion_map[wafer_num]
+    #                     if exc["type"] == "particle":
+    #                         metrics["particle_count"] = exc["value"]
+    #                         is_excursion = True
 
-                    # Generate metadata with lot/wafer info
-                    metadata = self.generate_demo_metadata(is_excursion)
-                    metadata["lot_id"] = lot_id
-                    metadata["wafer_id"] = f"W_{lot_num}_{wafer_num:02d}"
+    #                 # Generate metadata with lot/wafer info
+    #                 metadata = self.generate_demo_metadata(is_excursion)
+    #                 metadata["lot_id"] = lot_id
+    #                 metadata["wafer_id"] = f"W_{lot_num}_{wafer_num:02d}"
 
-                    # Add scenario metadata for agentic AI integration
-                    # This allows lot processing alerts to be selected and analyzed in agentic AI mode
-                    metadata["scenario_id"] = scenario_id_for_agents  # "gradual_drift", "sudden_spike", etc.
-                    metadata["pattern_type"] = pattern  # "drift", "spike", "oscillation"
-                    metadata["is_lot_processing_scenario"] = True
+    #                 # Add scenario metadata for agentic AI integration
+    #                 # This allows lot processing alerts to be selected and analyzed in agentic AI mode
+    #                 metadata["scenario_id"] = scenario_id_for_agents  # "gradual_drift", "sudden_spike", etc.
+    #                 metadata["pattern_type"] = pattern  # "drift", "spike", "oscillation"
+    #                 metadata["is_lot_processing_scenario"] = True
 
-                    # Mark first excursion for single alert creation
-                    if is_excursion and pattern == "drift" and wafer_num == 11:
-                        # For drift, mark wafer 11 (first MEDIUM breach) as the trigger
-                        metadata["is_first_drift_excursion"] = True
-                    elif is_excursion and pattern == "spike" and wafer_num == 15:
-                        # For spike, mark wafer 15 as trigger
-                        metadata["is_first_spike_excursion"] = True
-                    elif is_excursion and pattern == "oscillation" and wafer_num == 12:
-                        # For oscillation, mark wafer 12 as trigger
-                        metadata["is_first_oscillation_excursion"] = True
+    #                 # Mark first excursion for single alert creation
+    #                 if is_excursion and pattern == "drift" and wafer_num == 11:
+    #                     # For drift, mark wafer 11 (first MEDIUM breach) as the trigger
+    #                     metadata["is_first_drift_excursion"] = True
+    #                 elif is_excursion and pattern == "spike" and wafer_num == 15:
+    #                     # For spike, mark wafer 15 as trigger
+    #                     metadata["is_first_spike_excursion"] = True
+    #                 elif is_excursion and pattern == "oscillation" and wafer_num == 12:
+    #                     # For oscillation, mark wafer 12 as trigger
+    #                     metadata["is_first_oscillation_excursion"] = True
 
-                    data = {
-                        "equipment_id": equipment_id,
-                        "process_step": equipment_id.split("_")[0],
-                        "timestamp": timestamp,
-                        "metrics": metrics,
-                        "metadata": metadata
-                    }
-                    bulk_data.append(data)
+    #                 data = {
+    #                     "equipment_id": equipment_id,
+    #                     "process_step": equipment_id.split("_")[0],
+    #                     "timestamp": timestamp,
+    #                     "metrics": metrics,
+    #                     "metadata": metadata
+    #                 }
+    #                 bulk_data.append(data)
 
-            # Bulk write all sensor data at once
-            logger.info(f"💾 Inserting {len(bulk_data)} sensor readings for {lot_id}...")
-            result = self.sensor_writer.bulk_write_sensor_data(bulk_data)
+    #         # Bulk write all sensor data at once
+    #         logger.info(f"💾 Inserting {len(bulk_data)} sensor readings for {lot_id}...")
+    #         result = self.sensor_writer.bulk_write_sensor_data(bulk_data)
 
-            logger.info(
-                f"✅ Bulk insert complete: {result['sensor_events']['inserted']} sensor_events, "
-                f"{result['process_sensor_ts']['inserted']} time series records"
-            )
+    #         logger.info(
+    #             f"✅ Bulk insert complete: {result['sensor_events']['inserted']} sensor_events, "
+    #             f"{result['process_sensor_ts']['inserted']} time series records"
+    #         )
 
-            # Return summary
-            return {
-                "status": "success",
-                "lot_id": lot_id,
-                "total_wafers": 25,
-                "pattern": pattern,
-                "sensor_records_inserted": len(bulk_data),
-                "excursion_wafers": list(excursion_map.keys()),
-                "message": f"Lot {lot_id} ({pattern}) data inserted successfully. Alerts will be generated shortly."
-            }
+    #         # Return summary
+    #         return {
+    #             "status": "success",
+    #             "lot_id": lot_id,
+    #             "total_wafers": 25,
+    #             "pattern": pattern,
+    #             "sensor_records_inserted": len(bulk_data),
+    #             "excursion_wafers": list(excursion_map.keys()),
+    #             "message": f"Lot {lot_id} ({pattern}) data inserted successfully. Alerts will be generated shortly."
+    #         }
 
-        except Exception as e:
-            logger.error(f"❌ Failed to bulk insert lot scenario: {e}", exc_info=True)
-            raise Exception(f"Failed to bulk insert lot scenario: {str(e)}")
+    #     except Exception as e:
+    #         logger.error(f"❌ Failed to bulk insert lot scenario: {e}", exc_info=True)
+    #         raise Exception(f"Failed to bulk insert lot scenario: {str(e)}")
 
     async def start_demo_mode(
         self,
@@ -949,81 +930,10 @@ class DemoModeService:
                 self.lot_id = f"LOT_2025_{lot_number:04d}"  # e.g., LOT_2025_1234
                 logger.info(f"🎯 Continuous mode: Auto-stop after 2 minutes | Lot: {self.lot_id}")
 
-            # Handle lot processing scenarios (drift, spike, oscillation)
-            elif scenario in ["lot_processing_drift", "lot_processing_spike", "lot_processing_oscillation"]:
-                # Configure for 3-minute lot processing
-                self.demo_duration_seconds = 180  # 3 minutes
-                self.demo_interval_seconds = 7.2  # Process 25 wafers in 3 minutes (180/25)
-                self.demo_excursion_probability = 0  # No random excursions
-                self.wafer_counter = 0
-                # Generate unique lot number (101-999) to avoid conflicts with continuous mode (1-50)
-                # This ensures each lot processing run has unique wafer IDs
-                import random
-                lot_number = random.randint(101, 999)  # Use 101-999 range for lot processing
-                self.lot_id = f"LOT_2025_{lot_number:03d}"  # e.g., LOT_2025_342 (matches continuous mode format)
-
-                # Define different excursion patterns based on scenario (aligned with scenario_metadata.json)
-                # NOTE: Patterns now match scenario ground truth for accurate AI agent analysis
-                if scenario == "lot_processing_drift":
-                    # Aligned with gradual_drift scenario: linear drift 950→1150
-                    # Represents compressed view of scenario anomaly window (minutes 75-120)
-                    self.scripted_excursions = [
-                        {"wafer": 10, "equipment": "CMP_TOOL_01", "type": "particle", "value": 950},
-                        {"wafer": 11, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1020},  # MEDIUM (first breach)
-                        {"wafer": 12, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1040},
-                        {"wafer": 13, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1055},
-                        {"wafer": 14, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1070},
-                        {"wafer": 15, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1085},
-                        {"wafer": 16, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1095},
-                        {"wafer": 17, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1105},
-                        {"wafer": 18, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1115},
-                        {"wafer": 19, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1130},
-                        {"wafer": 20, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1140},
-                        {"wafer": 21, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1145},
-                        {"wafer": 22, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1148},
-                        {"wafer": 23, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1150},  # Peak
-                        {"wafer": 24, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1150},
-                        {"wafer": 25, "equipment": "CMP_TOOL_01", "type": "particle", "value": 1150},
-                    ]
-                    logger.info(f"📦 Lot processing DRIFT: Gradual particle increase wafers 10-25 (950→1150)")
-
-                elif scenario == "lot_processing_spike":
-                    # Aligned with sudden_spike scenario: single spike to 1200, then return to normal
-                    # Equipment: ETCH_01 (matches scenario metadata)
-                    self.scripted_excursions = [
-                        {"wafer": 15, "equipment": "ETCH_01", "type": "particle", "value": 1200},  # MEDIUM (single spike)
-                        {"wafer": 16, "equipment": "ETCH_01", "type": "particle", "value": 450},   # Return to normal
-                        {"wafer": 17, "equipment": "ETCH_01", "type": "particle", "value": 460},
-                    ]
-                    logger.info(f"📦 Lot processing SPIKE: Sudden spike at wafer 15 (1200)")
-
-                elif scenario == "lot_processing_oscillation":
-                    # Aligned with oscillating_pattern scenario: oscillates 600-1100, ~6-wafer period
-                    # Equipment: CMP_TOOL_02 (matches scenario metadata)
-                    self.scripted_excursions = [
-                        # Cycle 1: Rising to first peak
-                        {"wafer": 5, "equipment": "CMP_TOOL_02", "type": "particle", "value": 950},
-                        {"wafer": 6, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1000},  # Peak 1 (at threshold)
-                        {"wafer": 7, "equipment": "CMP_TOOL_02", "type": "particle", "value": 900},
-                        {"wafer": 8, "equipment": "CMP_TOOL_02", "type": "particle", "value": 650},
-                        # Cycle 2: Rising but stay below threshold
-                        {"wafer": 11, "equipment": "CMP_TOOL_02", "type": "particle", "value": 920},
-                        {"wafer": 12, "equipment": "CMP_TOOL_02", "type": "particle", "value": 980},  # Near threshold but below
-                        {"wafer": 13, "equipment": "CMP_TOOL_02", "type": "particle", "value": 850},
-                        {"wafer": 14, "equipment": "CMP_TOOL_02", "type": "particle", "value": 630},
-                        # Cycle 3: Rising to second peak (breach)
-                        {"wafer": 17, "equipment": "CMP_TOOL_02", "type": "particle", "value": 940},
-                        {"wafer": 18, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1020},
-                        {"wafer": 19, "equipment": "CMP_TOOL_02", "type": "particle", "value": 1050},  # Peak 2 (ONLY breach)
-                        {"wafer": 20, "equipment": "CMP_TOOL_02", "type": "particle", "value": 880},
-                        {"wafer": 21, "equipment": "CMP_TOOL_02", "type": "particle", "value": 670},
-                        # Cycle 4: Partial cycle ending
-                        {"wafer": 24, "equipment": "CMP_TOOL_02", "type": "particle", "value": 850},
-                    ]
-                    logger.info(f"📦 Lot processing OSCILLATION: Cyclic pattern wafers 5-24 (600-1100)")
-
-            # Check if mode is "agentic" - if so, set probability to 0
-            elif mode == "agentic":
+            # Apply excursion probability settings AFTER scenario configuration
+            # Priority: mode == "agentic" > custom_probability parameter
+            # This ensures probability control works for ALL scenarios including "continuous"
+            if mode == "agentic":
                 self.demo_excursion_probability = 0.0
                 logger.info("🤖 Agentic AI mode: Setting excursion probability to 0 (manual pattern injection only)")
             elif custom_probability is not None:
@@ -1069,30 +979,6 @@ class DemoModeService:
                 "equipment_ids": self.equipment_ids,
             }
 
-            if scenario.startswith("lot_processing_"):
-                # Determine excursion wafers based on scenario
-                pattern = scenario.split("_")[-1]
-                if pattern == "drift":
-                    excursion_wafers = list(range(10, 18))  # 10-17
-                    note = "Gradual particle increase at wafers 10-17"
-                elif pattern == "spike":
-                    excursion_wafers = [15, 16, 17]
-                    note = "Sudden particle spike at wafer 15"
-                elif pattern == "oscillation":
-                    excursion_wafers = list(range(12, 20))  # 12-19
-                    note = "Cyclic particle pattern at wafers 12-19"
-                else:
-                    excursion_wafers = [15, 16, 17]
-                    note = "Particle contamination will occur"
-
-                result["lot_processing"] = {
-                    "lot_id": self.lot_id,
-                    "total_wafers": 25,
-                    "duration_seconds": self.demo_duration_seconds,
-                    "pattern": pattern,
-                    "excursions_at_wafers": excursion_wafers,
-                    "note": note
-                }
 
             return result
             

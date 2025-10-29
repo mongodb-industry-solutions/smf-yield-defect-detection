@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from config.config_loader import ConfigLoader
+from config.demo_config import DEMO_EXCURSION_PROBABILITY
 from utils import convert_objectids
 
 # Import Phase 2 services
@@ -79,7 +80,7 @@ MDB_CHECKPOINTER_WRITES = MDB_CHECKPOINTER_COLLECTION + "_writes"
 # Demo Mode Configuration (used for service initialization)
 DEMO_MODE_ENABLED = os.getenv("DEMO_MODE_ENABLED", "false").lower() == "true"
 DEMO_INTERVAL_SECONDS = int(os.getenv("DEMO_INTERVAL_SECONDS", "60"))  # 60 seconds (1 minute) for continuous Atlas Charts visualization
-DEMO_EXCURSION_PROBABILITY = float(os.getenv("DEMO_EXCURSION_PROBABILITY", "0.15"))  # 5% excursion rate for realistic monitoring
+# DEMO_EXCURSION_PROBABILITY imported from config.demo_config
 
 # Demo Mode Global State - MOVED TO DemoModeService
 # (Service is initialized in startup_event and injected into demo_mode router)

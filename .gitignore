@@ -251,3 +251,5 @@ backend/phase3_embedding_summary.json
 backend/data_generation/enhanced/wafer_defects_enhanced.json
 backend/data_generation/enhanced/process_context_enhanced.json
 backend/enhanced/process_context_enhanced.json
+backend/scripts/cleanup_wafers_without_embeddings.py
+backend/routers/demo_mode.py.bak

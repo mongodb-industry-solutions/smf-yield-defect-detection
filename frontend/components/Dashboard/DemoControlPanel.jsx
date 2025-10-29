@@ -4,8 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Card from '@leafygreen-ui/card';
 import Button from '@leafygreen-ui/button';
 import Toggle from '@leafygreen-ui/toggle';
-import Select from '@leafygreen-ui/select';
-import { Option } from '@leafygreen-ui/select';
+import { Select, Option } from '@leafygreen-ui/select';
 import { demoAPI, aiAgentAPI, alertAPI } from '@/lib/api';
 import styles from './DemoControlPanel.module.css';
 
@@ -14,7 +13,6 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
   const [status, setStatus] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [demoScenario, setDemoScenario] = useState('continuous'); // 'continuous', 'lot_processing_drift', 'lot_processing_spike', 'lot_processing_oscillation'
   const [excursionForm, setExcursionForm] = useState({
     equipment_id: 'CMP_TOOL_01',
     excursion_type: 'particle' // 'particle', 'rf_power', 'temperature'
@@ -185,44 +183,21 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     try {
       if (status?.active) {
         // Stop demo mode
-        const confirmMsg = demoScenario.startsWith('lot_processing_')
-          ? 'Stop lot processing?'
-          : 'Stop demo mode? This will cleanup recent alerts.';
-        if (window.confirm(confirmMsg)) {
-          // Clear progress interval if running
-          if (progressInterval) {
-            clearInterval(progressInterval);
-            setProgressInterval(null);
-          }
-          setLotProgress(null);
-
+        if (window.confirm('Stop demo mode? This will cleanup recent alerts.')) {
           await demoAPI.stop();
           await fetchStatus();
         }
       } else {
-        // Check if this is a lot processing scenario - use bulk insert instead of gradual demo
-        if (demoScenario.startsWith('lot_processing_')) {
-          // Bulk insert all lot data at once (no 3-minute wait)
-          const result = await demoAPI.bulkInsertLot(demoScenario);
-          console.log('✅ Bulk lot insertion complete:', result);
+        // Start demo mode with explicit excursion probability control
+        // Always use charts mode, control excursions via probability parameter
+        const params = {
+          excursion_probability: autoExcursionsEnabled ? 0.1 : 0,
+          mode: 'charts',
+          scenario: 'continuous'
+        };
 
-          // Show success message with lot ID
-          setInjectionSuccess(result.message);
-          setTimeout(() => setInjectionSuccess(null), 5000);
-
-          // No need to fetch status or start progress tracking - instant insertion
-        } else {
-          // Start demo mode with appropriate mode based on auto-excursions status
-          // If auto-excursions are DISABLED, use agentic mode (excursion probability = 0)
-          // If auto-excursions are ENABLED, use charts mode (normal probability)
-          const params = {
-            mode: autoExcursionsEnabled ? 'charts' : 'agentic',
-            scenario: demoScenario
-          };
-
-          const result = await demoAPI.start(params);
-          await fetchStatus();
-        }
+        await demoAPI.start(params);
+        await fetchStatus();
       }
     } catch (err) {
       console.error('Error toggling demo mode:', err);
@@ -582,25 +557,9 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
       <div className={styles.compactContainer}>
         {/* Left: Status & Control */}
         <div className={styles.leftSection}>
-          {/* Scenario Selector - only show when demo is not active */}
-          {!status?.active && (
-            <select
-              className={styles.compactSelect}
-              value={demoScenario}
-              onChange={(e) => setDemoScenario(e.target.value)}
-              disabled={loading}
-              style={{ marginRight: '8px' }}
-            >
-              <option value="continuous">Continuous</option>
-              <option value="lot_processing_drift">Lot: Gradual Drift (3 min)</option>
-              <option value="lot_processing_spike">Lot: Sudden Spike (3 min)</option>
-              <option value="lot_processing_oscillation">Lot: Oscillation (3 min)</option>
-            </select>
-          )}
-
           <div className={styles.statusBadge}>
             <span className={styles.demoLabel}>
-              {demoScenario.startsWith('lot_processing_') ? '📦 LOT' : '🚧 DEMO'}
+              🚧 DEMO
             </span>
             <span className={status?.active ? styles.activeIndicator : styles.inactiveIndicator}>
               {status?.active ? '● ACTIVE' : '○ INACTIVE'}
@@ -693,42 +652,6 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
           )}
         </div>
       </div>
-
-      {/* Lot Processing Progress */}
-      {status?.active && demoScenario.startsWith('lot_processing_') && lotProgress && (
-        <div className={styles.lotProgressSection}>
-          <div className={styles.progressInfo}>
-            <span>
-              Lot 2025 ({demoScenario.split('_')[2]}): Wafer {lotProgress.currentWafer}/{lotProgress.totalWafers}
-            </span>
-            <span className={styles.progressTime}>
-              Time: {Math.floor(lotProgress.elapsed / 60)}:{(lotProgress.elapsed % 60).toString().padStart(2, '0')} / 3:00
-            </span>
-          </div>
-          <div className={styles.progressBar}>
-            <div
-              className={styles.progressFill}
-              style={{ width: `${lotProgress.progress}%` }}
-            />
-          </div>
-          {/* Show excursion warnings based on scenario pattern */}
-          {demoScenario === 'lot_processing_drift' && lotProgress.currentWafer >= 10 && lotProgress.currentWafer <= 17 && (
-            <div className={styles.excursionWarning}>
-              ⚠️ Gradual particle increase at wafer {lotProgress.currentWafer}
-            </div>
-          )}
-          {demoScenario === 'lot_processing_spike' && lotProgress.currentWafer === 15 && (
-            <div className={styles.excursionWarning}>
-              ⚠️ Sudden particle spike at wafer {lotProgress.currentWafer}
-            </div>
-          )}
-          {demoScenario === 'lot_processing_oscillation' && lotProgress.currentWafer >= 12 && lotProgress.currentWafer <= 19 && (
-            <div className={styles.excursionWarning}>
-              ⚠️ Cyclic particle pattern at wafer {lotProgress.currentWafer}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Success/Error messages */}
       {resetSuccess && (

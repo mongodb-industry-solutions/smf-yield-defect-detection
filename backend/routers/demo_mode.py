@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Any
 from fastapi import APIRouter, HTTPException, Body
 
+from config.demo_config import DEMO_EXCURSION_PROBABILITY
 from services.demo_mode_service import DemoModeService
 from services.wafer_generator import WaferGenerator
 from services.sensor_data_writer import SensorDataWriter
@@ -345,11 +346,10 @@ async def stop_demo_mode():
     
     try:
         service = get_demo_service()
-        
-        # Get original probability from env (default to 0.05)
-        import os
-        original_prob = float(os.getenv("DEMO_EXCURSION_PROBABILITY", "0.05"))
-        
+
+        # Get original probability from centralized config
+        original_prob = DEMO_EXCURSION_PROBABILITY
+
         # Stop demo mode through service
         result = await service.stop_demo_mode(restore_probability=original_prob)
         
@@ -365,60 +365,6 @@ async def stop_demo_mode():
             detail=f"Failed to stop demo mode: {str(e)}"
         )
 
-@router.post("/demo/bulk-insert-lot")
-async def bulk_insert_lot_scenario(
-    scenario: str = Body(..., embed=True, description="Scenario: lot_processing_drift, lot_processing_spike, or lot_processing_oscillation")
-):
-    """
-    Bulk insert all sensor data for a lot processing scenario at once (no 3-minute wait).
-    Creates only ONE alert per lot.
-
-    Request body:
-    {
-        "scenario": "lot_processing_drift" | "lot_processing_spike" | "lot_processing_oscillation"
-    }
-
-    Returns:
-    {
-        "status": "success",
-        "lot_id": "LOT_2025_342",
-        "total_wafers": 25,
-        "pattern": "drift",
-        "sensor_records_inserted": 150,
-        "excursion_wafers": [10, 11, 12, ...],
-        "message": "Lot data inserted successfully. Alerts will be generated shortly."
-    }
-    """
-    logger.info(f"📦 POST /demo/bulk-insert-lot - Scenario: {scenario}")
-
-    # Validate scenario
-    valid_scenarios = ["lot_processing_drift", "lot_processing_spike", "lot_processing_oscillation"]
-    if scenario not in valid_scenarios:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid scenario. Must be one of: {', '.join(valid_scenarios)}"
-        )
-
-    try:
-        service = get_demo_service()
-
-        # Ensure process context is loaded
-        await service.load_process_context_ids()
-
-        # Bulk insert all lot data at once
-        result = await service.bulk_insert_lot_scenario(scenario)
-
-        logger.info(f"✅ Bulk lot insertion complete: {result['lot_id']}")
-        return result
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ Error in bulk lot insertion: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to bulk insert lot scenario: {str(e)}"
-        )
 
 @router.post("/demo/reset")
 async def reset_demo_to_healthy_state():
@@ -451,7 +397,7 @@ async def reset_demo_to_healthy_state():
         # Step 0: Stop demo mode first to prevent new excursions
         if service.is_active():
             logger.info("🛑 Stopping demo mode before reset...")
-            original_prob = float(os.getenv("DEMO_EXCURSION_PROBABILITY", "0.05"))
+            original_prob = DEMO_EXCURSION_PROBABILITY
             await service.stop_demo_mode(restore_probability=original_prob)
             results["demo_stopped"] = True
             logger.info("✅ Demo mode stopped successfully")
