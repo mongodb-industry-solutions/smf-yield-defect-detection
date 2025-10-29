@@ -120,6 +120,53 @@
   gap: 8px;
 }
 
+.valueInputGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 104, 74, 0.03);
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 104, 74, 0.15);
+}
+
+.compactInput {
+  padding: 6px 8px;
+  border: 1px solid #D1D5DB;
+  border-radius: 4px;
+  background: white;
+  font-size: 13px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  width: 80px;
+  height: 28px;
+  text-align: right;
+  transition: all 0.2s;
+}
+
+.compactInput:hover:not(:disabled) {
+  border-color: #00684a;
+}
+
+.compactInput:focus {
+  outline: none;
+  border-color: #00684a;
+  box-shadow: 0 0 0 2px rgba(0, 104, 74, 0.1);
+}
+
+.compactInput:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #F9FAFB;
+}
+
+.unitLabel {
+  font-size: 12px;
+  color: #5A6C7D;
+  font-weight: 600;
+  min-width: 24px;
+  text-align: left;
+}
+
 .compactSelect {
   padding: 6px 10px;
   border: 1px solid #D1D5DB;

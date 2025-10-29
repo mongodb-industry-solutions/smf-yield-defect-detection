@@ -43,7 +43,7 @@ class DemoModeService:
         mongodb_uri: str,
         database_name: str,
         demo_interval_seconds: int = 60,
-        demo_excursion_probability: float = 0.1
+        demo_excursion_probability: float = 0.0
     ):
         """
         Initialize Demo Mode Service
@@ -52,7 +52,7 @@ class DemoModeService:
             mongodb_uri: MongoDB connection URI
             database_name: Database name
             demo_interval_seconds: Interval between demo data generation cycles
-            demo_excursion_probability: Probability of generating an excursion (0.0 - 1.0)
+            demo_excursion_probability: Probability of generating an excursion (default: 0.0 for manual-only mode)
         """
         self.mongodb_uri = mongodb_uri
         self.database_name = database_name
@@ -97,7 +97,7 @@ class DemoModeService:
         logger.info(
             f"🎬 DemoModeService initialized - "
             f"Interval: {demo_interval_seconds}s, "
-            f"Excursion probability: {demo_excursion_probability}"
+            f"Excursion mode: {'Manual only' if demo_excursion_probability == 0 else f'{demo_excursion_probability * 100:.0f}% auto'}"
         )
         logger.info(f"   ♻️  SensorDataWriter: Persistent connection pool (avoids per-batch overhead)")
 
@@ -285,17 +285,19 @@ class DemoModeService:
             equipment_type = "CMP_TOOL"
         metrics = base_metrics.get(equipment_type, base_metrics["CMP_TOOL"]).copy()
         
-        # Generate excursion if requested
+        # Generate excursion if requested (using physics-based causal model)
         if is_excursion:
             # Use centralized thresholds for excursion generation
             thresholds = get_thresholds()
-            excursion_type = random.choice(["particle_excursion", "rf_power_drift", "temperature_drift"])
-            
-            if excursion_type == "particle_excursion":
-                # Generate above critical threshold
-                particle_critical = thresholds["particle_count"]["critical"]
-                metrics["particle_count"] = random.randint(particle_critical + 100, particle_critical + 2000)
-            elif excursion_type == "rf_power_drift":
+
+            # PHYSICS-BASED MODEL: Pick root cause (temperature or RF power)
+            # Particle count will be CALCULATED from the root cause severity
+            root_cause = random.choice(["rf_power_drift", "temperature_drift"])
+
+            # Store baseline particle count before modification
+            baseline_particle_count = metrics["particle_count"]
+
+            if root_cause == "rf_power_drift":
                 # Use equipment-specific threshold to generate realistic excursion
                 if process_step in thresholds["rf_power_drift"]:
                     rf_threshold = thresholds["rf_power_drift"][process_step]["threshold"]
@@ -304,7 +306,10 @@ class DemoModeService:
                     drift_amount = random.uniform(rf_threshold * 1.5, rf_threshold * 3)
                     # Apply drift in random direction
                     metrics["rf_power"] = baseline_rf + (drift_amount * random.choice([-1, 1]))
-            elif excursion_type == "temperature_drift":
+
+                    logger.debug(f"   💉 Generated RF power excursion: {metrics['rf_power']:.1f}W (baseline: {baseline_rf}W)")
+
+            elif root_cause == "temperature_drift":
                 # Use equipment-specific threshold to generate realistic excursion
                 if process_step in thresholds["temperature_drift"]:
                     temp_threshold = thresholds["temperature_drift"][process_step]["threshold"]
@@ -313,6 +318,21 @@ class DemoModeService:
                     drift_amount = random.uniform(temp_threshold, temp_threshold * 2)
                     # Apply drift in positive direction (temperature usually increases)
                     metrics["temperature"] = baseline_temp + drift_amount
+
+                    logger.debug(f"   💉 Generated temperature excursion: {metrics['temperature']:.1f}°C (baseline: {baseline_temp}°C)")
+
+            # CALCULATE particle count from root cause (physics-based)
+            metrics["particle_count"] = self.calculate_particle_count_from_root_cause(
+                equipment_type=process_step,
+                root_cause=root_cause,
+                root_cause_value=metrics["temperature"] if root_cause == "temperature_drift" else metrics["rf_power"],
+                baseline_particle_count=baseline_particle_count
+            )
+
+            logger.info(
+                f"   ✅ Physics-based excursion: {root_cause} → particle_count={metrics['particle_count']} "
+                f"(baseline: {baseline_particle_count})"
+            )
         
         # Round values to reasonable precision
         metrics["particle_count"] = int(metrics["particle_count"])
@@ -377,7 +397,88 @@ class DemoModeService:
             logger.info(f"🚨 Generated excursion metadata with PROBLEMATIC batch: {slurry_batch}")
         
         return metadata
-    
+
+    # def calculate_particle_count_from_root_cause(
+    #     self,
+    #     equipment_type: str,
+    #     root_cause: str,
+    #     root_cause_value: float,
+    #     baseline_particle_count: int = 450
+    # ) -> int:
+    #     """
+    #     Calculate particle count based on root cause severity (physics-based model).
+
+    #     This implements the causal relationship in semiconductor manufacturing:
+    #     - Temperature increase → More particle generation
+    #     - RF power drift → Plasma instability → More particle generation
+
+    #     Physics Model Calibration:
+    #     - Temperature: Each 1°C above baseline → +150-200 particles
+    #     - RF Power: Each 50W drift → +200-250 particles
+
+    #     Calibrated to match existing alert thresholds:
+    #     - Medium alert (1000): 3-4°C drift or 110-140W drift
+    #     - High alert (1500): 6-7°C drift or 210-260W drift
+    #     - Critical alert (2000): 9-10°C drift or 310-380W drift
+
+    #     Args:
+    #         equipment_type: Process step (CMP, ETCH, LITHO)
+    #         root_cause: "temperature_drift" or "rf_power_drift"
+    #         root_cause_value: Current temperature (°C) or RF power (W)
+    #         baseline_particle_count: Normal particle count baseline
+
+    #     Returns:
+    #         int: Calculated particle count based on root cause severity
+    #     """
+    #     thresholds = get_thresholds()
+
+    #     if root_cause == "temperature_drift":
+    #         # Get baseline temperature for equipment type
+    #         baseline_temp = thresholds["temperature_drift"].get(
+    #             equipment_type,
+    #             thresholds["temperature_drift"]["CMP"]
+    #         )["baseline"]
+
+    #         # Calculate temperature drift magnitude
+    #         temp_drift = abs(root_cause_value - baseline_temp)
+
+    #         # Linear model: ~150-200 particles per degree Celsius
+    #         # Using randomization to simulate natural variation
+    #         particles_per_degree = random.uniform(150, 200)
+    #         particle_increase = int(temp_drift * particles_per_degree)
+
+    #         logger.debug(
+    #             f"   🌡️  Temperature physics: {temp_drift:.1f}°C drift → "
+    #             f"+{particle_increase} particles (baseline: {baseline_particle_count})"
+    #         )
+
+    #     elif root_cause == "rf_power_drift":
+    #         # Get baseline RF power for equipment type
+    #         baseline_rf = thresholds["rf_power_drift"].get(
+    #             equipment_type,
+    #             thresholds["rf_power_drift"]["CMP"]
+    #         )["baseline"]
+
+    #         # Calculate RF power drift magnitude
+    #         rf_drift = abs(root_cause_value - baseline_rf)
+
+    #         # Linear model: ~4-5 particles per watt drift
+    #         # Equivalently: ~200-250 particles per 50W drift
+    #         particles_per_watt = random.uniform(4, 5)
+    #         particle_increase = int(rf_drift * particles_per_watt)
+
+    #         logger.debug(
+    #             f"   ⚡ RF power physics: {rf_drift:.1f}W drift → "
+    #             f"+{particle_increase} particles (baseline: {baseline_particle_count})"
+    #         )
+    #     else:
+    #         logger.warning(f"⚠️  Unknown root cause: {root_cause}, using baseline")
+    #         particle_increase = 0
+
+    #     calculated_particle_count = baseline_particle_count + particle_increase
+
+    #     return int(calculated_particle_count)
+
     async def demo_data_generator(self):
         """
         Generate normal sensor data with occasional anomalies - parallel for all equipment
@@ -987,12 +1088,12 @@ class DemoModeService:
             logger.error(f"❌ Failed to start demo mode: {e}", exc_info=True)
             raise Exception(f"Failed to start demo mode: {str(e)}")
     
-    async def stop_demo_mode(self, restore_probability: float = 0.2) -> Dict[str, Any]:
+    async def stop_demo_mode(self, restore_probability: float = 0.0) -> Dict[str, Any]:
         """
         Stop demo mode data generation
 
         Args:
-            restore_probability: Probability to restore (from environment variable)
+            restore_probability: Probability to restore (default: 0.0 for manual-only mode)
 
         Returns:
             Dict with stop status

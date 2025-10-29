@@ -235,40 +235,40 @@ class MonitoringService:
         else:
             logger.debug("No WebSocket clients to notify")
 
-    async def run_alert_correlation(self, alert_id: str):
-        """
-        Run correlation analysis in background for an alert.
+    # async def run_alert_correlation(self, alert_id: str):
+    #     """
+    #     Run correlation analysis in background for an alert.
         
-        Args:
-            alert_id: Alert ID to run correlation analysis for
-        """
-        try:
-            start_time = time.time()
-            logger.info(f"🔍 Starting correlation analysis for alert {alert_id}")
+    #     Args:
+    #         alert_id: Alert ID to run correlation analysis for
+    #     """
+    #     try:
+    #         start_time = time.time()
+    #         logger.info(f"🔍 Starting correlation analysis for alert {alert_id}")
             
-            alert = self.alert_manager.get_alert_by_id(alert_id)
-            if not alert:
-                logger.warning(f"⚠️  Alert {alert_id} not found for correlation")
-                return
+    #         alert = self.alert_manager.get_alert_by_id(alert_id)
+    #         if not alert:
+    #             logger.warning(f"⚠️  Alert {alert_id} not found for correlation")
+    #             return
 
-            # Use existing CorrelationEngine instance - NO new connection!
-            logger.debug(f"   ♻️  Reusing CorrelationEngine connection pool")
-            mongo_id = str(alert["_id"]) if "_id" in alert else alert_id
-            correlations = await self.correlation_engine.analyze_alert(mongo_id)
+    #         # Use existing CorrelationEngine instance - NO new connection!
+    #         logger.debug(f"   ♻️  Reusing CorrelationEngine connection pool")
+    #         mongo_id = str(alert["_id"]) if "_id" in alert else alert_id
+    #         correlations = await self.correlation_engine.analyze_alert(mongo_id)
 
-            elapsed_ms = (time.time() - start_time) * 1000
-            logger.info(f"✅ Correlation analysis completed for alert {alert_id} in {elapsed_ms:.0f}ms")
-            logger.debug(f"   📊 Found {len(correlations.get('correlations', {}))} correlation types")
+    #         elapsed_ms = (time.time() - start_time) * 1000
+    #         logger.info(f"✅ Correlation analysis completed for alert {alert_id} in {elapsed_ms:.0f}ms")
+    #         logger.debug(f"   📊 Found {len(correlations.get('correlations', {}))} correlation types")
 
-            # Notify via WebSocket
-            await self.notify_websocket_clients({
-                "type": "correlation_complete",
-                "alert_id": alert_id,
-                "correlations": correlations
-            })
+    #         # Notify via WebSocket
+    #         await self.notify_websocket_clients({
+    #             "type": "correlation_complete",
+    #             "alert_id": alert_id,
+    #             "correlations": correlations
+    #         })
 
-        except Exception as e:
-            logger.error(f"❌ Correlation failed for {alert_id}: {e}", exc_info=True)
+    #     except Exception as e:
+    #         logger.error(f"❌ Correlation failed for {alert_id}: {e}", exc_info=True)
     
     # async def run_alert_rca(self, alert_id: str, severity: AlertSeverity):
     #     """
@@ -655,12 +655,12 @@ class MonitoringService:
                                 })
 
                                 # Trigger correlation analysis for wafer alerts too (skip if AI agents enabled)
-                                if not self.use_ai_agents:
-                                    asyncio.create_task(self.run_alert_correlation(alert_id))
+                                # if not self.use_ai_agents:
+                                #     asyncio.create_task(self.run_alert_correlation(alert_id))
 
                                 # Trigger RCA for critical wafer alerts (skip if AI agents enabled)
-                                if not self.use_ai_agents and alert_severity in [AlertSeverity.CRITICAL, AlertSeverity.HIGH]:
-                                    asyncio.create_task(self.run_alert_rca(alert_id, alert_severity))
+                                # if not self.use_ai_agents and alert_severity in [AlertSeverity.CRITICAL, AlertSeverity.HIGH]:
+                                #     asyncio.create_task(self.run_alert_rca(alert_id, alert_severity))
 
                     except asyncio.CancelledError:
                         logger.info("Wafer monitoring loop cancelled")

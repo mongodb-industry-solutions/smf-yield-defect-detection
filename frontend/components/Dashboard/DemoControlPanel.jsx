@@ -8,6 +8,20 @@ import { Select, Option } from '@leafygreen-ui/select';
 import { demoAPI, aiAgentAPI, alertAPI } from '@/lib/api';
 import styles from './DemoControlPanel.module.css';
 
+// Equipment-specific excursion thresholds (aligned with backend config/thresholds.py)
+const EXCURSION_THRESHOLDS = {
+  temperature: {
+    CMP: { baseline: 65, alert_threshold: 70, unit: '°C' },
+    ETCH: { baseline: 70, alert_threshold: 75, unit: '°C' },
+    LITHO: { baseline: 22, alert_threshold: 25, unit: '°C' }
+  },
+  rf_power: {
+    CMP: { baseline: 1450, alert_threshold: 1550, unit: 'W' },
+    ETCH: { baseline: 1200, alert_threshold: 1300, unit: 'W' },
+    LITHO: { baseline: 800, alert_threshold: 900, unit: 'W' }
+  }
+};
+
 const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
   // Demo Mode State (for 'normal' and 'charts' modes)
   const [status, setStatus] = useState(null);
@@ -15,7 +29,8 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
   const [error, setError] = useState(null);
   const [excursionForm, setExcursionForm] = useState({
     equipment_id: 'CMP_TOOL_01',
-    excursion_type: 'particle' // 'particle', 'rf_power', 'temperature'
+    excursion_type: 'temperature', // 'temperature', 'rf_power' (physics-based: root causes only)
+    excursion_value: null // Optional explicit value (°C for temp, W for RF power)
   });
   const [injectionSuccess, setInjectionSuccess] = useState(null);
   const [resetLoading, setResetLoading] = useState(false);
@@ -24,10 +39,6 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
   // Lot processing progress tracking
   const [lotProgress, setLotProgress] = useState(null);
   const [progressInterval, setProgressInterval] = useState(null);
-
-  // Auto-excursions state
-  const [autoExcursionsEnabled, setAutoExcursionsEnabled] = useState(false);
-  const [autoExcursionsLoading, setAutoExcursionsLoading] = useState(false);
 
   // Agentic AI Mode State (for 'agentic' mode)
   const [selectedScenario, setSelectedScenario] = useState('gradual_drift');
@@ -49,6 +60,12 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
   const [selectedLotAlertId, setSelectedLotAlertId] = useState('');
   const [loadingLotAlerts, setLoadingLotAlerts] = useState(false);
 
+  // Helper function: Get threshold info for current equipment and excursion type
+  const getCurrentThresholdInfo = () => {
+    const equipmentType = excursionForm.equipment_id.split('_')[0]; // CMP, ETCH, LITHO
+    return EXCURSION_THRESHOLDS[excursionForm.excursion_type][equipmentType];
+  };
+
   // Fetch status function
   const fetchStatus = async () => {
     try {
@@ -58,16 +75,6 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     } catch (err) {
       console.error('Error fetching demo status:', err);
       setError('Failed to fetch status');
-    }
-  };
-
-  // Fetch auto-excursions status
-  const fetchAutoExcursionsStatus = async () => {
-    try {
-      const data = await aiAgentAPI.getStatus();
-      setAutoExcursionsEnabled(data.enabled);
-    } catch (err) {
-      console.error('Error fetching auto-excursions status:', err);
     }
   };
 
@@ -151,7 +158,6 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
   // Fetch status on mount (no polling needed)
   useEffect(() => {
     fetchStatus(); // Initial fetch
-    fetchAutoExcursionsStatus(); // Fetch auto-excursions status
     fetchAnalyzedAlerts(); // Fetch previously analyzed alerts
 
     // Poll demo status every 5 seconds to detect auto-stop
@@ -188,12 +194,11 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
           await fetchStatus();
         }
       } else {
-        // Start demo mode with explicit excursion probability control
-        // Always use charts mode, control excursions via probability parameter
+        // Start demo mode (manual injection only, no auto-excursions)
         const params = {
-          excursion_probability: autoExcursionsEnabled ? 0.1 : 0,
           mode: 'charts',
           scenario: 'continuous'
+          // excursion_probability defaults to 0.0 (manual only)
         };
 
         await demoAPI.start(params);
@@ -261,15 +266,30 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     setInjectionSuccess(null);
 
     try {
-      const result = await demoAPI.injectExcursion({
+      // Build payload with optional explicit excursion value
+      const payload = {
         equipment_id: excursionForm.equipment_id,
         excursion_type: excursionForm.excursion_type
-      });
+      };
 
-      const excursionLabel = excursionForm.excursion_type === 'particle' ? 'Particle Count' :
-                             excursionForm.excursion_type === 'rf_power' ? 'RF Power' :
-                             'Temperature';
-      setInjectionSuccess(`${excursionLabel} excursion injected on ${excursionForm.equipment_id}!`);
+      // Add explicit value if provided (otherwise backend auto-calculates)
+      if (excursionForm.excursion_value !== null) {
+        if (excursionForm.excursion_type === 'temperature') {
+          payload.temperature = excursionForm.excursion_value;
+        } else if (excursionForm.excursion_type === 'rf_power') {
+          payload.rf_power = excursionForm.excursion_value;
+        }
+      }
+
+      const result = await demoAPI.injectExcursion(payload);
+
+      const excursionLabel = excursionForm.excursion_type === 'rf_power' ? 'RF Power Drift' :
+                             excursionForm.excursion_type === 'temperature' ? 'Temperature Drift' :
+                             'Root Cause';
+      const valueStr = excursionForm.excursion_value
+        ? ` (${excursionForm.excursion_value}${getCurrentThresholdInfo().unit})`
+        : '';
+      setInjectionSuccess(`${excursionLabel}${valueStr} excursion injected on ${excursionForm.equipment_id}! (Particle count auto-calculated)`);
 
       // Refresh demo status (excursion injection stops demo mode)
       await fetchStatus();
@@ -306,23 +326,6 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
       setError('Failed to reset demo');
     } finally {
       setResetLoading(false);
-    }
-  };
-
-  // Handle auto-excursions toggle
-  const handleAutoExcursionsToggle = async (checked) => {
-    setAutoExcursionsLoading(true);
-    try {
-      await aiAgentAPI.toggle(checked);
-      setAutoExcursionsEnabled(checked);
-      console.log(`Auto-excursions ${checked ? 'enabled' : 'disabled'}`);
-    } catch (err) {
-      console.error('Error toggling auto-excursions:', err);
-      setError('Failed to toggle auto-excursions');
-      // Revert on error
-      setAutoExcursionsEnabled(!checked);
-    } finally {
-      setAutoExcursionsLoading(false);
     }
   };
 
@@ -590,21 +593,6 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
 
         {/* Right: Auto-Excursions Toggle & Excursion Injection */}
         <div className={styles.rightSection}>
-          {/* Auto-Excursions Toggle */}
-          <div className={styles.aiToggleContainer}>
-            <span className={styles.aiLabel}>Auto Excursions</span>
-            <Toggle
-              size="small"
-              checked={autoExcursionsEnabled}
-              onChange={handleAutoExcursionsToggle}
-              disabled={autoExcursionsLoading || status?.active}
-              aria-label="Toggle Automatic Excursions"
-              title={status?.active ? "Stop demo mode to change auto-excursions setting" : "Enable/disable automatic excursions"}
-            />
-          </div>
-
-          <div className={styles.divider}></div>
-
           <div className={styles.injectionControls}>
             <select
               className={styles.compactSelect}
@@ -623,18 +611,37 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
             <select
               className={styles.compactSelect}
               value={excursionForm.excursion_type}
-              onChange={(e) => setExcursionForm({...excursionForm, excursion_type: e.target.value})}
+              onChange={(e) => setExcursionForm({
+                ...excursionForm,
+                excursion_type: e.target.value,
+                excursion_value: null  // Reset value when switching between temp/RF
+              })}
               disabled={!status?.active}
               title={
-                excursionForm.excursion_type === 'particle' ? '⚠️ Particle count excursion' :
-                excursionForm.excursion_type === 'rf_power' ? '⚡ RF power drift' :
-                '🌡️ Temperature drift'
+                excursionForm.excursion_type === 'rf_power'
+                  ? '⚡ RF power drift → particle count calculated'
+                  : '🌡️ Temperature drift → particle count calculated'
               }
             >
-              <option value="particle">⚠️ Particle</option>
-              <option value="rf_power">⚡ RF Power</option>
-              <option value="temperature">🌡️ Temperature</option>
+              <option value="temperature">🌡️ Temperature Drift</option>
+              <option value="rf_power">⚡ RF Power Drift</option>
             </select>
+
+            <div className={styles.valueInputGroup}>
+              <input
+                type="number"
+                className={styles.compactInput}
+                value={excursionForm.excursion_value || ''}
+                onChange={(e) => setExcursionForm({
+                  ...excursionForm,
+                  excursion_value: e.target.value ? parseFloat(e.target.value) : null
+                })}
+                placeholder={`e.g. ${getCurrentThresholdInfo().alert_threshold}`}
+                disabled={!status?.active}
+                title={`${getCurrentThresholdInfo().unit === '°C' ? 'Temperature' : 'RF Power'}: Baseline ${getCurrentThresholdInfo().baseline}${getCurrentThresholdInfo().unit}, Alert at ${getCurrentThresholdInfo().alert_threshold}${getCurrentThresholdInfo().unit}+`}
+              />
+              <span className={styles.unitLabel}>{getCurrentThresholdInfo().unit}</span>
+            </div>
 
             <Button
               variant="default"

@@ -103,16 +103,21 @@ class WaferGenerator:
         }
         defect_rate = base_defect_rate * severity_multiplier.get(severity, 1.0)
 
-        # Scale defect rate based on particle count magnitude (for particle excursions)
+        # Scale defect rate based on particle count magnitude (UNIVERSAL - applies to ALL excursion types)
         # Higher particle counts should produce lower yields (higher defect rates)
-        if excursion_type in ['particle_excursion', 'particle_spike']:
-            particle_count = metrics.get('particle_count', 0)
+        # This is realistic because particle count is the SYMPTOM that directly affects yield,
+        # regardless of root cause (temperature, RF power, etc.)
+        particle_count = metrics.get('particle_count', 0)
+        if particle_count > 1000:
             # Threshold: 1000 = baseline critical, scale linearly up to 3000
-            if particle_count > 1000:
-                scale_factor = min(2.0, 1.0 + (particle_count - 1000) / 2000)  # 1.0x to 2.0x
-                original_defect_rate = defect_rate
-                defect_rate = min(0.50, defect_rate * scale_factor)  # Cap at 50% defect rate
-                logger.info(f"Scaled defect_rate from {original_defect_rate:.2f} to {defect_rate:.2f} for particle_count={particle_count}")
+            scale_factor = min(2.0, 1.0 + (particle_count - 1000) / 2000)  # 1.0x to 2.0x
+            original_defect_rate = defect_rate
+            defect_rate = min(0.50, defect_rate * scale_factor)  # Cap at 50% defect rate
+            logger.info(
+                f"Particle-based yield scaling: {particle_count} particles → "
+                f"defect_rate {original_defect_rate:.2%} → {defect_rate:.2%} "
+                f"(excursion_type: {excursion_type})"
+            )
 
         # Use wafer_id from sensor metadata to maintain correlation
         # This ensures wafer defect image links to the actual wafer from sensor data
@@ -137,7 +142,13 @@ class WaferGenerator:
             wafer_id = f"W_{wafer_count:04d}"
 
         # Generate wafer map with appropriate defect pattern
-        logger.info(f"Generating {pattern_type} wafer defect map for excursion {alert_id}")
+        logger.info(
+            f"Generating wafer for alert {alert_id}: "
+            f"{excursion_type} → {pattern_type} pattern | "
+            f"Particle count: {particle_count} | "
+            f"Final defect rate: {defect_rate:.2%} | "
+            f"Expected yield: ~{(1-defect_rate)*100:.1f}%"
+        )
         wafer_data = generate_wafer_map(
             pattern_type=pattern_type,
             defect_rate=defect_rate,

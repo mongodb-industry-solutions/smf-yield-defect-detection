@@ -369,15 +369,14 @@ async def stop_demo_mode():
 @router.post("/demo/reset")
 async def reset_demo_to_healthy_state():
     """
-    Complete demo reset: Fix all equipment and restore healthy yield
-    Stops demo mode, resolves alerts, injects healthy sensors, and generates high-yield wafers
-    
+    Complete demo reset: Delete all demo data and restore healthy state
+    Stops demo mode, deletes auto-generated alerts, deletes demo wafers, and clears excursion data
+
     Returns information about:
     - Demo stopped status
-    - Alerts resolved count
+    - Alerts deleted count (auto-generated alerts only)
+    - Wafers deleted count (wafers without embeddings)
     - Excursion data cleared count
-    - Healthy wafers generated count  
-    - New average yield percentage
     - Equipment status and expected KPI changes
     """
     logger.info("🔄 POST /demo/reset - Resetting demo to healthy state")
@@ -386,7 +385,8 @@ async def reset_demo_to_healthy_state():
         service = get_demo_service()
         
         results = {
-            "alerts_resolved": 0,
+            "alerts_deleted": 0,
+            "wafers_deleted": 0,
             "healthy_sensors_injected": 0,
             "healthy_wafers_generated": 0,
             "new_yield": None,
@@ -405,27 +405,15 @@ async def reset_demo_to_healthy_state():
             # Wait for monitoring service to process the stop
             await asyncio.sleep(5)
         
-        # Step 1: Resolve all open/acknowledged alerts
+        # Step 1: Delete all auto-generated alerts
         if alert_manager_instance:
-            unresolved_alerts = alert_manager_instance.alerts_collection.find({
-                "status": {"$in": ["open", "acknowledged"]}
+            # Delete all auto-generated alerts (demo alerts)
+            delete_result = alert_manager_instance.alerts_collection.delete_many({
+                "auto_generated": True
             })
-            alert_ids = [str(alert["_id"]) for alert in unresolved_alerts]
-            
-            if alert_ids:
-                update_result = alert_manager_instance.alerts_collection.update_many(
-                    {"status": {"$in": ["open", "acknowledged"]}},
-                    {
-                        "$set": {
-                            "status": "resolved",
-                            "resolved_at": datetime.now(),
-                            "resolution": "Demo reset - all equipment restored to healthy state",
-                            "updated_by": "demo_reset"
-                        }
-                    }
-                )
-                results["alerts_resolved"] = update_result.modified_count
-                logger.info(f"✅ Demo reset: Resolved {results['alerts_resolved']} alerts")
+
+            results["alerts_deleted"] = delete_result.deleted_count
+            logger.info(f"✅ Demo reset: Deleted {results['alerts_deleted']} auto-generated alerts")
         
         # Step 1.5: Clear recent excursion sensor data
         # This prevents monitoring service from re-detecting old excursions
@@ -437,7 +425,7 @@ async def reset_demo_to_healthy_state():
                 
                 # Delete sensor readings with excursions from last 2 hours
                 cutoff_time = datetime.now(timezone.utc) - timedelta(hours=2)
-                delete_result = sensor_collection.delete_many({
+                delete_result = await sensor_collection.delete_many({
                     "timestamp": {"$gte": cutoff_time},
                     "$or": [
                         {"metrics.particle_count": {"$gt": 1000}},
@@ -450,66 +438,82 @@ async def reset_demo_to_healthy_state():
                 logger.info(f"✅ Cleared {delete_result.deleted_count} excursion sensor readings")
         except Exception as e:
             logger.error(f"❌ Error clearing excursion data: {e}")
-        
+
+        # Step 1.6: Delete wafers without embeddings (demo-generated wafers)
+        try:
+            if mongodb_client_instance and mongodb_config:
+                wafer_collection = mongodb_client_instance[mongodb_config["database_name"]]["wafer_defects"]
+
+                # Delete wafers that don't have embedding field
+                delete_result = await wafer_collection.delete_many({
+                    "embedding": {"$exists": False}
+                })
+
+                results["wafers_deleted"] = delete_result.deleted_count
+                logger.info(f"✅ Deleted {delete_result.deleted_count} demo-generated wafers (no embeddings)")
+        except Exception as e:
+            logger.error(f"❌ Error deleting demo wafers: {e}")
+            results["wafers_deleted"] = 0
+
         # Step 2: Inject healthy sensor data for all equipment
         # NOTE: Sensor injection is DISABLED to prevent RF power drift detection
         # Equipment health is determined by open alerts, not sensor values
         # Sensor readings will update naturally with next monitoring cycle
-        equipment_ids = ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01"]
+        equipment_ids = ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01","ETCH_02", "LITHO_02"]
         
         results["healthy_sensors_injected"] = 0  # Disabled
         logger.info(f"ℹ️  Demo reset: Sensor injection disabled (equipment health determined by alerts)")
         
-        # Step 3: Generate healthy wafers to improve yield
-        if mongodb_config:
-            wafer_generator = WaferGenerator(
-                mongodb_uri=mongodb_config["mongodb_uri"],
-                database=mongodb_config["database_name"],
-                s3_bucket_uri=os.getenv("S3_BUCKET_URI")
-            )
+        # # Step 3: Generate healthy wafers to improve yield
+        # if mongodb_config:
+        #     wafer_generator = WaferGenerator(
+        #         mongodb_uri=mongodb_config["mongodb_uri"],
+        #         database=mongodb_config["database_name"],
+        #         s3_bucket_uri=os.getenv("S3_BUCKET_URI")
+        #     )
             
-            # Generate 4 healthy wafers (one per equipment) with 95-98% yield
-            for i, equipment_id in enumerate(equipment_ids):
-                healthy_wafer_data = {
-                    "alert_id": f"reset_{datetime.now().timestamp()}",
-                    "equipment_id": equipment_id,
-                    "excursion_type": "recovery",  # Will map to low defect rate
-                    "severity": "low",
-                    "timestamp": datetime.now(timezone.utc),
-                    "metrics": {
-                        "particle_count": 400,
-                        "rf_power": 1200,
-                        "chamber_pressure": 45,
-                        "temperature": 65,
-                        "flow_rate": 200
-                    }
-                }
+        #     # Generate 4 healthy wafers (one per equipment) with 95-98% yield
+        #     for i, equipment_id in enumerate(equipment_ids):
+        #         healthy_wafer_data = {
+        #             "alert_id": f"reset_{datetime.now().timestamp()}",
+        #             "equipment_id": equipment_id,
+        #             "excursion_type": "recovery",  # Will map to low defect rate
+        #             "severity": "low",
+        #             "timestamp": datetime.now(timezone.utc),
+        #             "metrics": {
+        #                 "particle_count": 400,
+        #                 "rf_power": 1200,
+        #                 "chamber_pressure": 45,
+        #                 "temperature": 65,
+        #                 "flow_rate": 200
+        #             }
+        #         }
                 
-                # Generate wafer with very low defect rate for high yield
-                wafer_doc = await wafer_generator.generate_excursion_wafer(healthy_wafer_data)
+        #         # Generate wafer with very low defect rate for high yield
+        #         wafer_doc = await wafer_generator.generate_excursion_wafer(healthy_wafer_data)
                 
-                # Override pattern to ensure healthy yield
-                wafer_doc["defect_summary"]["defect_pattern"] = "random"
-                wafer_doc["defect_summary"]["severity"] = "low"
-                # Ensure high yield (95-98%)
-                wafer_doc["defect_summary"]["yield_percentage"] = 95 + random.uniform(0, 3)
-                wafer_doc["defect_summary"]["total_defects"] = random.randint(5, 15)
-                wafer_doc["description"] = f"Post-recovery verification wafer from {equipment_id} - Equipment restored to healthy state"
+        #         # Override pattern to ensure healthy yield
+        #         wafer_doc["defect_summary"]["defect_pattern"] = "random"
+        #         wafer_doc["defect_summary"]["severity"] = "low"
+        #         # Ensure high yield (95-98%)
+        #         wafer_doc["defect_summary"]["yield_percentage"] = 95 + random.uniform(0, 3)
+        #         wafer_doc["defect_summary"]["total_defects"] = random.randint(5, 15)
+        #         wafer_doc["description"] = f"Post-recovery verification wafer from {equipment_id} - Equipment restored to healthy state"
                 
-                wafer_generator.wafer_collection.insert_one(wafer_doc)
-                results["healthy_wafers_generated"] += 1
+        #         wafer_generator.wafer_collection.insert_one(wafer_doc)
+        #         results["healthy_wafers_generated"] += 1
             
-            # Step 4: Calculate new average yield (before cleanup)
-            latest_wafers = list(wafer_generator.db["wafer_defects"].find()
-                               .sort("inspection_timestamp", -1)
-                               .limit(10))
+        #     # Step 4: Calculate new average yield (before cleanup)
+        #     latest_wafers = list(wafer_generator.db["wafer_defects"].find()
+        #                        .sort("inspection_timestamp", -1)
+        #                        .limit(10))
             
-            # Now cleanup after we're done with the database
-            wafer_generator.cleanup()
+        #     # Now cleanup after we're done with the database
+        #     wafer_generator.cleanup()
             
-            if latest_wafers:
-                avg_yield = sum(w["defect_summary"]["yield_percentage"] for w in latest_wafers) / len(latest_wafers)
-                results["new_yield"] = round(avg_yield, 1)
+        #     if latest_wafers:
+        #         avg_yield = sum(w["defect_summary"]["yield_percentage"] for w in latest_wafers) / len(latest_wafers)
+        #         results["new_yield"] = round(avg_yield, 1)
         
         # Step 5: Wait for monitoring service to sync
         # Give monitoring service time to process the healthy data
@@ -532,12 +536,12 @@ async def reset_demo_to_healthy_state():
         
         return {
             "status": "success",
-            "message": "Demo reset to healthy state complete",
+            "message": "Demo reset complete - all demo data cleared",
             **results,
             "equipment_status": "All equipment restored to healthy operating conditions",
             "expected_kpi_changes": {
                 "yield": f"~{results['new_yield']}%" if results['new_yield'] else "95-98%",
-                "active_alerts": new_alerts_count,
+                "active_alerts": 0,  # All auto-generated alerts deleted
                 "equipment_health": "All healthy"
             }
         }
@@ -554,25 +558,33 @@ async def reset_demo_to_healthy_state():
 @router.post("/demo/inject-excursion")
 async def inject_excursion(request: Dict[str, Any] = Body(...)):
     """
-    Manually inject an excursion into the sensor data
-    
+    Manually inject an excursion into the sensor data (physics-based causal model)
+
     AUTO-PAUSES demo mode during injection to prevent collision/duplicate alerts.
-    
+
+    PHYSICS-BASED MODEL: Particle count is CALCULATED from root cause (temperature or RF power).
+    This reflects the real causal relationship in semiconductor manufacturing.
+
     Expected payload:
     {
-        "equipment_id": "CMP_TOOL_01",  # Required
-        "excursion_type": "particle",   # Optional: "particle", "rf_power", "temperature"
-        "particle_count": 2500,          # Optional: Override specific metric
-        "metadata": {...},               # Optional: Override metadata
-        "auto_resume_demo": false        # Optional: Auto-resume demo after injection (default: false)
+        "equipment_id": "CMP_TOOL_01",     # Required
+        "excursion_type": "temperature" | "rf_power",  # Required: root cause type
+        "temperature": 72.0,                # Optional: explicit temperature value (°C)
+        "rf_power": 1600.0,                 # Optional: explicit RF power value (W)
+        "metadata": {...},                  # Optional: override metadata
+        "auto_resume_demo": false,          # Optional: auto-resume demo after injection
+
+        # DISCOURAGED (testing only):
+        "particle_count": 2500              # Optional: bypass physics, logs warning
     }
-    
+
     Returns information about:
     - Injection status
     - Equipment ID
-    - Excursion type and triggered values
+    - Excursion type and triggered values (including calculated particle count)
     - Sensor event and timeseries IDs
     - Demo mode state (paused/resumed)
+    - Physics calculation details
     - Note about alert/wafer generation timing
     """
     logger.info(f"💉 POST /demo/inject-excursion - Injecting excursion: {request}")
@@ -582,7 +594,7 @@ async def inject_excursion(request: Dict[str, Any] = Body(...)):
         
         # === STEP 1: Pause demo mode if active to prevent collision ===
         demo_was_active = service.demo_mode_active
-        auto_resume = request.get("auto_resume_demo", False)  # Default: keep paused for observation
+        auto_resume = request.get("auto_resume_demo", True)  # Default: auto-resume to allow multiple injections
         
         logger.info(f"🔍 Demo mode check: active={demo_was_active}, auto_resume={auto_resume}")
         
@@ -601,30 +613,67 @@ async def inject_excursion(request: Dict[str, Any] = Body(...)):
         
         # Generate base NORMAL metrics (not excursion to avoid random type selection)
         metrics = service.generate_demo_metrics(equipment_id, is_excursion=False)
-        
-        # Apply specific excursion type if requested
-        excursion_type = request.get("excursion_type", "particle")
-        logger.info(f"   💉 Injecting {excursion_type} excursion for {equipment_id}")
-        
-        if excursion_type == "particle":
-            metrics["particle_count"] = request.get("particle_count", random.randint(1500, 3000))
-            logger.info(f"   🔢 Particle count set to: {metrics['particle_count']}")
-        elif excursion_type == "rf_power":
+
+        # Store baseline particle count before modification
+        baseline_particle_count = metrics["particle_count"]
+
+        # Get equipment type for threshold lookups
+        equipment_type = equipment_id.split("_")[0]  # CMP, ETCH, LITHO
+
+        # Apply specific excursion type (root cause) if requested
+        excursion_type = request.get("excursion_type", "temperature")  # Default to temperature
+        logger.info(f"   💉 Injecting {excursion_type} excursion for {equipment_id} (physics-based)")
+
+        # PHYSICS-BASED MODEL: Apply root cause, then calculate particle count
+        if excursion_type == "rf_power":
             # Calculate baseline for equipment type
-            equipment_type = equipment_id.split("_")[0]
-            baseline = 1450 if "CMP" in equipment_type else 1200 if "ETCH" in equipment_type else 800
-            metrics["rf_power"] = request.get("rf_power", baseline + random.uniform(120, 200))
-            logger.info(f"   ⚡ RF power set to: {metrics['rf_power']}W (baseline: {baseline}W)")
+            from config.thresholds import get_thresholds
+            thresholds = get_thresholds()
+            baseline_rf = thresholds["rf_power_drift"].get(
+                equipment_type,
+                thresholds["rf_power_drift"]["CMP"]
+            )["baseline"]
+
+            # Apply RF power drift (use provided value or generate)
+            metrics["rf_power"] = request.get("rf_power", baseline_rf + random.uniform(120, 200))
+            logger.info(f"   ⚡ RF power set to: {metrics['rf_power']:.1f}W (baseline: {baseline_rf}W)")
+
         elif excursion_type == "temperature":
             # Calculate baseline for equipment type
-            equipment_type = equipment_id.split("_")[0]
-            baseline = 65 if "CMP" in equipment_type else 70 if "ETCH" in equipment_type else 22
-            metrics["temperature"] = request.get("temperature", baseline + random.uniform(6, 10))
-            logger.info(f"   🌡️  Temperature set to: {metrics['temperature']}°C (baseline: {baseline}°C)")
-        
-        # Override any specific metrics provided
-        for key in ["particle_count", "rf_power", "temperature", "chamber_pressure", "flow_rate"]:
-            if key in request and key not in ["excursion_type", "equipment_id", "metadata"]:
+            from config.thresholds import get_thresholds
+            thresholds = get_thresholds()
+            baseline_temp = thresholds["temperature_drift"].get(
+                equipment_type,
+                thresholds["temperature_drift"]["CMP"]
+            )["baseline"]
+
+            # Apply temperature drift (use provided value or generate)
+            metrics["temperature"] = request.get("temperature", baseline_temp + random.uniform(6, 10))
+            logger.info(f"   🌡️  Temperature set to: {metrics['temperature']:.1f}°C (baseline: {baseline_temp}°C)")
+
+        # # Check if explicit particle_count override provided (DISCOURAGED - bypasses physics)
+        # if "particle_count" in request:
+        #     logger.warning(
+        #         f"⚠️  MANUAL PARTICLE COUNT OVERRIDE: {request['particle_count']} - "
+        #         f"Bypassing physics-based calculation (use for testing only)"
+        #     )
+        #     metrics["particle_count"] = request["particle_count"]
+        # else:
+        #     # CALCULATE particle count from root cause (RECOMMENDED - physics-based)
+        #     metrics["particle_count"] = service.calculate_particle_count_from_root_cause(
+        #         equipment_type=equipment_type,
+        #         root_cause=f"{excursion_type}_drift",
+        #         root_cause_value=metrics["temperature"] if excursion_type == "temperature" else metrics["rf_power"],
+        #         baseline_particle_count=baseline_particle_count
+        #     )
+        #     logger.info(
+        #         f"   ✅ Physics calculation: {excursion_type} → particle_count={metrics['particle_count']} "
+        #         f"(baseline: {baseline_particle_count})"
+        #     )
+
+        # Override any other specific metrics provided
+        for key in ["chamber_pressure", "flow_rate"]:
+            if key in request:
                 metrics[key] = request[key]
         
         # Generate or use provided metadata (use problematic batch for excursions)

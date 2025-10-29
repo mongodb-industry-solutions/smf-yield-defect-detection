@@ -185,11 +185,11 @@ class AlertManager:
             self._send_notifications(alert_id, severity)
 
             # Trigger async historical context search
-            try:
-                asyncio.create_task(self._add_historical_context_async(alert_id, alert_doc))
-            except RuntimeError:
-                # No event loop running (e.g., in tests)
-                logger.debug("Could not create async task for historical context (no event loop)")
+            # try:
+            #     asyncio.create_task(self._add_historical_context_async(alert_id, alert_doc))
+            # except RuntimeError:
+            #     # No event loop running (e.g., in tests)
+            #     logger.debug("Could not create async task for historical context (no event loop)")
 
             logger.info(f"Alert created: {alert_id} - {title} [{severity.value}]")
             return alert_id
