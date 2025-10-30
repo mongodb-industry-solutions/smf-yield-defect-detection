@@ -168,13 +168,14 @@ const FabPulseBar = ({ dashboardMode = 'normal' }) => {
 
     // CRITICAL: Set up auto-refresh every 8 seconds regardless of preload
     // This ensures data keeps updating after initial load
+    // IMPORTANT: Include dashboardMode in deps so interval is recreated with current mode
     const interval = setInterval(() => {
       console.log('🔄 FabPulseBar: Auto-refreshing KPI data...');
       fetchKPIData();
     }, 8000);
 
     return () => clearInterval(interval);
-  }, []); // Empty deps - run once on mount
+  }, [dashboardMode, isPreloaded, preloadedKpis]); // Recreate interval when mode changes
 
   // Listen for MongoDB panel state changes
   useEffect(() => {
