@@ -87,15 +87,16 @@ class MonitoringService:
         self.monitoring_active = False
         logger.info("🛑 Monitoring service stopped")
     
-    def _is_duplicate_alert(self, async_db, equipment_id: str, excursion_type: str) -> bool:
+    def _is_duplicate_alert(self, async_db, equipment_id: str, excursion_type: str, root_cause: str = None) -> bool:
         """
-        Check if an alert was recently created for this equipment/excursion.
+        Check if an alert was recently created for this equipment/excursion/root_cause.
         Uses MongoDB to detect duplicates across multiple monitoring instances.
 
         Args:
             async_db: Async MongoDB database instance
             equipment_id: Equipment identifier
-            excursion_type: Type of excursion
+            excursion_type: Type of excursion (always "particle_excursion" in new logic)
+            root_cause: Root cause of excursion (temperature_drift or rf_power_drift)
 
         Returns:
             True if a duplicate alert was created within deduplication window
@@ -112,11 +113,18 @@ class MonitoringService:
         sync_db = sync_client[self.mdb_database_name]
         alerts_collection = sync_db["alerts"]
 
-        recent_alert = alerts_collection.find_one({
+        # Build query to check for same equipment and root cause
+        query = {
             "equipment_id": equipment_id,
             "alert_type": "excursion",
             "timestamp": {"$gte": cutoff_time_naive}
-        }, sort=[("timestamp", pymongo.DESCENDING)])
+        }
+
+        # Add root_cause check to differentiate between temperature and RF power excursions
+        if root_cause:
+            query["source_data.root_cause"] = root_cause
+
+        recent_alert = alerts_collection.find_one(query, sort=[("timestamp", pymongo.DESCENDING)])
 
         sync_client.close()
 
@@ -136,7 +144,7 @@ class MonitoringService:
                              f"skipping deduplication for alert_id={recent_alert.get('alert_id', 'unknown')}")
                 return False
 
-            logger.info(f"🚫 DUPLICATE ALERT BLOCKED: {excursion_type} on {equipment_id} "
+            logger.info(f"🚫 DUPLICATE ALERT BLOCKED: {excursion_type} (root cause: {root_cause}) on {equipment_id} "
                        f"(last alert {time_diff:.1f}s ago, alert_id={recent_alert.get('alert_id', 'unknown')})")
             return True
 
@@ -303,27 +311,20 @@ class MonitoringService:
                             logger.debug(f"New sensor data from {sensor_data.get('equipment_id')}")
 
                             # Check for excursions (thresholds)
+                            # Particle excursion is a SYMPTOM, not a standalone cause
+                            # Only detect root causes: temperature_drift and rf_power_drift
                             excursion_detected = False
-                            excursion_type = None
+                            root_cause = None
                             excursion_value = None
 
                             metrics = sensor_data.get("metrics", {})
                             equipment_id = sensor_data.get("equipment_id", "")
-                            
+                            particle_count = metrics.get("particle_count", 0)
+
                             # Get centralized thresholds
                             thresholds = get_thresholds()
-                            particle_thresholds = thresholds["particle_count"]
                             rf_thresholds = thresholds["rf_power_drift"]
                             temp_thresholds = thresholds["temperature_drift"]
-
-                            # Check particle count threshold using centralized config
-                            # Detect excursions at MEDIUM level and above (not just CRITICAL)
-                            particle_count = metrics.get("particle_count", 0)
-                            if particle_count > particle_thresholds["medium"]:
-                                excursion_detected = True
-                                excursion_type = "particle_excursion"
-                                excursion_value = particle_count
-                                logger.warning(f"⚠️ Particle excursion detected: {particle_count} on {equipment_id}")
 
                             # Check RF power drift using centralized baselines and thresholds
                             rf_power = metrics.get("rf_power", 0)
@@ -334,9 +335,9 @@ class MonitoringService:
                                 threshold = rf_config["threshold"]
                                 if abs(rf_power - baseline) >= threshold:
                                     excursion_detected = True
-                                    excursion_type = "rf_power_drift"
+                                    root_cause = "rf_power_drift"
                                     excursion_value = rf_power
-                                    logger.warning(f"⚠️ RF power drift detected: {rf_power}W (baseline {baseline}W) on {equipment_id}")
+                                    logger.warning(f"⚠️ Root cause detected - RF power drift: {rf_power}W (baseline {baseline}W) on {equipment_id}, particle count: {particle_count}")
 
                             # Check temperature drift using centralized baselines and thresholds
                             temperature = metrics.get("temperature", 0)
@@ -346,24 +347,30 @@ class MonitoringService:
                                 threshold = temp_config["threshold"]
                                 if abs(temperature - baseline) >= threshold:  # Note: >= not > to catch exactly at threshold
                                     excursion_detected = True
-                                    excursion_type = "temperature_drift"
+                                    root_cause = "temperature_drift"
                                     excursion_value = temperature
-                                    logger.warning(f"⚠️ Temperature drift detected: {temperature}°C (baseline {baseline}°C) on {equipment_id}")
+                                    logger.warning(f"⚠️ Root cause detected - Temperature drift: {temperature}°C (baseline {baseline}°C) on {equipment_id}, particle count: {particle_count}")
 
                             # Create alert if excursion detected
                             if excursion_detected and self.alert_manager:
                                 # Extract metadata for easier access
                                 metadata = sensor_data.get("metadata", {})
 
-                                # Prepare excursion data
+                                # Alert type is always "particle_excursion" (the symptom)
+                                # Root cause determines wafer pattern
+                                excursion_type = "particle_excursion"
+
+                                # Prepare excursion data with root cause
                                 excursion = {
                                     "equipment_id": sensor_data.get("equipment_id"),
                                     "timestamp": sensor_data.get("timestamp"),
                                     "excursion_type": excursion_type,
-                                    "value": excursion_value,
+                                    "root_cause": root_cause,  # Store root cause for tracking
+                                    "value": particle_count,  # Show particle count as the symptom value
+                                    "root_cause_value": excursion_value,  # Store root cause value (temp or RF)
                                     "metrics": metrics,
                                     "metadata": metadata,
-                                    "description": f"{excursion_type.replace('_', ' ').title()}: {excursion_value}",
+                                    "description": f"Particle Excursion: {particle_count}",
                                     # Include scenario metadata at top level for easier access by agentic AI
                                     "scenario_id": metadata.get("scenario_id"),  # "gradual_drift", etc.
                                     "pattern_type": metadata.get("pattern_type"),  # "drift", "spike", "oscillation"
@@ -374,16 +381,17 @@ class MonitoringService:
                                 severity = self.determine_severity(excursion)
 
                                 # === DEDUPLICATION CHECK ===
-                                # Skip if same equipment/excursion within 5 seconds
+                                # Skip if same equipment/excursion/root_cause within 5 seconds
                                 # (Prevents duplicates from demo mode + manual injection collisions)
-                                if self._is_duplicate_alert(async_db, equipment_id, excursion_type):
+                                # Check root_cause to allow different root causes (temperature vs RF power)
+                                if self._is_duplicate_alert(async_db, equipment_id, excursion_type, root_cause):
                                     continue
 
                                 # Create alert
                                 alert_id = self.alert_manager.create_alert(
                                     alert_type=AlertType.EXCURSION,
                                     severity=severity,
-                                    title=f"{excursion_type.replace('_', ' ').title()} on {equipment_id}",
+                                    title=f"Particle Excursion on {equipment_id}",
                                     description=excursion["description"],
                                     source_data=excursion,
                                     equipment_id=equipment_id,
@@ -391,7 +399,7 @@ class MonitoringService:
                                     wafer_id=sensor_data.get("metadata", {}).get("wafer_id")
                                 )
 
-                                logger.info(f"🚨 Alert created: {alert_id} for {excursion_type} on {equipment_id}")
+                                logger.info(f"🚨 Alert created: {alert_id} for particle_excursion (root cause: {root_cause}) on {equipment_id}")
 
                                 # Record alert creation for deduplication tracking
                                 self._record_alert_creation(equipment_id, excursion_type)
@@ -403,15 +411,17 @@ class MonitoringService:
                                     "severity": severity.value,
                                     "equipment_id": equipment_id,
                                     "excursion_type": excursion_type,
-                                    "value": excursion_value,
+                                    "root_cause": root_cause,
+                                    "value": particle_count,
                                     "timestamp": sensor_data.get("timestamp").isoformat() if hasattr(sensor_data.get("timestamp"), 'isoformat') else str(sensor_data.get("timestamp"))
                                 })
 
                                 # Schedule wafer defect generation (with delay to simulate inspection)
+                                # Use root_cause as excursion_type for wafer pattern determination
                                 asyncio.create_task(self.generate_delayed_wafer_defect({
                                     'alert_id': alert_id,
                                     'equipment_id': equipment_id,
-                                    'excursion_type': excursion_type,
+                                    'excursion_type': root_cause,  # Use root cause for wafer pattern
                                     'severity': severity.value,
                                     'timestamp': sensor_data.get('timestamp'),
                                     'metrics': metrics,
