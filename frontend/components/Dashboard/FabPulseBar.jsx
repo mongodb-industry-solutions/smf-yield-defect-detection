@@ -10,7 +10,17 @@ import { useDashboardData } from '@/contexts/DashboardDataProvider';
 import { kpiAPI } from '@/lib/api';
 import styles from './FabPulseBar.module.css';
 
-const FabPulseBar = () => {
+// Helper function to get mode-specific MTTR and Savings
+const getModeSpecificKPIs = (mode) => {
+  const modeConfig = {
+    'normal': { mttr: 360, savings: 3.0 },   // 6 hrs, $3M
+    'search': { mttr: 180, savings: 5.0 },   // 3 hrs, $5M
+    'agentic': { mttr: 60, savings: 8.0 }    // 1 hr, $8M
+  };
+  return modeConfig[mode] || modeConfig['normal'];
+};
+
+const FabPulseBar = ({ dashboardMode = 'normal' }) => {
   const { kpis: preloadedKpis, isPreloaded, isLoading: providerLoading } = useDashboardData();
   const [kpiData, setKpiData] = useState(null);
   const [isLoading, setIsLoading] = useState(!isPreloaded);
@@ -32,7 +42,15 @@ const FabPulseBar = () => {
       const data = await kpiAPI.getKPIStatistics();
       const endTime = performance.now();
 
-      setKpiData(data.kpi);
+      // Override MTTR and Savings based on dashboard mode
+      const modeKPIs = getModeSpecificKPIs(dashboardMode);
+      const overriddenKPIs = {
+        ...data.kpi,
+        mttr: { ...data.kpi.mttr, value: modeKPIs.mttr },
+        savings: { ...data.kpi.savings, value: modeKPIs.savings }
+      };
+
+      setKpiData(overriddenKPIs);
       setQueryTime(Math.round(endTime - startTime));
       setIsLoading(false);
     } catch (error) {
@@ -78,13 +96,21 @@ const FabPulseBar = () => {
           trendValue: preloadedKpis.savings?.trendValue || 15
         }
       };
-      
-      setKpiData(transformedData);
+
+      // Override MTTR and Savings based on dashboard mode
+      const modeKPIs = getModeSpecificKPIs(dashboardMode);
+      const overriddenData = {
+        ...transformedData,
+        mttr: { ...transformedData.mttr, value: modeKPIs.mttr },
+        savings: { ...transformedData.savings, value: modeKPIs.savings }
+      };
+
+      setKpiData(overriddenData);
       setIsLoading(false);
       setQueryTime(0); // Instant from cache
       return;
     }
-  }, [preloadedKpis, isPreloaded]);
+  }, [preloadedKpis, isPreloaded, dashboardMode]);
 
   // MongoDB Aggregation Pipeline for KPI Calculation
   const kpiAggregationPipeline = [

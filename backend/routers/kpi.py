@@ -6,7 +6,7 @@ import logging
 import time
 import asyncio
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -68,27 +68,28 @@ async def get_kpi_statistics():
         db = mongodb_client[mdb_database_name]
         logger.debug("⚙️ MongoDB database initialized")
         
-        # Define all aggregation pipelines
-        logger.debug("⚙️ Defining aggregation pipelines...")
+        # Define all aggregation pipelines (OPTIMIZED - project only needed fields)
+        logger.debug("⚙️ Defining optimized aggregation pipelines...")
         wafer_pipeline = [
             {"$sort": {"inspection_timestamp": -1}},
             {"$limit": 10},
+            {"$project": {
+                "yield": "$defect_summary.yield_percentage"
+            }},
             {"$group": {
                 "_id": None,
-                "avg_yield": {"$avg": "$defect_summary.yield_percentage"},
-                "latest_yield": {"$first": "$defect_summary.yield_percentage"},
+                "avg_yield": {"$avg": "$yield"},
+                "latest_yield": {"$first": "$yield"},
                 "total_wafers": {"$sum": 1}
             }}
         ]
-        
-        # Calculate cutoff time for last 30 minutes (using local time for naive datetime comparison)
-        from datetime import datetime, timedelta
-        cutoff_time = datetime.now() - timedelta(minutes=30)
 
         alert_pipeline = [
             {"$match": {
                 "status": {"$in": ["open", "acknowledged"]}
-                # Count ALL open alerts regardless of timestamp
+            }},
+            {"$project": {
+                "severity": 1
             }},
             {"$group": {
                 "_id": "$severity",
@@ -96,59 +97,46 @@ async def get_kpi_statistics():
             }}
         ]
 
-        # UPDATED: Resolution pipeline now focuses on alerts resolved in last 30 minutes
-        resolution_pipeline = [
-            {"$match": {
-                "status": "resolved",
-                "resolved_at": {"$exists": True, "$gte": cutoff_time},  # Resolved in last 30 min
-                "timestamp": {"$exists": True}
-            }},
-            {"$project": {
-                "resolution_time_ms": {
-                    "$subtract": ["$resolved_at", "$timestamp"]
-                }
-            }},
-            {"$group": {
-                "_id": None,
-                "avg_resolution_ms": {"$avg": "$resolution_time_ms"},
-                "count": {"$sum": 1}
-            }}
-        ]
-        
+        # Calculate cutoff time for last 1 hour (using naive UTC to match sensor data timestamps)
+        one_hour_ago = datetime.utcnow() - timedelta(hours=1)
+
         equipment_pipeline = [
+            {"$match": {
+                "timestamp": {"$gte": one_hour_ago}
+            }},
             {"$sort": {"timestamp": -1}},
+            {"$project": {
+                "equipment_id": 1,
+                "rf_power": "$metrics.rf_power",
+                "particle_count": "$metrics.particle_count"
+            }},
             {"$group": {
                 "_id": "$equipment_id",
-                "latest": {"$first": "$$ROOT"}
-            }},
-            {"$project": {
-                "rf_power": "$latest.metrics.rf_power",
-                "particle_count": "$latest.metrics.particle_count"
+                "rf_power": {"$first": "$rf_power"},
+                "particle_count": {"$first": "$particle_count"}
             }}
         ]
         
         # Execute all aggregations in parallel using asyncio.gather
         parallel_start = time.time()
-        logger.info("   📊 Executing 4 parallel aggregations...")
-        
+        logger.info("   📊 Executing 3 parallel aggregations...")
+
         # Create async tasks for each aggregation
         wafer_task = db.wafer_defects.aggregate(wafer_pipeline).to_list(length=None)
         alert_task = db.alerts.aggregate(alert_pipeline).to_list(length=None)
-        resolution_task = db.alerts.aggregate(resolution_pipeline).to_list(length=None)
         equipment_task = db.process_sensor_ts.aggregate(equipment_pipeline).to_list(length=None)
-        
+
         # Run all tasks in parallel
-        wafer_stats, alert_results, resolution_stats, equipment_results = await asyncio.gather(
+        wafer_stats, alert_results, equipment_results = await asyncio.gather(
             wafer_task,
             alert_task,
-            resolution_task,
             equipment_task
         )
-        
+
         parallel_time = (time.time() - parallel_start) * 1000
         logger.info(f"   📊 Parallel aggregations completed in {parallel_time:.0f}ms")
         logger.debug(f"   ✅ Results: {len(wafer_stats)} wafer stats, {len(alert_results)} alert types, "
-                    f"{len(resolution_stats)} resolution stats, {len(equipment_results)} equipment")
+                    f"{len(equipment_results)} equipment")
         
         # Process results (same logic as before, but now with parallel data)
         calc_start = time.time()
@@ -163,32 +151,13 @@ async def get_kpi_statistics():
         total_alerts = sum(alert_counts.values())
         critical_alerts = alert_counts.get("critical", 0) + alert_counts.get("high", 0)
         logger.debug(f"⚙️ Alerts: {total_alerts} total ({critical_alerts} critical/high)")
-        
-        # Calculate average resolution time (only for alerts resolved in last 30 min)
-        avg_resolution_minutes = 0  # Default to 0 if no alerts resolved
-        alerts_resolved_count = 0
-        if resolution_stats and resolution_stats[0].get("avg_resolution_ms"):
-            avg_resolution_minutes = resolution_stats[0]["avg_resolution_ms"] / 60000
-            alerts_resolved_count = resolution_stats[0].get("count", 0)
-        logger.debug(f"⚙️ MTTR: {avg_resolution_minutes:.1f} minutes ({alerts_resolved_count} alerts resolved in last 30 min)")
-        
-        # Calculate cost savings based on fast alert resolution
-        # Faster resolution = less downtime = more wafers processed = higher savings
-        # Formula: Alerts resolved quickly prevent defects and save cost per alert
-        cost_per_alert_prevented = 100000  # $100K per alert resolved quickly (prevents 20 bad wafers @ $5K each)
-        base_resolution_target = 30  # minutes (ideal MTTR)
 
-        if alerts_resolved_count > 0 and avg_resolution_minutes > 0:
-            # Savings based on alerts resolved in last 30 min
-            # Faster resolution (< 30 min) gets bonus multiplier
-            speed_bonus = max(1.0, min(3.0, base_resolution_target / avg_resolution_minutes))
-            cost_savings = alerts_resolved_count * cost_per_alert_prevented * speed_bonus
-        else:
-            # No alerts resolved recently = no immediate savings
-            cost_savings = 0
+        # MTTR and Cost Savings are hard-coded (overridden in frontend based on dashboard mode)
+        avg_resolution_minutes = 360  # Static placeholder (6 hrs)
+        cost_savings = 3000000  # Static placeholder ($3M)
+        logger.debug(f"⚙️ MTTR: {avg_resolution_minutes} minutes (static placeholder)")
+        logger.debug(f"⚙️ Cost savings: ${cost_savings/1000000:.1f}M (static placeholder)")
 
-        logger.debug(f"⚙️ Cost savings: ${cost_savings/1000000:.1f}M ({alerts_resolved_count} alerts, avg {avg_resolution_minutes:.1f} min)")
-        
         # Calculate equipment utilization
         total_utilization = 0
         equipment_count = 0
@@ -232,22 +201,22 @@ async def get_kpi_statistics():
                 },
                 "mttr": {
                     "label": "Avg Resolution Time",
-                    "value": round(avg_resolution_minutes) if avg_resolution_minutes > 0 else 0,
+                    "value": round(avg_resolution_minutes),
                     "unit": "min",
-                    "trend": "down" if avg_resolution_minutes <= 30 else "up",
-                    "trendValue": abs(round(avg_resolution_minutes - 30)) if avg_resolution_minutes > 0 else 0,
-                    "count": alerts_resolved_count,
+                    "trend": "down",
+                    "trendValue": 0,
+                    "count": 0,
                     "thresholds": {"critical": 60, "warning": 30, "good": 15}
                 },
                 "savings": {
                     "label": "Cost Savings",
-                    "value": round(cost_savings / 1000000, 1) if cost_savings > 0 else 0,
+                    "value": round(cost_savings / 1000000, 1),
                     "unit": "M",
                     "prefix": "$",
-                    "trend": "up" if alerts_resolved_count > 0 else "neutral",
-                    "trendValue": alerts_resolved_count * 100 if alerts_resolved_count > 0 else 0,  # % based on alert count
+                    "trend": "up",
+                    "trendValue": 0,
                     "period": "Last 30 min",
-                    "count": alerts_resolved_count,
+                    "count": 0,
                     "thresholds": {"critical": 0, "warning": 0.5, "good": 1}
                 },
                 "utilization": {

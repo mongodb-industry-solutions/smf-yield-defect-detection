@@ -102,18 +102,28 @@ async def get_equipment_status():
             # Sort by timestamp descending (uses index now)
             {"$sort": {"timestamp": -1}},
 
-            # Group by equipment to get latest reading (stops at first match per equipment)
-            {"$group": {
-                "_id": "$equipment_id",
-                "latest_reading": {"$first": "$$ROOT"}
+            # OPTIMIZED: Project specific fields before grouping (avoids $$ROOT)
+            {"$project": {
+                "equipment_id": 1,
+                "process_step": 1,
+                "timestamp": 1,
+                "metrics": 1
             }},
 
-            # Project the needed fields
+            # Group by equipment to get latest reading
+            {"$group": {
+                "_id": "$equipment_id",
+                "process_step": {"$first": "$process_step"},
+                "last_update": {"$first": "$timestamp"},
+                "current_metrics": {"$first": "$metrics"}
+            }},
+
+            # Project with proper field names
             {"$project": {
                 "equipment_id": "$_id",
-                "process_step": "$latest_reading.process_step",
-                "last_update": "$latest_reading.timestamp",
-                "current_metrics": "$latest_reading.metrics"
+                "process_step": 1,
+                "last_update": 1,
+                "current_metrics": 1
             }}
         ]
 

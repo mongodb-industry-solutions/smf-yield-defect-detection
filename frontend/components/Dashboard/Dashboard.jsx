@@ -32,7 +32,7 @@ const Dashboard = ({ onModeChange }) => {
 
   return (
     <div className={styles.dashboard}>
-      <FabPulseBar />
+      <FabPulseBar dashboardMode={dashboardMode} />
       <div className={styles.dashboardBody}>
         <div className={`${styles.leftPanel} ${isMatrixCollapsed ? styles.leftPanelCollapsed : ''}`}>
           <ProcessHealthMatrix
