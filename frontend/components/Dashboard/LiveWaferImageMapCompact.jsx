@@ -222,12 +222,12 @@ const LiveWaferImageMapCompact = () => {
                   </span>
                 </div>
 
-                <div className={styles.infoItem}>
+                {/* <div className={styles.infoItem}>
                   <span className={styles.label}>Tool:</span>
                   <span className={styles.value}>
                     {currentWafer.process_context?.equipment_used?.[0] || currentWafer.equipment_id || 'N/A'}
                   </span>
-                </div>
+                </div> */}
 
                 <div className={styles.infoItem}>
                   <span className={styles.label}>Time:</span>

@@ -26,7 +26,7 @@ def build_rca_synthesis_prompt(
         monitoring_analysis: Output from monitoring agent
         investigation_synthesis: LLM synthesis from investigation agent
         historical_knowledge: RAG search results from historical_knowledge collection
-        correlation_analysis: Output from CorrelationEngine.analyze_alert()
+        correlation_analysis: Correlation data from alert (if available)
 
     Returns:
         Prompt string for Claude to validate root causes

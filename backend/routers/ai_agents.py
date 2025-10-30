@@ -13,7 +13,6 @@ from multi_agent.prompts.investigation_prompts import build_investigation_synthe
 from multi_agent.prompts.rca_prompts import build_rca_synthesis_prompt
 from multi_agent.prompts.supervisor_prompts import build_supervisor_synthesis_prompt
 from multi_agent.simple_bedrock import call_claude
-from services.correlation_engine import CorrelationEngine
 import json
 import time
 
@@ -738,10 +737,6 @@ async def run_rca_agent(alert_id: str):
         logger.info(f"\n🔗 STEP 3: TOOL 2 - CORRELATION ENGINE ANALYSIS (SKIPPED)")
 
         tool2_start = time.time()
-
-        # # Initialize correlation engine and run analysis
-        # correlation_engine = CorrelationEngine(db)
-        # correlation_analysis = await correlation_engine.analyze_alert(alert_id)
 
         # Mock correlation analysis for now
         correlation_analysis = {

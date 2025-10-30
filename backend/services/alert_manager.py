@@ -166,8 +166,8 @@ class AlertManager:
                 "lot_id": lot_id,
                 "wafer_id": wafer_id,
                 "source_data": source_data,
-                # NOTE: Removed correlation_data and rca_recommendations fields
-                # These are now set directly by CorrelationEngine and RCAGenerator
+                # NOTE: correlation_data and rca_recommendations fields are not generated
+                # (CorrelationEngine and RCAGenerator have been removed from the system)
                 "assigned_to": None,
                 "resolution_notes": None,
                 "estimated_impact": self._calculate_impact(severity, alert_type),

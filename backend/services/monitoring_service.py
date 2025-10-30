@@ -23,8 +23,6 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from services.alert_manager import AlertManager, AlertSeverity, AlertStatus, AlertType
 from services.websocket_manager import WebSocketManager, ConnectionType
 from services.wafer_generator import WaferGenerator
-from services.correlation_engine import CorrelationEngine
-from services.rca_generator import RCAGenerator
 from utils import convert_objectids
 
 # Import centralized threshold configuration
@@ -46,7 +44,6 @@ class MonitoringService:
     Responsibilities:
     - Monitor sensor_events collection for excursions
     - Create alerts based on detection rules
-    - Trigger traditional correlation and RCA analysis
     - Send WebSocket notifications for real-time updates
     """
     
@@ -55,19 +52,15 @@ class MonitoringService:
         alert_manager: AlertManager,
         ws_manager: WebSocketManager,
         wafer_generator: WaferGenerator,
-        correlation_engine: CorrelationEngine,
-        rca_generator: RCAGenerator,
         config: Dict[str, Any]
     ):
         """
         Initialize MonitoringService with required dependencies.
-        
+
         Args:
             alert_manager: AlertManager instance for creating and managing alerts
             ws_manager: WebSocketManager for real-time notifications
             wafer_generator: WaferGenerator for creating wafer defects
-            correlation_engine: CorrelationEngine for alert correlation analysis
-            rca_generator: RCAGenerator for root cause analysis
             config: Configuration dict with keys:
                 - mdb_uri: MongoDB connection URI
                 - mdb_database_name: Database name
@@ -76,14 +69,12 @@ class MonitoringService:
         self.alert_manager = alert_manager
         self.ws_manager = ws_manager
         self.wafer_generator = wafer_generator
-        self.correlation_engine = correlation_engine  # Store instance for reuse
-        self.rca_generator = rca_generator            # Store instance for reuse
-        
+
         # Configuration
         self.mdb_uri = config['mdb_uri']
         self.mdb_database_name = config['mdb_database_name']
         self.use_ai_agents = config['use_ai_agents']
-        
+
         # State management
         self.monitoring_active = False
 
@@ -91,8 +82,6 @@ class MonitoringService:
         self.deduplication_window_seconds = 5  # Skip alerts within 5 seconds
 
         logger.info("✅ MonitoringService initialized")
-        logger.info(f"   🔗 CorrelationEngine: Reusing existing instance (connection pool)")
-        logger.info(f"   🔗 RCAGenerator: Reusing existing instance (connection pool)")
         logger.info(f"   🤖 AI Multi-Agent System: {'ENABLED' if self.use_ai_agents else 'DISABLED'}")
         logger.info(f"   🔒 Alert Deduplication: {self.deduplication_window_seconds}s window (MongoDB-based)")
     
@@ -234,81 +223,6 @@ class MonitoringService:
         else:
             logger.debug("No WebSocket clients to notify")
 
-    # async def run_alert_correlation(self, alert_id: str):
-    #     """
-    #     Run correlation analysis in background for an alert.
-        
-    #     Args:
-    #         alert_id: Alert ID to run correlation analysis for
-    #     """
-    #     try:
-    #         start_time = time.time()
-    #         logger.info(f"🔍 Starting correlation analysis for alert {alert_id}")
-            
-    #         alert = self.alert_manager.get_alert_by_id(alert_id)
-    #         if not alert:
-    #             logger.warning(f"⚠️  Alert {alert_id} not found for correlation")
-    #             return
-
-    #         # Use existing CorrelationEngine instance - NO new connection!
-    #         logger.debug(f"   ♻️  Reusing CorrelationEngine connection pool")
-    #         mongo_id = str(alert["_id"]) if "_id" in alert else alert_id
-    #         correlations = await self.correlation_engine.analyze_alert(mongo_id)
-
-    #         elapsed_ms = (time.time() - start_time) * 1000
-    #         logger.info(f"✅ Correlation analysis completed for alert {alert_id} in {elapsed_ms:.0f}ms")
-    #         logger.debug(f"   📊 Found {len(correlations.get('correlations', {}))} correlation types")
-
-    #         # Notify via WebSocket
-    #         await self.notify_websocket_clients({
-    #             "type": "correlation_complete",
-    #             "alert_id": alert_id,
-    #             "correlations": correlations
-    #         })
-
-    #     except Exception as e:
-    #         logger.error(f"❌ Correlation failed for {alert_id}: {e}", exc_info=True)
-    
-    # async def run_alert_rca(self, alert_id: str, severity: AlertSeverity):
-    #     """
-    #     Run RCA for critical alerts.
-        
-    #     Args:
-    #         alert_id: Alert ID to run RCA analysis for
-    #         severity: Alert severity level
-    #     """
-    #     if severity != AlertSeverity.CRITICAL:
-    #         logger.debug(f"   ⏭️  Skipping RCA for non-critical alert {alert_id} (severity: {severity.value})")
-    #         return
-
-    #     try:
-    #         start_time = time.time()
-    #         logger.info(f"🔍 Starting RCA analysis for critical alert {alert_id}")
-            
-    #         alert = self.alert_manager.get_alert_by_id(alert_id)
-    #         if not alert:
-    #             logger.warning(f"⚠️  Alert {alert_id} not found for RCA")
-    #             return
-
-    #         # Use existing RCAGenerator instance - NO new connection!
-    #         logger.debug(f"   ♻️  Reusing RCAGenerator connection pool")
-    #         mongo_id = str(alert["_id"]) if "_id" in alert else alert_id
-    #         rca_results = await self.rca_generator.generate_rca_hints(mongo_id)
-
-    #         elapsed_ms = (time.time() - start_time) * 1000
-    #         logger.info(f"✅ RCA analysis completed for alert {alert_id} in {elapsed_ms:.0f}ms")
-    #         logger.debug(f"   📋 Generated {len(rca_results.get('recommendations', []))} recommendations")
-
-    #         # Notify via WebSocket
-    #         await self.notify_websocket_clients({
-    #             "type": "rca_complete",
-    #             "alert_id": alert_id,
-    #             "rca": rca_results
-    #         })
-
-    #     except Exception as e:
-    #         logger.error(f"❌ RCA failed for {alert_id}: {e}", exc_info=True)
-    
     async def generate_delayed_wafer_defect(self, excursion_data: Dict[str, Any], delay_seconds: int = 10):
         """
         Generate wafer defect after delay to simulate inspection time.

@@ -17,8 +17,6 @@ from utils import convert_objectids
 
 # Import Phase 2 services
 from services.excursion_detector import ExcursionDetector
-from services.correlation_engine import CorrelationEngine
-from services.rca_generator import RCAGenerator
 from services.alert_manager import AlertManager, AlertSeverity, AlertStatus, AlertType
 from services.websocket_manager import get_websocket_manager, ConnectionType
 from services.wafer_generator import WaferGenerator
@@ -141,8 +139,6 @@ app.add_middleware(
 
 # Initialize Phase 2 services
 excursion_detector = None
-correlation_engine = None
-rca_generator = None
 alert_manager = None
 monitoring_active = False
 monitoring_task = None
@@ -247,19 +243,7 @@ def _initialize_core_services():
         mongodb_uri=MDB_URI,
         database=MDB_DATABASE_NAME
     )
-    
-    logger.info("   🔗 Creating CorrelationEngine (connection pool)...")
-    correlation_eng = CorrelationEngine(
-        mongodb_uri=MDB_URI,
-        database=MDB_DATABASE_NAME
-    )
-    
-    logger.info("   🔍 Creating RCAGenerator (connection pool)...")
-    rca_gen = RCAGenerator(
-        mongodb_uri=MDB_URI,
-        database=MDB_DATABASE_NAME
-    )
-    
+
     logger.info("   🚨 Creating AlertManager...")
     alert_mgr = AlertManager(
         mongodb_uri=MDB_URI,
@@ -275,32 +259,25 @@ def _initialize_core_services():
         s3_bucket_uri=s3_bucket_uri
     )
     
-    logger.info("   📺 Creating MonitoringService with shared service instances...")
+    logger.info("   📺 Creating MonitoringService...")
     monitoring_svc = MonitoringService(
         alert_manager=alert_mgr,
         ws_manager=ws_manager,
         wafer_generator=wafer_gen,
-        correlation_engine=correlation_eng,  # ✅ Passing instance for reuse
-        rca_generator=rca_gen,               # ✅ Passing instance for reuse
         config={
             'mdb_uri': MDB_URI,
             'mdb_database_name': MDB_DATABASE_NAME,
             'use_ai_agents': USE_AI_AGENTS
         }
     )
-    
+
     logger.info("=" * 60)
     logger.info("✅ All core services initialized successfully!")
-    logger.info("   ♻️  Connection reuse enabled for:")
-    logger.info("      - CorrelationEngine → MonitoringService")
-    logger.info("      - RCAGenerator → MonitoringService")
     logger.info("=" * 60)
     
     return {
         'mongodb_client': mongo_client,
         'excursion_detector': excursion_det,
-        'correlation_engine': correlation_eng,
-        'rca_generator': rca_gen,
         'alert_manager': alert_mgr,
         'wafer_generator': wafer_gen,
         'monitoring_service': monitoring_svc
@@ -362,7 +339,6 @@ async def _inject_router_dependencies(services, demo_svc):
         alert_manager=services['alert_manager'],
         convert_func=convert_objectids,
         mongodb_client=services['mongodb_client'],
-        correlation_engine=services['correlation_engine'],
         use_ai_agents=USE_AI_AGENTS,
         db_name=MDB_DATABASE_NAME,
         timeseries_collection=MDB_TIMESERIES_COLLECTION
@@ -458,7 +434,7 @@ async def startup_event():
     """
     Initialize monitoring services on application startup
     """
-    global excursion_detector, correlation_engine, rca_generator, alert_manager
+    global excursion_detector, alert_manager
     global monitoring_active, mongodb_client, demo_service_instance, monitoring_service
     global monitoring_task
 
@@ -471,8 +447,6 @@ async def startup_event():
         # Unpack and assign to global variables
         mongodb_client = services['mongodb_client']
         excursion_detector = services['excursion_detector']
-        correlation_engine = services['correlation_engine']
-        rca_generator = services['rca_generator']
         alert_manager = services['alert_manager']
         monitoring_service = services['monitoring_service']
         
@@ -487,7 +461,7 @@ async def startup_event():
         set_monitoring_tasks(monitoring_task)
 
         logger.info("✅ Monitoring services initialized successfully on startup")
-        logger.info("Services ready: ExcursionDetector, CorrelationEngine, RCAGenerator, AlertManager")
+        logger.info("Services ready: ExcursionDetector, AlertManager, MonitoringService")
         logger.info("✅ Monitoring loop auto-started (sensor events)")
 
         # Step 3: Initialize demo service

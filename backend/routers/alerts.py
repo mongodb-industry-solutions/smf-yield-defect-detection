@@ -19,7 +19,6 @@ router = APIRouter(
 alert_manager_instance = None
 convert_objectids_func = None
 mongodb_client_instance = None
-correlation_engine_instance = None
 use_ai_agents_flag = True
 mdb_database_name = None
 mdb_timeseries_collection = None
@@ -30,29 +29,27 @@ AlertType = None
 AlertStatus = None
 
 
-def set_dependencies(alert_manager, convert_func, mongodb_client=None, correlation_engine=None, use_ai_agents=True, 
+def set_dependencies(alert_manager, convert_func, mongodb_client=None, use_ai_agents=True,
                      db_name=None, timeseries_collection=None):
     """
     Inject dependencies from main.py
-    
+
     Args:
         alert_manager: AlertManager instance for alert operations
         convert_func: Function to convert ObjectIds to strings
         mongodb_client: Optional MongoDB client for direct queries
-        correlation_engine: Optional CorrelationEngine instance
         use_ai_agents: Feature flag for AI multi-agent system
         db_name: MongoDB database name
         timeseries_collection: MongoDB timeseries collection name
     """
     global alert_manager_instance, convert_objectids_func, mongodb_client_instance
-    global correlation_engine_instance, use_ai_agents_flag
+    global use_ai_agents_flag
     global mdb_database_name, mdb_timeseries_collection
     global AlertSeverity, AlertType, AlertStatus
-    
+
     alert_manager_instance = alert_manager
     convert_objectids_func = convert_func
     mongodb_client_instance = mongodb_client
-    correlation_engine_instance = correlation_engine
     use_ai_agents_flag = use_ai_agents
     mdb_database_name = db_name
     mdb_timeseries_collection = timeseries_collection
@@ -453,88 +450,6 @@ async def get_alert_agent_details(alert_id: str):
         raise
     except Exception as e:
         logger.error(f"❌ Error retrieving agent details for alert {alert_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/{alert_id}/correlation")
-async def get_alert_correlation(alert_id: str):
-    """
-    Get correlation analysis for a specific alert
-    """
-    logger.info(f"📥 GET /alerts/{alert_id}/correlation - Fetching correlation analysis")
-    
-    try:
-        logger.debug(f"🔧 Getting correlation analysis for alert: {alert_id}")
-        
-        # Get dependencies
-        alert_manager = get_alert_manager()
-        
-        if not correlation_engine_instance:
-            logger.warning(f"⚠️ Correlation engine not initialized")
-            raise HTTPException(status_code=503, detail="Services not initialized. Start monitoring first.")
-        
-        # Fetch alert
-        alert = alert_manager.get_alert_by_id(alert_id)
-        
-        if not alert:
-            logger.warning(f"⚠️ GET /alerts/{alert_id}/correlation - Alert not found")
-            raise HTTPException(status_code=404, detail="Alert not found")
-        
-        # Perform correlation analysis if not already done (skip if AI agents enabled)
-        if not alert.get("correlation_analysis") and not use_ai_agents_flag:
-            logger.info(f"🔧 Triggering async correlation analysis for alert: {alert_id}")
-            
-            # Import necessary functions
-            import asyncio
-            # Note: run_alert_correlation and run_alert_rca need to be accessible
-            # For now, we'll trigger but note that these functions are in main.py
-            # This is a limitation we'll document
-            
-            logger.warning(f"⚠️ Async correlation analysis triggered but functions are in main.py")
-            # asyncio.create_task(run_alert_correlation(alert_id))
-
-            # Trigger RCA for critical alerts
-            # if alert.get("severity") == "critical":
-            #     asyncio.create_task(run_alert_rca(alert_id, AlertSeverity.CRITICAL))
-
-            return {
-                "alert_id": alert_id,
-                "message": "Analysis triggered. Check back in a few seconds.",
-                "status": "processing"
-            }
-
-        # Convert ObjectIds
-        alert = convert_objectids(alert)
-        
-        logger.debug(f"📊 Preparing correlation response for alert: {alert_id}")
-
-        # Prepare response with backward compatibility
-        response = {
-            "alert_id": alert_id,
-            "correlation_analysis": alert.get("correlation_analysis", {}),
-            "correlation_data": alert.get("correlation_analysis", {}),  # Backward compatibility
-        }
-
-        # Handle RCA fields (could be rca_analysis or rca_hints due to migration)
-        rca_data = alert.get("rca_analysis", alert.get("rca_hints", {}))
-        response["rca_analysis"] = rca_data
-        response["rca_hints"] = rca_data  # Backward compatibility
-
-        # Extract recommendations for backward compatibility
-        if rca_data and "recommendations" in rca_data:
-            response["rca_recommendations"] = rca_data["recommendations"]
-        else:
-            response["rca_recommendations"] = []
-
-        logger.info(f"✅ GET /alerts/{alert_id}/correlation - Success: Retrieved correlation data")
-
-        return response
-        
-    except HTTPException:
-        logger.warning(f"⚠️ GET /alerts/{alert_id}/correlation - HTTPException raised")
-        raise
-    except Exception as e:
-        logger.error(f"❌ Error analyzing correlation for alert {alert_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 
