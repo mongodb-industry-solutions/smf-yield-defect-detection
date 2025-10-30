@@ -651,25 +651,25 @@ async def inject_excursion(request: Dict[str, Any] = Body(...)):
             metrics["temperature"] = request.get("temperature", baseline_temp + random.uniform(6, 10))
             logger.info(f"   🌡️  Temperature set to: {metrics['temperature']:.1f}°C (baseline: {baseline_temp}°C)")
 
-        # # Check if explicit particle_count override provided (DISCOURAGED - bypasses physics)
-        # if "particle_count" in request:
-        #     logger.warning(
-        #         f"⚠️  MANUAL PARTICLE COUNT OVERRIDE: {request['particle_count']} - "
-        #         f"Bypassing physics-based calculation (use for testing only)"
-        #     )
-        #     metrics["particle_count"] = request["particle_count"]
-        # else:
-        #     # CALCULATE particle count from root cause (RECOMMENDED - physics-based)
-        #     metrics["particle_count"] = service.calculate_particle_count_from_root_cause(
-        #         equipment_type=equipment_type,
-        #         root_cause=f"{excursion_type}_drift",
-        #         root_cause_value=metrics["temperature"] if excursion_type == "temperature" else metrics["rf_power"],
-        #         baseline_particle_count=baseline_particle_count
-        #     )
-        #     logger.info(
-        #         f"   ✅ Physics calculation: {excursion_type} → particle_count={metrics['particle_count']} "
-        #         f"(baseline: {baseline_particle_count})"
-        #     )
+        # Check if explicit particle_count override provided (DISCOURAGED - bypasses physics)
+        if "particle_count" in request:
+            logger.warning(
+                f"⚠️  MANUAL PARTICLE COUNT OVERRIDE: {request['particle_count']} - "
+                f"Bypassing physics-based calculation (use for testing only)"
+            )
+            metrics["particle_count"] = request["particle_count"]
+        else:
+            # CALCULATE particle count from root cause (RECOMMENDED - physics-based)
+            metrics["particle_count"] = service.calculate_particle_count_from_root_cause(
+                equipment_type=equipment_type,
+                root_cause=f"{excursion_type}_drift",
+                root_cause_value=metrics["temperature"] if excursion_type == "temperature" else metrics["rf_power"],
+                baseline_particle_count=baseline_particle_count
+            )
+            logger.info(
+                f"   ✅ Physics calculation: {excursion_type} → particle_count={metrics['particle_count']} "
+                f"(baseline: {baseline_particle_count})"
+            )
 
         # Override any other specific metrics provided
         for key in ["chamber_pressure", "flow_rate"]:
