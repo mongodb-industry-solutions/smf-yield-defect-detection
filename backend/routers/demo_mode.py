@@ -715,10 +715,10 @@ async def inject_excursion(request: Dict[str, Any] = Body(...)):
                 # === STEP 3: Resume demo mode if it was active and auto_resume is enabled ===
                 demo_resume_status = None
                 if demo_was_active and auto_resume:
-                    # Wait for alert creation to complete (~4 seconds for monitoring + AI agent)
-                    logger.info("⏳ Waiting 4 seconds for alert creation before resuming demo mode...")
-                    await asyncio.sleep(4)
-                    
+                    # Brief pause for log ordering (alert creation happens asynchronously via change stream)
+                    logger.info("✅ Excursion injected - alert will be created asynchronously")
+                    await asyncio.sleep(0.1)
+
                     logger.info("▶️  Resuming demo mode...")
                     resume_result = await service.start_demo_mode(mode="charts")
                     demo_resume_status = resume_result["status"]
@@ -740,7 +740,7 @@ async def inject_excursion(request: Dict[str, Any] = Body(...)):
                         "auto_resumed": demo_was_active and auto_resume,
                         "resume_status": demo_resume_status
                     },
-                    "note": "Alert will be created within 3 seconds, wafer will be generated after 10 seconds"
+                    "note": "Alert creation and wafer generation are processing asynchronously. Check via WebSocket or API for updates."
                 }
             else:
                 logger.error(f"❌ Failed to write excursion data: {result.get('errors', [])}")
