@@ -12,6 +12,8 @@ venv.bak/
 brainstorm-ideas/
 backend/by_claude
 migration_scripts/
+backend/data_generation/old_Data
+backend/data_generation/equipment_wafer_defects
 test_*
 fix_*
 check_*
