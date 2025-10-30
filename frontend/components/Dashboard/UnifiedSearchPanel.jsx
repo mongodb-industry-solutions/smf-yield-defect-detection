@@ -15,7 +15,7 @@ import styles from './UnifiedSearchPanel.module.css';
 const UnifiedSearchPanel = () => {
   // Search state
   const [query, setQuery] = useState('');
-  const [searchScope, setSearchScope] = useState('all'); // 'all', 'wafers', 'process', 'knowledge'
+  const [searchScope, setSearchScope] = useState('all'); // 'all', 'wafers', 'knowledge'
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState(null);
 
@@ -26,7 +26,7 @@ const UnifiedSearchPanel = () => {
 
   // Results state
   const [results, setResults] = useState(null);
-  const [activeTab, setActiveTab] = useState('wafers'); // 'wafers', 'process', 'knowledge'
+  const [activeTab, setActiveTab] = useState('wafers'); // 'wafers', 'knowledge'
   const [selectedResult, setSelectedResult] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
 
@@ -58,8 +58,6 @@ const UnifiedSearchPanel = () => {
           equipmentFilter || null,
           limit
         );
-      } else if (searchScope === 'process') {
-        searchResults = await searchAPI.searchProcessContext(query, null, limit);
       } else if (searchScope === 'knowledge') {
         searchResults = await searchAPI.searchKnowledge(query, null, limit);
       }
@@ -87,7 +85,6 @@ const UnifiedSearchPanel = () => {
     if (searchScope === 'all') {
       // Unified search results
       if (tab === 'wafers') return results.wafer_results || [];
-      if (tab === 'process') return results.process_context_results || [];
       if (tab === 'knowledge') return results.knowledge_results || [];
     } else {
       // Single collection search
@@ -98,19 +95,17 @@ const UnifiedSearchPanel = () => {
 
   // Get result counts
   const getResultCounts = () => {
-    if (!results) return { wafers: 0, process: 0, knowledge: 0 };
+    if (!results) return { wafers: 0, knowledge: 0 };
 
     if (searchScope === 'all') {
       return {
         wafers: results.wafer_results?.length || 0,
-        process: results.process_context_results?.length || 0,
         knowledge: results.knowledge_results?.length || 0
       };
     } else {
       const count = results.results?.length || 0;
       return {
         wafers: searchScope === 'wafers' ? count : 0,
-        process: searchScope === 'process' ? count : 0,
         knowledge: searchScope === 'knowledge' ? count : 0
       };
     }
@@ -122,14 +117,14 @@ const UnifiedSearchPanel = () => {
     <div className={styles.container}>
       <Card className={styles.searchCard}>
         <div className={styles.header}>
-          <H3>🔍 Unified Database Search</H3>
+          <H3><Icon glyph="MagnifyingGlass" /> Unified Database Search</H3>
         </div>
 
         {/* Search Input */}
         <div className={styles.searchInputRow}>
           <TextInput
             className={styles.searchInput}
-            placeholder="Search for wafers, defects, process context, or knowledge..."
+            placeholder="Search for wafers, defects, or knowledge..."
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
@@ -166,15 +161,6 @@ const UnifiedSearchPanel = () => {
                 onChange={(e) => setSearchScope(e.target.value)}
               />
               <span>Wafers Only</span>
-            </label>
-            <label className={`${styles.scopeLabel} ${searchScope === 'process' ? styles.active : ''}`}>
-              <input
-                type="radio"
-                value="process"
-                checked={searchScope === 'process'}
-                onChange={(e) => setSearchScope(e.target.value)}
-              />
-              <span>Process Context</span>
             </label>
             <label className={`${styles.scopeLabel} ${searchScope === 'knowledge' ? styles.active : ''}`}>
               <input
@@ -240,27 +226,21 @@ const UnifiedSearchPanel = () => {
       {results && (
         <Card className={styles.resultsCard}>
           <div className={styles.resultsHeader}>
-            <H3>📊 Search Results</H3>
+            <H3><Icon glyph="Charts" /> Search Results</H3>
             <Description>
-              Found {counts.wafers + counts.process + counts.knowledge} results
+              Found {counts.wafers + counts.knowledge} results
               {results.summary?.execution_time_ms && ` in ${(results.summary.execution_time_ms / 1000).toFixed(2)}s`}
             </Description>
           </div>
 
           {/* Results Tabs */}
-          {(searchScope === 'all' || counts.wafers + counts.process + counts.knowledge > 0) && (
+          {(searchScope === 'all' || counts.wafers + counts.knowledge > 0) && (
             <div className={styles.tabs}>
               <button
                 className={`${styles.tab} ${activeTab === 'wafers' ? styles.activeTab : ''}`}
                 onClick={() => setActiveTab('wafers')}
               >
                 Wafers ({counts.wafers})
-              </button>
-              <button
-                className={`${styles.tab} ${activeTab === 'process' ? styles.activeTab : ''}`}
-                onClick={() => setActiveTab('process')}
-              >
-                Process Context ({counts.process})
               </button>
               <button
                 className={`${styles.tab} ${activeTab === 'knowledge' ? styles.activeTab : ''}`}
@@ -277,12 +257,6 @@ const UnifiedSearchPanel = () => {
               <WaferResults
                 results={getTabResults('wafers')}
                 onResultClick={(r) => handleResultClick(r, 'wafer')}
-              />
-            )}
-            {activeTab === 'process' && (
-              <ProcessResults
-                results={getTabResults('process')}
-                onResultClick={(r) => handleResultClick(r, 'process')}
               />
             )}
             {activeTab === 'knowledge' && (
@@ -364,68 +338,6 @@ const WaferResults = ({ results, onResultClick }) => {
   );
 };
 
-// Process Context Results Component
-const ProcessResults = ({ results, onResultClick }) => {
-  if (!results || results.length === 0) {
-    return <div className={styles.emptyState}>No process context results found</div>;
-  }
-
-  return (
-    <div className={styles.resultsGrid}>
-      {results.map((item, idx) => (
-        <Card key={idx} className={styles.resultCard}>
-          <div className={styles.resultHeader}>
-            <Body weight="medium">
-              {item.context_type === 'slurry_batch' && '🧪 '}
-              {item.context_type === 'etch_recipe' && '🔧 '}
-              {item.context_type === 'reticle' && '📐 '}
-              {item.context_id}
-            </Body>
-            <Badge variant={item.is_problematic ? 'red' : 'green'}>
-              {item.score?.toFixed(2) || 'N/A'}
-            </Badge>
-          </div>
-
-          <div className={styles.resultBody}>
-            <Badge variant="lightgray">{item.context_type}</Badge>
-            {item.is_problematic && (
-              <Badge variant="red">PROBLEMATIC</Badge>
-            )}
-
-            {item.manufacturer && (
-              <Description>Manufacturer: {item.manufacturer}</Description>
-            )}
-            {item.composition && (
-              <Description>Composition: {item.composition}</Description>
-            )}
-            {item.process_type && (
-              <Description>Process: {item.process_type}</Description>
-            )}
-            {item.known_issues && item.known_issues.length > 0 && (
-              <Description className={styles.warning}>
-                ⚠️ {item.known_issues[0].description}
-              </Description>
-            )}
-          </div>
-
-          <div className={styles.resultActions}>
-            <Button size="small" onClick={() => onResultClick(item)}>
-              View Details
-            </Button>
-            <Button
-              size="small"
-              variant="default"
-              onClick={() => navigator.clipboard.writeText(item.context_id)}
-            >
-              Copy ID
-            </Button>
-          </div>
-        </Card>
-      ))}
-    </div>
-  );
-};
-
 // Knowledge Base Results Component
 const KnowledgeResults = ({ results, onResultClick }) => {
   if (!results || results.length === 0) {
@@ -438,15 +350,15 @@ const KnowledgeResults = ({ results, onResultClick }) => {
         <Card key={idx} className={styles.resultCard}>
           <div className={styles.resultHeader}>
             <Body weight="medium">
-              {doc.document_type === 'rca_report' ? '📋 ' : '📘 '}
+              <Icon glyph={doc.document_type === 'RCA Reports' ? 'Folder' : 'University'} size="small" />{' '}
               {doc.title}
             </Body>
             <Badge variant="blue">{doc.score?.toFixed(2) || 'N/A'}</Badge>
           </div>
 
           <div className={styles.resultBody}>
-            <Badge variant={doc.document_type === 'rca_report' ? 'yellow' : 'blue'}>
-              {doc.document_type === 'rca_report' ? 'RCA Report' : 'Troubleshooting Guide'}
+            <Badge variant={doc.document_type === 'RCA Reports' ? 'yellow' : 'blue'}>
+              {doc.document_type}
             </Badge>
 
             {doc.process_area && (
@@ -474,7 +386,7 @@ const KnowledgeResults = ({ results, onResultClick }) => {
 
           <div className={styles.resultActions}>
             <Button size="small" onClick={() => onResultClick(doc)}>
-              View Full {doc.document_type === 'rca_report' ? 'Report' : 'Guide'}
+              View Details
             </Button>
             <Button
               size="small"

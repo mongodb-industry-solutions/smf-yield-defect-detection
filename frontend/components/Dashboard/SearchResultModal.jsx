@@ -20,7 +20,6 @@ const SearchResultModal = ({ result, open, onClose }) => {
     >
       <div className={styles.modalContent}>
         {collectionType === 'wafer' && <WaferDetails result={result} />}
-        {collectionType === 'process' && <ProcessDetails result={result} />}
         {collectionType === 'knowledge' && <KnowledgeDetails result={result} />}
 
         <div className={styles.modalFooter}>
@@ -169,110 +168,6 @@ const WaferDetails = ({ result }) => {
         </div>
       )}
 
-      {result.process_context && Object.keys(result.process_context).length > 0 && (
-        <div className={styles.section}>
-          <H3>Process Context</H3>
-          <div className={styles.infoGrid}>
-            {Object.entries(result.process_context).map(([key, value]) => (
-              <div key={key} className={styles.infoItem}>
-                <Body weight="medium">{key.replace(/_/g, ' ')}:</Body>
-                <Body>{String(value)}</Body>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Process Context Details Component
-const ProcessDetails = ({ result }) => {
-  return (
-    <div className={styles.detailsContainer}>
-      <div className={styles.header}>
-        <H2>{result.context_id}</H2>
-        <div className={styles.badges}>
-          <Badge variant="lightgray">{result.context_type}</Badge>
-          {result.is_problematic && <Badge variant="red">PROBLEMATIC</Badge>}
-        </div>
-      </div>
-
-      <div className={styles.section}>
-        <H3>Basic Information</H3>
-        <div className={styles.infoGrid}>
-          <div className={styles.infoItem}>
-            <Body weight="medium">Context ID:</Body>
-            <Body>{result.context_id}</Body>
-          </div>
-          <div className={styles.infoItem}>
-            <Body weight="medium">Context Type:</Body>
-            <Body>{result.context_type}</Body>
-          </div>
-          <div className={styles.infoItem}>
-            <Body weight="medium">Search Score:</Body>
-            <Body>{result.score?.toFixed(4)}</Body>
-          </div>
-          {result.manufacturer && (
-            <div className={styles.infoItem}>
-              <Body weight="medium">Manufacturer:</Body>
-              <Body>{result.manufacturer}</Body>
-            </div>
-          )}
-          {result.composition && (
-            <div className={styles.infoItem}>
-              <Body weight="medium">Composition:</Body>
-              <Body>{result.composition}</Body>
-            </div>
-          )}
-          {result.process_type && (
-            <div className={styles.infoItem}>
-              <Body weight="medium">Process Type:</Body>
-              <Body>{result.process_type}</Body>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {result.slurry_details && (
-        <div className={styles.section}>
-          <H3>Slurry Details</H3>
-          <div className={styles.jsonView}>
-            <pre>{JSON.stringify(result.slurry_details, null, 2)}</pre>
-          </div>
-        </div>
-      )}
-
-      {result.recipe_details && (
-        <div className={styles.section}>
-          <H3>Recipe Details</H3>
-          <div className={styles.jsonView}>
-            <pre>{JSON.stringify(result.recipe_details, null, 2)}</pre>
-          </div>
-        </div>
-      )}
-
-      {result.reticle_details && (
-        <div className={styles.section}>
-          <H3>Reticle Details</H3>
-          <div className={styles.jsonView}>
-            <pre>{JSON.stringify(result.reticle_details, null, 2)}</pre>
-          </div>
-        </div>
-      )}
-
-      {result.known_issues && result.known_issues.length > 0 && (
-        <div className={styles.section}>
-          <H3>Known Issues</H3>
-          {result.known_issues.map((issue, idx) => (
-            <div key={idx} className={styles.issueCard}>
-              <Badge variant="red">{issue.severity}</Badge>
-              <Body>{issue.description}</Body>
-              <Description>Date: {issue.date}</Description>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 };
@@ -283,8 +178,8 @@ const KnowledgeDetails = ({ result }) => {
     <div className={styles.detailsContainer}>
       <div className={styles.header}>
         <H2>{result.title}</H2>
-        <Badge variant={result.document_type === 'rca_report' ? 'yellow' : 'blue'}>
-          {result.document_type === 'rca_report' ? 'RCA Report' : 'Troubleshooting Guide'}
+        <Badge variant={result.document_type === 'RCA Reports' ? 'yellow' : 'blue'}>
+          {result.document_type}
         </Badge>
       </div>
 

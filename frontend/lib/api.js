@@ -237,7 +237,7 @@ export const kpiAPI = {
 export const searchAPI = {
   // ========== UNIFIED SEARCH APIs ==========
 
-  // Unified search across all collections (wafers, process_context, knowledge)
+  // Unified search across all collections (wafers, knowledge)
   searchAll: async (query, limitPerCollection = 5) => {
     return fetchAPI('/search/unified', {
       method: 'POST',
@@ -254,19 +254,6 @@ export const searchAPI = {
     if (equipmentId) payload.equipment_id = equipmentId;
 
     return fetchAPI('/search/wafers', {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    });
-  },
-
-  // Search process context only
-  searchProcessContext: async (query, contextTypes = null, limit = 10) => {
-    const payload = { query, limit };
-    if (contextTypes && contextTypes.length > 0) {
-      payload.context_types = contextTypes;
-    }
-
-    return fetchAPI('/search/process-context', {
       method: 'POST',
       body: JSON.stringify(payload)
     });
