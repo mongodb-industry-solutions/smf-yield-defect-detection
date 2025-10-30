@@ -1,19 +1,12 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import Card from '@leafygreen-ui/card';
-import Badge from '@leafygreen-ui/badge';
-import Icon from '@leafygreen-ui/icon';
+import React, { useState } from 'react';
 import FabPulseBar from './FabPulseBar';
 import ProcessHealthMatrix from './ProcessHealthMatrix';
 import AlertsPanel from './AlertsPanel';
 import DemoControlPanel from './DemoControlPanel';
 import DashboardModeToggle from './DashboardModeToggle';
 import UnifiedSearchPanel from './UnifiedSearchPanel';
-import AgenticWorkflowView from './AgenticWorkflowView';
-import AgentWorkflowBar from './AgentWorkflowBar';
-import AgentDetailPanel from './AgentDetailPanel';
-import AgentErrorBoundary from './AgentErrorBoundary';
 import LiveParticleMonitor from './LiveParticleMonitor';
 import LiveTemperatureMonitor from './LiveTemperatureMonitor';
 import LiveRFPowerMonitor from './LiveRFPowerMonitor';
@@ -21,21 +14,11 @@ import LiveWaferImageMapCompact from './LiveWaferImageMapCompact';
 import EquipmentMetricsChart from './EquipmentMetricsChart';
 import MongoDBOperationsConsole from './MongoDBOperationsConsole';
 import { useDashboardData } from '@/contexts/DashboardDataProvider';
-import { aiAgentAPI, alertAPI } from '@/lib/api';
 import styles from './Dashboard.module.css';
-
-// Agent-Collection mapping
-const AGENT_COLLECTION_MAP = {
-  1: ['process_sensor_ts'], // Monitoring Agent
-  2: ['wafer_defects', 'process_context', 'alerts'], // Investigation Agent
-  3: ['historical_knowledge'], // RCA Agent
-  4: ['wafer_defects', 'historical_knowledge', 'process_context'] // Supervisor Agent
-};
 
 const Dashboard = ({ onModeChange }) => {
   const { refresh } = useDashboardData();
-  const [dashboardMode, setDashboardMode] = useState('normal'); // 'normal' or 'agentic'
-  const [aiEnabled, setAiEnabled] = useState(true);
+  const [dashboardMode, setDashboardMode] = useState('normal'); // 'normal' or 'search'
 
   // Propagate mode changes to parent
   const handleModeChange = (newMode) => {
@@ -46,51 +29,6 @@ const Dashboard = ({ onModeChange }) => {
   };
   const [isMatrixCollapsed, setIsMatrixCollapsed] = useState(false);
   const [isAlertsCollapsed, setIsAlertsCollapsed] = useState(false);
-
-  // Auto-collapse panels when switching to Agentic AI mode
-  useEffect(() => {
-    if (dashboardMode === 'agentic') {
-      setIsMatrixCollapsed(true);
-      setIsAlertsCollapsed(true);
-    } else {
-      setIsMatrixCollapsed(false);
-      setIsAlertsCollapsed(false);
-    }
-  }, [dashboardMode]);
-  const [selectedAgent, setSelectedAgent] = useState(null);
-  const [clickedCollection, setClickedCollection] = useState(null);
-  const [selectedAlertId, setSelectedAlertId] = useState(null); // Global alert selection
-
-  // Handler for when AI analysis completes and creates an alert
-  const handleAnalysisComplete = (alertId) => {
-    console.log('📋 Analysis complete, setting alert ID:', alertId);
-    setSelectedAlertId(alertId);
-    // Auto-select agent 1 (Monitoring Agent) to show analysis immediately
-    setSelectedAgent(1);
-  };
-
-  // Find agents that use a specific collection
-  const getAgentsUsingCollection = (collectionName) => {
-    return Object.entries(AGENT_COLLECTION_MAP)
-      .filter(([agent, collections]) => collections.includes(collectionName))
-      .map(([agent]) => parseInt(agent));
-  };
-
-  // Fetch AI agent status on mount and poll periodically
-  useEffect(() => {
-    const fetchAIStatus = async () => {
-      try {
-        const data = await aiAgentAPI.getStatus();
-        setAiEnabled(data.enabled);
-      } catch (err) {
-        console.error('Error fetching AI status:', err);
-      }
-    };
-
-    fetchAIStatus();
-    const interval = setInterval(fetchAIStatus, 5000); // Poll every 5 seconds
-    return () => clearInterval(interval);
-  }, []);
 
   return (
     <div className={styles.dashboard}>
@@ -113,7 +51,6 @@ const Dashboard = ({ onModeChange }) => {
           {dashboardMode !== 'search' && (
             <DemoControlPanel
               dashboardMode={dashboardMode}
-              onAnalysisComplete={handleAnalysisComplete}
             />
           )}
 
@@ -123,7 +60,7 @@ const Dashboard = ({ onModeChange }) => {
               {/* Search Mode: Unified Search Panel */}
               <UnifiedSearchPanel />
             </>
-          ) : dashboardMode === 'normal' ? (
+          ) : (
             <>
               {/* Normal Mode: 5 Charts */}
               <div className={styles.chartsRowThree}>
@@ -137,41 +74,9 @@ const Dashboard = ({ onModeChange }) => {
                 <EquipmentMetricsChart />
               </div>
             </>
-          ) : (
-            <>
-              {/* Agentic Data Layer - MongoDB Collections */}
-              <AgenticWorkflowView
-                highlightedCollections={selectedAgent ? AGENT_COLLECTION_MAP[selectedAgent] : []}
-                onCollectionClick={setClickedCollection}
-              />
-
-              {clickedCollection && (
-                <Card className={styles.collectionInfo}>
-                  <Icon glyph="InfoWithCircle" size="small" />
-                  <Badge variant="blue">
-                    Used by Agents: {getAgentsUsingCollection(clickedCollection).join(', ')}
-                  </Badge>
-                </Card>
-              )}
-
-              {/* Agentic Mode: AI Workflow Pipeline */}
-              <AgentWorkflowBar
-                selectedAgent={selectedAgent}
-                onAgentSelect={setSelectedAgent}
-                selectedAlertId={selectedAlertId}
-              />
-
-              {/* Agent Detail Panel */}
-              <AgentErrorBoundary>
-                <AgentDetailPanel
-                  selectedAgent={selectedAgent}
-                  selectedAlertId={selectedAlertId}
-                />
-              </AgentErrorBoundary>
-            </>
           )}
 
-          {/* MongoDB Operations Console - Bottom of centerPanel (hide in search & agentic modes) */}
+          {/* MongoDB Operations Console - Bottom of centerPanel (hide in search mode) */}
           {dashboardMode === 'normal' && (
             <MongoDBOperationsConsole
               maxEvents={20}
@@ -184,7 +89,6 @@ const Dashboard = ({ onModeChange }) => {
         <div className={`${styles.rightPanel} ${isAlertsCollapsed ? styles.rightPanelCollapsed : ''}`}>
           <AlertsPanel
             dashboardMode={dashboardMode}
-            aiEnabled={aiEnabled}
             isCollapsed={isAlertsCollapsed}
             onToggle={() => setIsAlertsCollapsed(!isAlertsCollapsed)}
           />

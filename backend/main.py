@@ -23,17 +23,11 @@ from services.wafer_generator import WaferGenerator
 from services.sensor_data_writer import SensorDataWriter
 from services.monitoring_service import MonitoringService
 
-# Import Multi-Agent System (Phase 3)
-from multi_agent import create_initial_state
-from multi_agent.workers import monitoring_agent_tool, investigation_agent_tool, rca_agent_tool
-from multi_agent.supervisor import supervisor_synthesis_agent
-
 # Import routers
 from routers import demo_mode as demo_mode_router
 from routers import collections as collections_router
 from routers import alerts as alerts_router
 from routers import wafers as wafers_router
-from routers import ai_agents as ai_agents_router
 from routers import monitoring as monitoring_router
 from routers import sensors as sensors_router
 from routers import equipment as equipment_router
@@ -88,10 +82,6 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
-
-# Feature flag for AI multi-agent system
-USE_AI_AGENTS = os.getenv("USE_AI_AGENTS", "true").lower() == "true"
-logger.info(f"🤖 AI Multi-Agent System: {'ENABLED' if USE_AI_AGENTS else 'DISABLED'}")
 
 # ============================================================================
 # Demo Mode Functions - MOVED TO services/demo_mode_service.py
@@ -176,10 +166,6 @@ logger.info("✅ Alerts router included")
 app.include_router(wafers_router.router)
 logger.info("✅ Wafers router included")
 
-# Include AI agents router
-app.include_router(ai_agents_router.router)
-logger.info("✅ AI agents router included")
-
 # Include monitoring router
 app.include_router(monitoring_router.router)
 logger.info("✅ Monitoring router included")
@@ -261,8 +247,7 @@ def _initialize_core_services():
         wafer_generator=wafer_gen,
         config={
             'mdb_uri': MDB_URI,
-            'mdb_database_name': MDB_DATABASE_NAME,
-            'use_ai_agents': USE_AI_AGENTS
+            'mdb_database_name': MDB_DATABASE_NAME
         }
     )
 
@@ -334,7 +319,6 @@ async def _inject_router_dependencies(services, demo_svc):
         alert_manager=services['alert_manager'],
         convert_func=convert_objectids,
         mongodb_client=services['mongodb_client'],
-        use_ai_agents=USE_AI_AGENTS,
         db_name=MDB_DATABASE_NAME,
         timeseries_collection=MDB_TIMESERIES_COLLECTION
     )
@@ -349,14 +333,9 @@ async def _inject_router_dependencies(services, demo_svc):
         excursion_detector=services['excursion_detector'],
         demo_service=demo_svc,
         uri=MDB_URI,
-        db_name=MDB_DATABASE_NAME,
-        use_ai_agents=USE_AI_AGENTS
+        db_name=MDB_DATABASE_NAME
     )
     logger.info("✅ Wafers dependencies injected into router")
-    
-    # Inject dependencies into AI agents router (controls auto-excursions)
-    ai_agents_router.set_dependencies(enable_auto_excursions=USE_AI_AGENTS)
-    logger.info("✅ Auto-excursion dependencies injected into router")
     
     # Inject dependencies into monitoring router
     monitoring_router.set_dependencies(

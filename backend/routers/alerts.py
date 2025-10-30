@@ -19,7 +19,6 @@ router = APIRouter(
 alert_manager_instance = None
 convert_objectids_func = None
 mongodb_client_instance = None
-use_ai_agents_flag = True
 mdb_database_name = None
 mdb_timeseries_collection = None
 
@@ -29,7 +28,7 @@ AlertType = None
 AlertStatus = None
 
 
-def set_dependencies(alert_manager, convert_func, mongodb_client=None, use_ai_agents=True,
+def set_dependencies(alert_manager, convert_func, mongodb_client=None,
                      db_name=None, timeseries_collection=None):
     """
     Inject dependencies from main.py
@@ -38,19 +37,16 @@ def set_dependencies(alert_manager, convert_func, mongodb_client=None, use_ai_ag
         alert_manager: AlertManager instance for alert operations
         convert_func: Function to convert ObjectIds to strings
         mongodb_client: Optional MongoDB client for direct queries
-        use_ai_agents: Feature flag for AI multi-agent system
         db_name: MongoDB database name
         timeseries_collection: MongoDB timeseries collection name
     """
     global alert_manager_instance, convert_objectids_func, mongodb_client_instance
-    global use_ai_agents_flag
     global mdb_database_name, mdb_timeseries_collection
     global AlertSeverity, AlertType, AlertStatus
 
     alert_manager_instance = alert_manager
     convert_objectids_func = convert_func
     mongodb_client_instance = mongodb_client
-    use_ai_agents_flag = use_ai_agents
     mdb_database_name = db_name
     mdb_timeseries_collection = timeseries_collection
     

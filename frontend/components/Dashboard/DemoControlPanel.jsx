@@ -3,9 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Card from '@leafygreen-ui/card';
 import Button from '@leafygreen-ui/button';
-import Toggle from '@leafygreen-ui/toggle';
-import { Select, Option } from '@leafygreen-ui/select';
-import { demoAPI, aiAgentAPI, alertAPI } from '@/lib/api';
+import { demoAPI } from '@/lib/api';
 import styles from './DemoControlPanel.module.css';
 
 // Equipment-specific excursion thresholds (aligned with backend config/thresholds.py)
@@ -36,30 +34,6 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(null);
 
-  // Lot processing progress tracking
-  const [lotProgress, setLotProgress] = useState(null);
-  const [progressInterval, setProgressInterval] = useState(null);
-
-  // Agentic AI Mode State (for 'agentic' mode)
-  const [selectedScenario, setSelectedScenario] = useState('gradual_drift');
-  const [pipelineRunning, setPipelineRunning] = useState(false);
-  const [currentAgent, setCurrentAgent] = useState(null); // 1, 2, 3, or 4
-  const [progressPercent, setProgressPercent] = useState(0);
-  const [alertId, setAlertId] = useState(null);
-  const [analysisComplete, setAnalysisComplete] = useState(false);
-  const [pipelineError, setPipelineError] = useState(null);
-
-  // Previously Analyzed Alerts State
-  const [analyzedAlerts, setAnalyzedAlerts] = useState([]);
-  const [selectedAlertId, setSelectedAlertId] = useState('');
-  const [loadingAnalyzedAlerts, setLoadingAnalyzedAlerts] = useState(false);
-  const [loadingAlertData, setLoadingAlertData] = useState(false);
-
-  // Lot Processing Alerts State (for selecting existing alerts to analyze)
-  const [lotAlerts, setLotAlerts] = useState([]);
-  const [selectedLotAlertId, setSelectedLotAlertId] = useState('');
-  const [loadingLotAlerts, setLoadingLotAlerts] = useState(false);
-
   // Helper function: Get threshold info for current equipment and excursion type
   const getCurrentThresholdInfo = () => {
     const equipmentType = excursionForm.equipment_id.split('_')[0]; // CMP, ETCH, LITHO
@@ -78,87 +52,9 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     }
   };
 
-  // Fetch previously analyzed alerts
-  const fetchAnalyzedAlerts = async () => {
-    setLoadingAnalyzedAlerts(true);
-    try {
-      const data = await alertAPI.getAnalyzedAlerts(50);
-      setAnalyzedAlerts(data.alerts || []);
-      console.log('📊 Loaded analyzed alerts:', data.alerts?.length);
-    } catch (err) {
-      console.error('Error fetching analyzed alerts:', err);
-    } finally {
-      setLoadingAnalyzedAlerts(false);
-    }
-  };
-
-  // Fetch lot processing alerts (for reusing in agentic AI mode)
-  const fetchLotAlerts = async () => {
-    setLoadingLotAlerts(true);
-    try {
-      // Fetch recent alerts
-      const data = await alertAPI.getAll(50);
-
-      // Filter for lot processing alerts (have scenario_id and is_lot_processing_scenario)
-      const filtered = (data.alerts || []).filter(alert => {
-        const sourceData = alert.source_data || {};
-        return sourceData.scenario_id && sourceData.is_lot_processing_scenario === true;
-      });
-
-      setLotAlerts(filtered);
-      console.log('📦 Loaded lot processing alerts:', filtered.length);
-    } catch (err) {
-      console.error('Error fetching lot alerts:', err);
-      setLotAlerts([]);
-    } finally {
-      setLoadingLotAlerts(false);
-    }
-  };
-
-  // Handle alert selection and load its data
-  const handleAlertSelection = async (alertId) => {
-    if (!alertId) {
-      setSelectedAlertId('');
-      setAlertId(null);
-      setAnalysisComplete(false);
-      return;
-    }
-
-    setSelectedAlertId(alertId);
-    setLoadingAlertData(true);
-    setPipelineError(null);
-
-    try {
-      console.log('📥 Loading alert data for:', alertId);
-
-      // Fetch alert details to get agent analysis
-      const agentDetails = await alertAPI.getAgentDetails(alertId);
-      console.log('📊 Agent details loaded:', agentDetails);
-
-      // Set alert ID and mark analysis as complete
-      setAlertId(alertId);
-      setAnalysisComplete(true);
-      setCurrentAgent(null);
-      setProgressPercent(100);
-
-      // Notify parent component that analysis data is loaded
-      if (onAnalysisComplete) {
-        onAnalysisComplete(alertId);
-      }
-
-      console.log('✅ Alert analysis loaded successfully');
-    } catch (err) {
-      console.error('❌ Error loading alert data:', err);
-      setPipelineError('Failed to load alert analysis data');
-    } finally {
-      setLoadingAlertData(false);
-    }
-  };
-
   // Fetch status on mount (no polling needed)
   useEffect(() => {
     fetchStatus(); // Initial fetch
-    fetchAnalyzedAlerts(); // Fetch previously analyzed alerts
 
     // Poll demo status every 5 seconds to detect auto-stop
     const statusPollInterval = setInterval(() => {
@@ -167,19 +63,9 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
 
     // Cleanup on unmount
     return () => {
-      if (progressInterval) {
-        clearInterval(progressInterval);
-      }
       clearInterval(statusPollInterval);
     };
   }, []);
-
-  // Fetch lot processing alerts when in agentic mode
-  useEffect(() => {
-    if (dashboardMode === 'agentic') {
-      fetchLotAlerts();
-    }
-  }, [dashboardMode]);
 
   // Handle Start/Stop toggle
   const handleToggle = async () => {
@@ -329,232 +215,7 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     }
   };
 
-  // Handle AI Agent Pipeline Execution using LangGraph
-  const handleRunAnalysis = async () => {
-    setPipelineRunning(true);
-    setPipelineError(null);
-    setAnalysisComplete(false);
-    setProgressPercent(0);
-    setCurrentAgent(1);
-    setAlertId(null);
-
-    try {
-      let newAlertId = null;
-      let response = null;
-
-      // Simulate progress updates for better UX
-      let progressInterval;
-      const startProgressSimulation = () => {
-        let currentProgress = 0;
-        progressInterval = setInterval(() => {
-          currentProgress += 2;
-          if (currentProgress <= 95) {
-            setProgressPercent(currentProgress);
-            // Update agent number based on progress
-            if (currentProgress < 25) setCurrentAgent(1);
-            else if (currentProgress < 50) setCurrentAgent(2);
-            else if (currentProgress < 75) setCurrentAgent(3);
-            else setCurrentAgent(4);
-          }
-        }, 1200);
-      };
-
-      // OPTION 1: Analyze existing lot processing alert with LangGraph
-      if (selectedLotAlertId) {
-        console.log('🔄 Running LangGraph workflow on existing alert:', selectedLotAlertId);
-
-        // Start progress simulation
-        startProgressSimulation();
-
-        // Use LangGraph workflow with existing alert
-        response = await aiAgentAPI.runLangGraphWorkflow(selectedScenario, selectedLotAlertId);
-
-        clearInterval(progressInterval);
-        newAlertId = response.alert_id;
-
-        console.log('✅ LangGraph workflow complete. Used existing alert:', newAlertId);
-        console.log('📊 Workflow Response:', JSON.stringify(response, null, 2));
-      }
-      // OPTION 2: Create new alert from scenario with LangGraph
-      else {
-        console.log('🆕 Running LangGraph workflow for new scenario:', selectedScenario);
-
-        // Start progress simulation
-        startProgressSimulation();
-
-        // Use LangGraph workflow without alert_id (will create new alert)
-        response = await aiAgentAPI.runLangGraphWorkflow(selectedScenario);
-
-        clearInterval(progressInterval);
-        newAlertId = response.alert_id;
-
-        console.log('✅ LangGraph workflow complete. Created new alert:', newAlertId);
-        console.log('📊 Workflow Response:', JSON.stringify(response, null, 2));
-      }
-
-      // Set final state
-      setAlertId(newAlertId);
-      setProgressPercent(100);
-      setCurrentAgent(4);
-
-      // Notify parent Dashboard about the created/analyzed alert
-      if (onAnalysisComplete) {
-        onAnalysisComplete(newAlertId);
-      }
-
-      // Pipeline complete!
-      setAnalysisComplete(true);
-      console.log(`🎉 Full LangGraph pipeline complete! Alert ID: ${newAlertId}`);
-
-    } catch (err) {
-      console.error('Pipeline error:', err);
-      setPipelineError(err.message || 'Pipeline execution failed');
-    } finally {
-      setPipelineRunning(false);
-    }
-  };
-
-  // Conditional Rendering based on dashboardMode
-  if (dashboardMode === 'agentic') {
-    // AGENTIC AI MODE - Scenario Analysis Panel
-    return (
-      <Card className={styles.compactPanel}>
-        <div className={styles.agenticContainer}>
-          {/* Left: Scenario Selection & Previously Analyzed Alerts */}
-          <div className={styles.scenarioSection}>
-            {/* Option 1: Select existing lot processing alert */}
-            <div style={{ marginBottom: '12px' }}>
-              <span className={styles.scenarioLabel}>Lot Processing Alerts</span>
-              <select
-                className={styles.scenarioSelect}
-                value={selectedLotAlertId}
-                onChange={async (e) => {
-                  const alertId = e.target.value;
-                  setSelectedLotAlertId(alertId);
-
-                  if (alertId) {
-                    // Clear other selections
-                    setSelectedAlertId('');
-
-                    // Load the alert data and display it (if it has agent analysis already)
-                    setLoadingAlertData(true);
-                    setPipelineError(null);
-
-                    try {
-                      console.log('📥 Loading lot processing alert data:', alertId);
-
-                      // Fetch alert details to check if it has agent analysis
-                      const alert = await alertAPI.getById(alertId);
-                      console.log('📊 Alert data:', alert);
-
-                      // Check if this alert already has AI agent analysis
-                      const hasAgentAnalysis = alert.alert?.supervisor_agent_analysis ||
-                                               alert.alert?.rca_agent_analysis ||
-                                               alert.alert?.investigation_agent_analysis ||
-                                               alert.alert?.monitoring_agent_analysis;
-
-                      if (hasAgentAnalysis) {
-                        // Alert already analyzed - display it
-                        console.log('✅ Alert already has agent analysis - loading for display');
-                        setAlertId(alertId);
-                        setAnalysisComplete(true);
-                        setCurrentAgent(null);
-                        setProgressPercent(100);
-
-                        // Notify parent component
-                        if (onAnalysisComplete) {
-                          onAnalysisComplete(alertId);
-                        }
-                      } else {
-                        // Alert not yet analyzed - just set it for analysis
-                        console.log('📝 Alert not yet analyzed - ready to run pipeline');
-                        setAlertId(null);
-                        setAnalysisComplete(false);
-                      }
-                    } catch (err) {
-                      console.error('❌ Error loading lot alert:', err);
-                      setPipelineError('Failed to load alert data');
-                    } finally {
-                      setLoadingAlertData(false);
-                    }
-                  } else {
-                    // Cleared selection
-                    setAlertId(null);
-                    setAnalysisComplete(false);
-                  }
-                }}
-                disabled={pipelineRunning || loadingAlertData || loadingLotAlerts}
-              >
-                <option value="">
-                  {loadingLotAlerts ? 'Loading...' : 'Select an alert to analyze...'}
-                </option>
-                {lotAlerts.map((alert) => {
-                  const sourceData = alert.source_data || {};
-                  const scenarioLabel = sourceData.scenario_id === 'gradual_drift' ? 'Drift' :
-                                       sourceData.scenario_id === 'sudden_spike' ? 'Spike' :
-                                       sourceData.scenario_id === 'oscillating_pattern' ? 'Oscillation' : 'Unknown';
-                  return (
-                    <option key={alert.alert_id} value={alert.alert_id}>
-                      {alert.lot_id} • {scenarioLabel} • {alert.severity?.toUpperCase()} • {new Date(alert.timestamp).toLocaleTimeString()}
-                    </option>
-                  );
-                })}
-              </select>
-              {loadingLotAlerts && (
-                <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
-                  Loading lot processing alerts...
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Right: Run Analysis Button & Progress */}
-          <div className={styles.analysisSection}>
-            <Button
-              variant="primary"
-              size="small"
-              disabled={pipelineRunning}
-              onClick={handleRunAnalysis}
-              className={styles.runAnalysisButton}
-            >
-              {pipelineRunning ? 'Running...' : 'Run Analysis'}
-            </Button>
-
-            {/* Pipeline Progress */}
-            {pipelineRunning && currentAgent && (
-              <div className={styles.pipelineProgress}>
-                <div className={styles.progressBar}>
-                  <div
-                    className={styles.progressFill}
-                    style={{ width: `${progressPercent}%` }}
-                  />
-                </div>
-                <span className={styles.agentStatus}>
-                  Agent {currentAgent}/4 • {progressPercent}%
-                </span>
-              </div>
-            )}
-
-            {/* Analysis Complete */}
-            {analysisComplete && alertId && (
-              <div className={styles.analysisComplete}>
-                ✅ Analysis Complete • Alert: {alertId.slice(0, 8)}...
-              </div>
-            )}
-
-            {/* Pipeline Error */}
-            {pipelineError && (
-              <div className={styles.pipelineError}>
-                ❌ {pipelineError}
-              </div>
-            )}
-          </div>
-        </div>
-      </Card>
-    );
-  }
-
-  // CHARTS MODE - Standard Demo Control Panel
+  // NORMAL MODE - Standard Demo Control Panel
   return (
     <Card className={styles.compactPanel}>
       <div className={styles.compactContainer}>

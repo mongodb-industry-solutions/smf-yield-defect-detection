@@ -64,7 +64,6 @@ class MonitoringService:
             config: Configuration dict with keys:
                 - mdb_uri: MongoDB connection URI
                 - mdb_database_name: Database name
-                - use_ai_agents: Boolean flag for AI agent integration
         """
         self.alert_manager = alert_manager
         self.ws_manager = ws_manager
@@ -73,7 +72,6 @@ class MonitoringService:
         # Configuration
         self.mdb_uri = config['mdb_uri']
         self.mdb_database_name = config['mdb_database_name']
-        self.use_ai_agents = config['use_ai_agents']
 
         # State management
         self.monitoring_active = False
@@ -82,7 +80,6 @@ class MonitoringService:
         self.deduplication_window_seconds = 5  # Skip alerts within 5 seconds
 
         logger.info("✅ MonitoringService initialized")
-        logger.info(f"   🤖 AI Multi-Agent System: {'ENABLED' if self.use_ai_agents else 'DISABLED'}")
         logger.info(f"   🔒 Alert Deduplication: {self.deduplication_window_seconds}s window (MongoDB-based)")
     
     def stop_monitoring(self):

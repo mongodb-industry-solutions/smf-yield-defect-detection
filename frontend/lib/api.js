@@ -404,41 +404,6 @@ export const demoAPI = {
   }
 };
 
-// AI Agent Control APIs
-export const aiAgentAPI = {
-  // Get AI agent system status
-  getStatus: async () => {
-    return fetchAPI('/ai-agents/status');
-  },
-
-  // Toggle AI agent system
-  toggle: async (enabled) => {
-    return fetchAPI(`/ai-agents/toggle?enabled=${enabled}`, {
-      method: 'POST'
-    });
-  },
-
-  // Analyze existing alert (e.g., from lot processing)
-  analyzeAlert: async (alert_id) => {
-    return fetchAPI(`/ai-agents/analyze-alert/${alert_id}`, {
-      method: 'POST'
-    });
-  },
-
-  // Run LangGraph workflow for scenario analysis
-  // Can optionally provide an existing alert_id to analyze
-  runLangGraphWorkflow: async (scenario_id, alert_id = null) => {
-    const body = alert_id ? { alert_id } : {};
-    return fetchAPI(`/ai-agents/analyze-workflow/${scenario_id}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(body)
-    });
-  }
-};
-
 // Collections Data APIs
 export const collectionsAPI = {
   // Get latest documents from a collection

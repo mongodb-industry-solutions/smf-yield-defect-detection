@@ -25,7 +25,6 @@ excursion_detector_instance = None
 demo_service_instance = None
 mdb_uri = None
 mdb_database_name = None
-use_ai_agents_flag = True
 
 
 def set_dependencies(
@@ -36,12 +35,11 @@ def set_dependencies(
     excursion_detector=None,
     demo_service=None,
     uri=None,
-    db_name=None,
-    use_ai_agents=True
+    db_name=None
 ):
     """
     Inject dependencies from main.py
-    
+
     Args:
         connector_class: MongoDBConnector class for sync operations
         convert_func: Function to convert ObjectIds to strings
@@ -51,12 +49,11 @@ def set_dependencies(
         demo_service: DemoModeService instance for demo integration
         uri: MongoDB URI
         db_name: MongoDB database name
-        use_ai_agents: Feature flag for AI multi-agent system
     """
     global mongodb_connector_class, convert_objectids_func, mongodb_client_instance
     global wafer_generator_instance, excursion_detector_instance, demo_service_instance
-    global mdb_uri, mdb_database_name, use_ai_agents_flag
-    
+    global mdb_uri, mdb_database_name
+
     mongodb_connector_class = connector_class
     convert_objectids_func = convert_func
     mongodb_client_instance = mongodb_client
@@ -65,7 +62,6 @@ def set_dependencies(
     demo_service_instance = demo_service
     mdb_uri = uri
     mdb_database_name = db_name
-    use_ai_agents_flag = use_ai_agents
     
     logger.info("✅ Wafers dependencies injected into router")
 
