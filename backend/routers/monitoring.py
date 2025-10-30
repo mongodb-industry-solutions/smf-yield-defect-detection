@@ -22,32 +22,27 @@ router = APIRouter(
 monitoring_service_instance: MonitoringService | None = None
 monitoring_active_flag: bool = False
 monitoring_task_ref: asyncio.Task | None = None
-wafer_monitoring_task_ref: asyncio.Task | None = None
 
 
 def set_dependencies(
     monitoring_service: MonitoringService,
     monitoring_active: bool,
-    monitoring_task: asyncio.Task | None,
-    wafer_monitoring_task: asyncio.Task | None
+    monitoring_task: asyncio.Task | None
 ):
     """
     Inject dependencies from main.py
-    
+
     Args:
         monitoring_service: MonitoringService instance that handles all monitoring logic
         monitoring_active: Current monitoring state flag
         monitoring_task: Reference to sensor monitoring task
-        wafer_monitoring_task: Reference to wafer monitoring task
     """
-    global monitoring_service_instance, monitoring_active_flag
-    global monitoring_task_ref, wafer_monitoring_task_ref
-    
+    global monitoring_service_instance, monitoring_active_flag, monitoring_task_ref
+
     monitoring_service_instance = monitoring_service
     monitoring_active_flag = monitoring_active
     monitoring_task_ref = monitoring_task
-    wafer_monitoring_task_ref = wafer_monitoring_task
-    
+
     logger.info("✅ Monitoring dependencies injected into router")
 
 
@@ -56,8 +51,7 @@ def get_monitoring_state():
     return {
         "monitoring_service": monitoring_service_instance,
         "monitoring_active": monitoring_active_flag,
-        "monitoring_task": monitoring_task_ref,
-        "wafer_monitoring_task": wafer_monitoring_task_ref
+        "monitoring_task": monitoring_task_ref
     }
 
 
@@ -69,11 +63,10 @@ def set_monitoring_active(active: bool):
         monitoring_service_instance.monitoring_active = active
 
 
-def set_monitoring_tasks(monitoring_task: asyncio.Task | None, wafer_task: asyncio.Task | None):
+def set_monitoring_tasks(monitoring_task: asyncio.Task | None):
     """Update task references"""
-    global monitoring_task_ref, wafer_monitoring_task_ref
+    global monitoring_task_ref
     monitoring_task_ref = monitoring_task
-    wafer_monitoring_task_ref = wafer_task
 
 
 logger.info("📦 Monitoring router initialized")
@@ -101,33 +94,29 @@ async def start_monitoring(background_tasks: BackgroundTasks):
             raise HTTPException(status_code=500, detail="MonitoringService not initialized")
 
         # Check if monitoring loops are already running
-        if ((state["monitoring_task"] and not state["monitoring_task"].done()) or 
-            (state["wafer_monitoring_task"] and not state["wafer_monitoring_task"].done())):
-            logger.info("⚠️ Monitoring loops already active")
+        if state["monitoring_task"] and not state["monitoring_task"].done():
+            logger.info("⚠️ Monitoring loop already active")
             return {
                 "status": "already_running",
-                "message": "Monitoring loops are already active",
+                "message": "Monitoring loop is already active",
                 "services": {
                     "monitoring_service": "active",
-                    "sensor_monitoring": "active" if state["monitoring_task"] and not state["monitoring_task"].done() else "stopped",
-                    "wafer_monitoring": "active" if state["wafer_monitoring_task"] and not state["wafer_monitoring_task"].done() else "stopped"
+                    "sensor_monitoring": "active"
                 }
             }
 
-        # Start monitoring loops in background (parallel execution)
+        # Start monitoring loop in background
         set_monitoring_active(True)
         monitoring_task = asyncio.create_task(monitoring_service_instance.start_sensor_monitoring())
-        wafer_monitoring_task = asyncio.create_task(monitoring_service_instance.start_wafer_monitoring())
-        set_monitoring_tasks(monitoring_task, wafer_monitoring_task)
+        set_monitoring_tasks(monitoring_task)
 
-        logger.info("✅ POST /monitoring/start - Success: Real-time monitoring loops started (sensor + wafer)")
+        logger.info("✅ POST /monitoring/start - Success: Real-time monitoring loop started (sensor)")
         return {
             "status": "started",
-            "message": "Real-time monitoring loops started (sensor + wafer defects)",
+            "message": "Real-time monitoring loop started (sensor events)",
             "services": {
                 "monitoring_service": "active",
-                "sensor_monitoring": "active",
-                "wafer_monitoring": "active"
+                "sensor_monitoring": "active"
             }
         }
 
@@ -184,8 +173,7 @@ async def get_monitoring_status():
             "monitoring_active": state["monitoring_active"],
             "services": {
                 "monitoring_service": "active" if state["monitoring_service"] else "inactive",
-                "sensor_monitoring": "active" if (state["monitoring_task"] and not state["monitoring_task"].done()) else "stopped",
-                "wafer_monitoring": "active" if (state["wafer_monitoring_task"] and not state["wafer_monitoring_task"].done()) else "stopped"
+                "sensor_monitoring": "active" if (state["monitoring_task"] and not state["monitoring_task"].done()) else "stopped"
             }
         }
         

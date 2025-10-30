@@ -146,7 +146,6 @@ rca_generator = None
 alert_manager = None
 monitoring_active = False
 monitoring_task = None
-wafer_monitoring_task = None
 
 # Global MongoDB async client
 mongodb_client = None
@@ -392,8 +391,7 @@ async def _inject_router_dependencies(services, demo_svc):
     monitoring_router.set_dependencies(
         monitoring_service=services['monitoring_service'],
         monitoring_active=True,
-        monitoring_task=None,  # Will be set after tasks are created
-        wafer_monitoring_task=None
+        monitoring_task=None  # Will be set after tasks are created
     )
     logger.info("✅ Monitoring dependencies injected into router")
     
@@ -462,7 +460,7 @@ async def startup_event():
     """
     global excursion_detector, correlation_engine, rca_generator, alert_manager
     global monitoring_active, mongodb_client, demo_service_instance, monitoring_service
-    global monitoring_task, wafer_monitoring_task
+    global monitoring_task
 
     logger.info("Initializing monitoring services on startup...")
 
@@ -478,20 +476,19 @@ async def startup_event():
         alert_manager = services['alert_manager']
         monitoring_service = services['monitoring_service']
         
-        # Step 2: Set monitoring as active and auto-start monitoring loops
+        # Step 2: Set monitoring as active and auto-start monitoring loop
         monitoring_active = True
         monitoring_service.monitoring_active = True
-        
-        monitoring_task = asyncio.create_task(monitoring_service.start_sensor_monitoring())
-        wafer_monitoring_task = asyncio.create_task(monitoring_service.start_wafer_monitoring())
 
-        # Register tasks with router to prevent duplicate monitoring loops
+        monitoring_task = asyncio.create_task(monitoring_service.start_sensor_monitoring())
+
+        # Register task with router to prevent duplicate monitoring loops
         from routers.monitoring import set_monitoring_tasks
-        set_monitoring_tasks(monitoring_task, wafer_monitoring_task)
+        set_monitoring_tasks(monitoring_task)
 
         logger.info("✅ Monitoring services initialized successfully on startup")
         logger.info("Services ready: ExcursionDetector, CorrelationEngine, RCAGenerator, AlertManager")
-        logger.info("✅ Monitoring loops auto-started (sensor + wafer defects)")
+        logger.info("✅ Monitoring loop auto-started (sensor events)")
 
         # Step 3: Initialize demo service
         demo_service_instance = _initialize_demo_service(alert_manager, mongodb_client)
