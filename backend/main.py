@@ -30,7 +30,6 @@ from multi_agent.supervisor import supervisor_synthesis_agent
 
 # Import routers
 from routers import demo_mode as demo_mode_router
-from routers import semantic_search as semantic_search_router
 from routers import collections as collections_router
 from routers import alerts as alerts_router
 from routers import wafers as wafers_router
@@ -164,10 +163,6 @@ demo_service_instance: DemoModeService | None = None
 # Include demo mode router
 app.include_router(demo_mode_router.router)
 logger.info("✅ Demo mode router included")
-
-# Include semantic search router
-app.include_router(semantic_search_router.router)
-logger.info("✅ Semantic search router included")
 
 # Include collections router
 app.include_router(collections_router.router)
@@ -532,43 +527,24 @@ async def read_root(request: Request):
 # ============================================================================
 
 # =============================================
-# Phase 3: Semantic Search API Endpoints
+# Phase 3: Embedding Service
 # =============================================
 
-from services.semantic_search import SemanticSearchService
 from services.embedding_service import EmbeddingService
 
-# Initialize semantic search service
-semantic_search_service = None
+# Initialize embedding service
 embedding_service = None
 
 async def initialize_phase3_services():
     """Initialize Phase 3 services"""
-    global semantic_search_service, embedding_service
-    
+    global embedding_service
+
     try:
-        # Initialize semantic search
-        semantic_search_service = SemanticSearchService()
-        await semantic_search_service.initialize()
-        logger.info("Semantic search service initialized")
-        
         # Initialize embedding service
         embedding_service = EmbeddingService()
         await embedding_service.initialize()
         logger.info("Embedding service initialized")
-        
-        # Inject dependencies into semantic search router
-        # Create async MongoDB client for embeddings endpoint
-        from motor.motor_asyncio import AsyncIOMotorClient
-        async_mongo_client = AsyncIOMotorClient(MDB_URI)
-        
-        semantic_search_router.set_dependencies(
-            semantic_search_svc=semantic_search_service,
-            mongodb_client=async_mongo_client,
-            db_name=MDB_DATABASE_NAME
-        )
-        logger.info("✅ Semantic search dependencies injected into router")
-        
+
     except Exception as e:
         logger.warning(f"Phase 3 services not available: {e}")
 

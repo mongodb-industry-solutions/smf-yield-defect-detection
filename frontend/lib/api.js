@@ -233,25 +233,9 @@ export const kpiAPI = {
   }
 };
 
-// Search APIs for demo scenarios
+// Search APIs
 export const searchAPI = {
-  // Semantic search across knowledge base
-  semanticSearch: async (query, limit = 10) => {
-    return fetchAPI('/search/semantic', {
-      method: 'POST',
-      body: JSON.stringify({ query, limit })
-    });
-  },
-
-  // Vector search for similar defects
-  similarDefects: async (waferId, threshold = 0.8) => {
-    return fetchAPI('/search/similar-defects', {
-      method: 'POST',
-      body: JSON.stringify({ wafer_id: waferId, threshold })
-    });
-  },
-
-  // ========== UNIFIED SEARCH APIs (New) ==========
+  // ========== UNIFIED SEARCH APIs ==========
 
   // Unified search across all collections (wafers, process_context, knowledge)
   searchAll: async (query, limitPerCollection = 5) => {

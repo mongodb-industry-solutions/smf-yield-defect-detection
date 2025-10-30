@@ -63,11 +63,6 @@ class AlertManager:
         self.alert_history_collection = self.db["alert_history"]
         self.historical_knowledge_collection = self.db["historical_knowledge"]
 
-        # Initialize semantic search service (lazy loading)
-        self._semantic_search = None
-        self._mongodb_uri = mongodb_uri
-        self._database_name = database_name
-
         # Note: Call alert_manager.initialize() after creation to set up indexes
         
         # Alert thresholds and rules - loaded from centralized configuration
@@ -99,27 +94,6 @@ class AlertManager:
             logger.info("Alert collections initialized successfully")
         except Exception as e:
             logger.error(f"Error initializing collections: {e}")
-
-    def _get_semantic_search(self):
-        """
-        Lazy load semantic search service
-
-        Returns:
-            SemanticSearchService instance or None if unavailable
-        """
-        if self._semantic_search is None:
-            try:
-                from services.semantic_search import SemanticSearchService
-                self._semantic_search = SemanticSearchService(
-                    mongodb_uri=self._mongodb_uri,
-                    database_name=self._database_name
-                )
-                logger.info("Semantic search service initialized for AlertManager")
-            except Exception as e:
-                logger.warning(f"Could not initialize semantic search: {e}")
-                self._semantic_search = False  # Mark as unavailable
-
-        return self._semantic_search if self._semantic_search is not False else None
 
     def create_alert(
         self,
@@ -257,65 +231,19 @@ class AlertManager:
 
     async def _find_similar_cases(self, alert_doc: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
-        Find similar historical cases for an alert using semantic search
+        Find similar historical cases for an alert
+
+        Note: Semantic search has been removed. This method now returns an empty list.
+        Historical context enrichment is disabled.
 
         Args:
             alert_doc: Alert document
 
         Returns:
-            List of similar historical cases
+            Empty list (historical context feature disabled)
         """
-        try:
-            # Get semantic search service
-            semantic_search = self._get_semantic_search()
-            if not semantic_search:
-                logger.debug("Semantic search not available, skipping historical context")
-                return []
-
-            # Build query
-            query = self._build_historical_search_query(alert_doc)
-            if not query:
-                logger.debug("Could not build search query, skipping historical context")
-                return []
-
-            # Initialize semantic search if needed
-            if not hasattr(semantic_search, '_initialized'):
-                await semantic_search.initialize()
-                semantic_search._initialized = True
-
-            # Search for similar RCA reports
-            results = await semantic_search.search_knowledge_base(
-                query=query,
-                document_types=["rca_report"],
-                limit=3,  # Top 3 most relevant
-                min_score=0.6  # Minimum relevance threshold
-            )
-
-            # Format results
-            formatted_cases = []
-            for result in results:
-                # Extract root cause (same logic as RCA generator - Fix #3)
-                root_cause = (
-                    result.get("findings", {}).get("root_cause") or
-                    result.get("metadata", {}).get("root_cause") or
-                    ""
-                )
-
-                case = {
-                    "title": result.get("title", ""),
-                    "root_cause": root_cause,
-                    "resolution_time": result.get("metadata", {}).get("resolution_time_hours", 0),
-                    "defect_type": result.get("metadata", {}).get("defect_type", ""),
-                    "relevance_score": round(result.get("score", 0), 2)
-                }
-                formatted_cases.append(case)
-
-            logger.info(f"Found {len(formatted_cases)} similar historical cases for alert")
-            return formatted_cases
-
-        except Exception as e:
-            logger.error(f"Error finding similar historical cases: {e}")
-            return []
+        logger.debug("Historical context search disabled (semantic search removed)")
+        return []
 
     async def _add_historical_context_async(self, alert_id: str, alert_doc: Dict[str, Any]):
         """
