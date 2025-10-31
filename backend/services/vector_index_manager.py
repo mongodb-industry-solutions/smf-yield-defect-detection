@@ -108,7 +108,53 @@ class VectorIndexManager:
                 }
             }
         }
-        
+
+        # Text search index configurations (Atlas Search for full-text)
+        self.text_indexes = {
+            "wafer_defects_text_index": {
+                "collection": "wafer_defects",
+                "definition": {
+                    "mappings": {
+                        "dynamic": False,
+                        "fields": {
+                            "description": {
+                                "type": "string",
+                                "analyzer": "lucene.standard"
+                            },
+                            "equipment_id": {
+                                "type": "string"
+                            },
+                            "defect_summary.defect_pattern": {
+                                "type": "string",
+                                "analyzer": "lucene.standard"
+                            }
+                        }
+                    }
+                }
+            },
+            "historical_knowledge_text_index": {
+                "collection": "historical_knowledge",
+                "definition": {
+                    "mappings": {
+                        "dynamic": False,
+                        "fields": {
+                            "title": {
+                                "type": "string",
+                                "analyzer": "lucene.standard"
+                            },
+                            "content": {
+                                "type": "string",
+                                "analyzer": "lucene.standard"
+                            },
+                            "equipment_id": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         logger.info("Vector Index Manager initialized")
     
     async def create_search_index(

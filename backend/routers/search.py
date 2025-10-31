@@ -51,6 +51,16 @@ class UnifiedSearchRequest(BaseModel):
         le=20,
         description="Maximum results per collection"
     )
+    search_mode: str = Field(
+        default="vector",
+        description="Search mode: 'text' (Atlas Search), 'vector' (Vector Search), or 'hybrid' (Combined)",
+        example="vector"
+    )
+    equipment_id: Optional[str] = Field(
+        default=None,
+        description="Filter wafer results by equipment ID (e.g., 'CMP_TOOL_01'). Only applies to wafer_defects collection.",
+        example="CMP_TOOL_01"
+    )
 
 
 class WaferSearchRequest(BaseModel):
@@ -70,6 +80,11 @@ class WaferSearchRequest(BaseModel):
         ge=1,
         le=50,
         description="Maximum number of results"
+    )
+    search_mode: str = Field(
+        default="vector",
+        description="Search mode: 'text' (Atlas Search), 'vector' (Vector Search), or 'hybrid' (Combined)",
+        example="vector"
     )
 
 
@@ -111,6 +126,11 @@ class HistoricalKnowledgeSearchRequest(BaseModel):
         le=50,
         description="Maximum number of results"
     )
+    search_mode: str = Field(
+        default="vector",
+        description="Search mode: 'text' (Atlas Search), 'vector' (Vector Search), or 'hybrid' (Combined)",
+        example="vector"
+    )
 
 
 class SearchResponse(BaseModel):
@@ -130,9 +150,6 @@ class UnifiedSearchResponse(BaseModel):
     """Response model for unified search"""
     wafer_results: List[Dict[str, Any]] = Field(
         description="Wafer defect search results"
-    )
-    process_context_results: List[Dict[str, Any]] = Field(
-        description="Process context search results"
     )
     knowledge_results: List[Dict[str, Any]] = Field(
         description="Historical knowledge search results"
@@ -154,19 +171,23 @@ class UnifiedSearchResponse(BaseModel):
     response_model=UnifiedSearchResponse,
     summary="Unified Search Across All Collections",
     description="""
-    Search across wafer_defects, process_context, and historical_knowledge collections in parallel.
-    
+    Search across wafer_defects and historical_knowledge collections in parallel.
+
     **Example Queries:**
     - "particle excursion due to padding wear"
     - "clustered defects with slurry contamination"
     - "edge defects caused by temperature drift"
-    
+
+    **Search Modes:**
+    - text: Atlas Search (full-text search with BM25 ranking)
+    - vector: Vector Search (semantic similarity using embeddings)
+    - hybrid: Hybrid Search (combines text and vector using $rankFusion)
+
     **Search Methods:**
-    - wafer_defects: Multimodal vector search (voyage-multimodal-3)
-    - process_context: Text-based regex search
-    - historical_knowledge: Vector search on RCA reports and troubleshooting guides
-    
-    **Returns:** Combined results from all three collections with relevance scores
+    - wafer_defects: Configurable search mode (text/vector/hybrid)
+    - historical_knowledge: Configurable search mode (text/vector/hybrid)
+
+    **Returns:** Combined results from both collections with relevance scores
     """
 )
 async def unified_search(
@@ -175,18 +196,20 @@ async def unified_search(
 ) -> UnifiedSearchResponse:
     """
     Execute unified search across all collections
-    
-    This endpoint searches wafer_defects, process_context, and historical_knowledge
+
+    This endpoint searches wafer_defects and historical_knowledge
     collections in parallel, providing a comprehensive view of relevant data.
     """
     try:
-        logger.info(f"🔍 Unified search request: '{request.query}'")
-        
+        logger.info(f"🔍 Unified search request: '{request.query}' (mode: {request.search_mode}, equipment: {request.equipment_id})")
+
         result = await service.search_all(
             query=request.query,
-            limit_per_collection=request.limit_per_collection
+            limit_per_collection=request.limit_per_collection,
+            search_mode=request.search_mode,
+            equipment_id=request.equipment_id
         )
-        
+
         return UnifiedSearchResponse(**result)
     
     except Exception as e:
@@ -223,20 +246,21 @@ async def search_wafers(
     service: UnifiedSearchService = Depends(get_search_service)
 ) -> SearchResponse:
     """
-    Search wafer defects using vector similarity
-    
-    Uses multimodal embeddings to find wafers with similar defect patterns
+    Search wafer defects using text, vector, or hybrid search
+
+    Uses configurable search mode to find wafers with relevant defect patterns
     and characteristics based on the search query.
     """
     try:
-        logger.info(f"🔍 Wafer search request: '{request.query}'")
-        
+        logger.info(f"🔍 Wafer search request: '{request.query}' (mode: {request.search_mode})")
+
         result = await service.search_wafers(
             query=request.query,
             equipment_id=request.equipment_id,
-            limit=request.limit
+            limit=request.limit,
+            search_mode=request.search_mode
         )
-        
+
         return SearchResponse(**result)
     
     except Exception as e:
@@ -334,20 +358,21 @@ async def search_historical_knowledge(
     service: UnifiedSearchService = Depends(get_search_service)
 ) -> SearchResponse:
     """
-    Search historical knowledge using vector similarity
-    
-    Uses embeddings to find relevant RCA reports and troubleshooting guides
+    Search historical knowledge using text, vector, or hybrid search
+
+    Uses configurable search mode to find relevant RCA reports and troubleshooting guides
     based on the search query.
     """
     try:
-        logger.info(f"🔍 Historical knowledge search request: '{request.query}'")
-        
+        logger.info(f"🔍 Historical knowledge search request: '{request.query}' (mode: {request.search_mode})")
+
         result = await service.search_historical_knowledge(
             query=request.query,
             document_types=request.document_types,
-            limit=request.limit
+            limit=request.limit,
+            search_mode=request.search_mode
         )
-        
+
         return SearchResponse(**result)
     
     except Exception as e:

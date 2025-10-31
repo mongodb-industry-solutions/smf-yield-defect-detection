@@ -238,19 +238,27 @@ export const searchAPI = {
   // ========== UNIFIED SEARCH APIs ==========
 
   // Unified search across all collections (wafers, knowledge)
-  searchAll: async (query, limitPerCollection = 5) => {
+  searchAll: async (query, limitPerCollection = 5, searchMode = 'vector', equipmentId = null) => {
+    const payload = {
+      query,
+      limit_per_collection: limitPerCollection,
+      search_mode: searchMode
+    };
+
+    // Add equipment filter if provided
+    if (equipmentId) {
+      payload.equipment_id = equipmentId;
+    }
+
     return fetchAPI('/search/unified', {
       method: 'POST',
-      body: JSON.stringify({
-        query,
-        limit_per_collection: limitPerCollection
-      })
+      body: JSON.stringify(payload)
     });
   },
 
   // Search wafer defects only
-  searchWafers: async (query, equipmentId = null, limit = 10) => {
-    const payload = { query, limit };
+  searchWafers: async (query, equipmentId = null, limit = 10, searchMode = 'vector') => {
+    const payload = { query, limit, search_mode: searchMode };
     if (equipmentId) payload.equipment_id = equipmentId;
 
     return fetchAPI('/search/wafers', {
@@ -260,8 +268,8 @@ export const searchAPI = {
   },
 
   // Search historical knowledge only
-  searchKnowledge: async (query, documentTypes = null, limit = 10) => {
-    const payload = { query, limit };
+  searchKnowledge: async (query, documentTypes = null, limit = 10, searchMode = 'vector') => {
+    const payload = { query, limit, search_mode: searchMode };
     if (documentTypes && documentTypes.length > 0) {
       payload.document_types = documentTypes;
     }

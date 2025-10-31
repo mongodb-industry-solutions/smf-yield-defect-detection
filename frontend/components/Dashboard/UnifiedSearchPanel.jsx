@@ -16,6 +16,7 @@ const UnifiedSearchPanel = () => {
   // Search state
   const [query, setQuery] = useState('');
   const [searchScope, setSearchScope] = useState('all'); // 'all', 'wafers', 'knowledge'
+  const [searchMode, setSearchMode] = useState('vector'); // 'text', 'vector', 'hybrid'
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState(null);
 
@@ -51,15 +52,21 @@ const UnifiedSearchPanel = () => {
       let searchResults;
 
       if (searchScope === 'all') {
-        searchResults = await searchAPI.searchAll(query, limit);
+        searchResults = await searchAPI.searchAll(
+          query,
+          limit,
+          searchMode,
+          equipmentFilter || null
+        );
       } else if (searchScope === 'wafers') {
         searchResults = await searchAPI.searchWafers(
           query,
           equipmentFilter || null,
-          limit
+          limit,
+          searchMode
         );
       } else if (searchScope === 'knowledge') {
-        searchResults = await searchAPI.searchKnowledge(query, null, limit);
+        searchResults = await searchAPI.searchKnowledge(query, null, limit, searchMode);
       }
 
       setResults(searchResults);
@@ -170,6 +177,40 @@ const UnifiedSearchPanel = () => {
                 onChange={(e) => setSearchScope(e.target.value)}
               />
               <span>Knowledge Base</span>
+            </label>
+          </div>
+        </div>
+
+        {/* Search Mode Radio Buttons */}
+        <div className={styles.scopeRow}>
+          <Body weight="medium">Search Mode:</Body>
+          <div className={styles.scopeButtons}>
+            <label className={`${styles.scopeLabel} ${searchMode === 'text' ? styles.active : ''}`}>
+              <input
+                type="radio"
+                value="text"
+                checked={searchMode === 'text'}
+                onChange={(e) => setSearchMode(e.target.value)}
+              />
+              <span><Icon glyph="Megaphone" size="small" /> Text Search</span>
+            </label>
+            <label className={`${styles.scopeLabel} ${searchMode === 'vector' ? styles.active : ''}`}>
+              <input
+                type="radio"
+                value="vector"
+                checked={searchMode === 'vector'}
+                onChange={(e) => setSearchMode(e.target.value)}
+              />
+              <span><Icon glyph="Sparkle" size="small" /> Vector Search</span>
+            </label>
+            <label className={`${styles.scopeLabel} ${searchMode === 'hybrid' ? styles.active : ''}`}>
+              <input
+                type="radio"
+                value="hybrid"
+                checked={searchMode === 'hybrid'}
+                onChange={(e) => setSearchMode(e.target.value)}
+              />
+              <span><Icon glyph="Favorite" size="small" /> Hybrid Search</span>
             </label>
           </div>
         </div>
