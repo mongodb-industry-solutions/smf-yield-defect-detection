@@ -7,6 +7,7 @@ import AlertsPanel from './AlertsPanel';
 import DemoControlPanel from './DemoControlPanel';
 import DashboardModeToggle from './DashboardModeToggle';
 import UnifiedSearchPanel from './UnifiedSearchPanel';
+import AgenticChatPanel from './AgenticChatPanel';
 import LiveParticleMonitor from './LiveParticleMonitor';
 import LiveTemperatureMonitor from './LiveTemperatureMonitor';
 import LiveRFPowerMonitor from './LiveRFPowerMonitor';
@@ -47,8 +48,8 @@ const Dashboard = ({ onModeChange }) => {
             onModeChange={handleModeChange}
           />
 
-          {/* Demo Control Panel - Hide in search mode */}
-          {dashboardMode !== 'search' && (
+          {/* Demo Control Panel - Hide in search and agentic modes */}
+          {dashboardMode !== 'search' && dashboardMode !== 'agentic' && (
             <DemoControlPanel
               dashboardMode={dashboardMode}
             />
@@ -59,6 +60,13 @@ const Dashboard = ({ onModeChange }) => {
             <>
               {/* Search Mode: Unified Search Panel */}
               <UnifiedSearchPanel />
+            </>
+          ) : dashboardMode === 'agentic' ? (
+            <>
+              {/* Agentic AI Mode: Chat Interface */}
+              <div className={styles.agenticContainer}>
+                <AgenticChatPanel />
+              </div>
             </>
           ) : (
             <>

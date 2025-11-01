@@ -1,0 +1,149 @@
+.container {
+  background: var(--background-white);
+  border: 1px solid var(--border-gray-light);
+  border-radius: 8px;
+  padding: 16px;
+  margin: 12px 0;
+}
+
+.currentWafer {
+  margin-bottom: 24px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.waferContent {
+  display: flex;
+  gap: 24px;
+  align-items: flex-start;
+}
+
+.waferImageContainer {
+  flex-shrink: 0;
+}
+
+.waferImage {
+  width: 200px;
+  height: 200px;
+  object-fit: contain;
+  border: 1px solid var(--border-gray-light);
+  border-radius: 4px;
+  background: #f9f9f9;
+}
+
+.imageCaption {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-gray-medium);
+}
+
+.waferInfo {
+  flex: 1;
+}
+
+.infoGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.infoItem {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Similar Patterns Section */
+.similarPatterns {
+  border-top: 1px solid var(--border-gray-light);
+  padding-top: 20px;
+}
+
+.similarHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.patternsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.patternCard {
+  background: var(--background-white);
+  border: 1px solid var(--border-gray-light);
+  border-radius: 6px;
+  padding: 12px;
+  transition: all 0.2s ease;
+}
+
+.patternCard:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: #00684A;
+}
+
+.patternHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.patternImageContainer {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
+}
+
+.patternImage {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  border: 1px solid var(--border-gray-light);
+  border-radius: 4px;
+  background: #f9f9f9;
+}
+
+.patternInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.patternDescription {
+  font-size: 13px;
+  color: var(--text-gray-dark);
+  line-height: 1.4;
+  border-left: 3px solid #00684A;
+  padding-left: 8px;
+  font-style: italic;
+}
+
+.patternMeta {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-gray-light);
+  color: var(--text-gray-medium);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .waferContent {
+    flex-direction: column;
+  }
+
+  .patternsGrid {
+    grid-template-columns: 1fr;
+  }
+}

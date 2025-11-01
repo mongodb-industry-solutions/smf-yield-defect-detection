@@ -113,6 +113,20 @@ async function proxyRequest(request, params, method) {
 
     // Get response data
     const contentType = response.headers.get('content-type');
+
+    // Handle SSE (Server-Sent Events) - stream directly without buffering
+    if (contentType?.includes('text/event-stream')) {
+      console.log('[Backend Proxy] Streaming SSE response');
+      return new Response(response.body, {
+        status: response.status,
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      });
+    }
+
     let data;
 
     if (contentType?.includes('application/json')) {

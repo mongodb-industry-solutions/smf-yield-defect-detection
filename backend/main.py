@@ -35,6 +35,7 @@ from routers import kpi as kpi_router
 from routers import websockets as websockets_router
 from routers import dashboard as dashboard_router
 from routers import search as search_router
+from routers import chat as chat_router
 
 import os
 from dotenv import load_dotenv
@@ -193,6 +194,10 @@ logger.info("✅ Dashboard preload router included")
 # Include Unified Search router
 app.include_router(search_router.router)
 logger.info("✅ Unified search router included")
+
+# Include RCA Chat router
+app.include_router(chat_router.router)
+logger.info("✅ RCA chat router included")
 
 # ============================================================================
 

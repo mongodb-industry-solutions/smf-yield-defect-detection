@@ -489,3 +489,14 @@
   margin-bottom: 16px;
   padding: 8px;
 }
+
+/* Agentic AI Chat Container */
+.agenticContainer {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 24px;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+}

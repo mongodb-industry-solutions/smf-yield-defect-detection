@@ -406,3 +406,32 @@ export const collectionsAPI = {
     return fetchAPI(`/collections/${collectionName}/latest?limit=${limit}`);
   }
 };
+
+// Chat API
+export const chatAPI = {
+  // Stream chat responses via SSE
+  streamChat: async (message, sessionId = 'default-session') => {
+    const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ message, session_id: sessionId }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Chat request failed: ${response.statusText}`);
+    }
+
+    return response;
+  },
+
+  // Future: Get chat history
+  getChatHistory: async (sessionId) => {
+    const response = await fetch(`${API_BASE_URL}/chat/history/${sessionId}`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch chat history: ${response.statusText}`);
+    }
+    return response.json();
+  }
+};
