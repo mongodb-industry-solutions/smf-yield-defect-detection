@@ -17,6 +17,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 from services.embedding_service import EmbeddingService
+from services.unified_search_service import UnifiedSearchService
 
 # Environment variables
 MONGODB_URI = os.getenv("MONGODB_URI")
@@ -27,6 +28,9 @@ _mongo_client: Optional[AsyncIOMotorClient] = None
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Initialize search service for knowledge base tool
+search_service = UnifiedSearchService()
 
 
 def _get_db():
@@ -624,8 +628,175 @@ async def query_time_series_data(
     return response
 
 
+@tool
+async def vector_search_knowledge_base(
+    query: str,
+    equipment_type: Optional[str] = None,
+    defect_type: Optional[str] = None,
+    document_type: Optional[str] = None,
+    limit: int = 3
+) -> List[Dict[str, Any]]:
+    """
+    Semantic search across historical RCA reports and Technical Manuals.
+
+    This tool is a PURE KNOWLEDGE PROVIDER - it returns relevant historical
+    documents only. The LLM performs all reasoning and root cause analysis
+    based on the knowledge provided.
+
+    Use this tool to:
+    - Find similar past incidents (RCA Reports)
+    - Look up troubleshooting procedures (Technical Manuals)
+    - Validate root cause hypotheses with historical evidence
+    - Identify proven corrective actions
+
+    Args:
+        query: Natural language search query describing the issue
+               Examples:
+               - "CMP temperature excursion particle contamination"
+               - "Etch rate drift RF power instability"
+               - "Lithography overlay error alignment"
+
+        equipment_type: Optional filter by equipment
+                       Values: "CMP", "ETCH", "LITHO", "CVD", "PVD", None (all)
+
+        defect_type: Optional filter by defect category
+                    Values: "particle_contamination", "etch_uniformity",
+                           "lithography_defects", None (all)
+
+        document_type: Optional filter by document type
+                      Values: "rca_report", "technical_manual", None (both)
+
+        limit: Maximum number of results to return (default 3)
+               Higher values provide more context but consume more tokens
+
+    Returns:
+        List of relevant documents with:
+        - document_id: Unique document identifier
+        - document_type: "rca_report" or "technical_manual"
+        - title: Document title
+        - summary: Excerpt of content (max 300 chars for token efficiency)
+        - similarity_score: Vector similarity (0-1, higher = more relevant)
+        - date: incident_date (RCA) or last_updated (Manual)
+        - key_findings: root_cause and corrective_actions (RCA Reports only)
+        - solutions: Quick reference solutions (Technical Manuals only)
+
+        LLM should analyze these results to:
+        - Identify patterns matching current case
+        - Build evidence for root cause hypothesis
+        - Recommend proven solutions
+        - Assess confidence based on precedent strength
+    """
+    try:
+        # Initialize search service
+        await search_service.initialize()
+
+        # Build search query with filters
+        search_query = query
+        if equipment_type:
+            search_query += f" {equipment_type}"
+        if defect_type:
+            search_query += f" {defect_type.replace('_', ' ')}"
+
+        logger.info(
+            f"Searching knowledge base: query='{search_query}', "
+            f"equipment={equipment_type}, defect={defect_type}, "
+            f"doc_type={document_type}, limit={limit}"
+        )
+
+        # Perform vector search
+        results = await search_service.search_all(
+            query=search_query,
+            limit_per_collection=limit,
+            search_mode="vector"
+        )
+
+        # Extract knowledge results
+        knowledge_results = results.get("knowledge_results", [])
+
+        if not knowledge_results:
+            logger.info("No knowledge base results found")
+            return [{
+                "message": "No relevant historical knowledge found",
+                "query": query,
+                "suggestion": "Try broader search terms or remove filters"
+            }]
+
+        # Format results for LLM
+        formatted_results = []
+        for item in knowledge_results:
+            doc_type = item.get("document_type", "")
+
+            # Apply document type filter if specified
+            if document_type and doc_type != document_type:
+                continue
+
+            # Apply equipment filter if specified
+            if equipment_type:
+                item_equipment = item.get("metadata", {}).get("process_area") or \
+                                item.get("metadata", {}).get("equipment_type", "")
+                if item_equipment.upper() != equipment_type.upper():
+                    continue
+
+            # Apply defect type filter if specified
+            if defect_type:
+                item_defect = item.get("metadata", {}).get("defect_type", "")
+                if item_defect != defect_type:
+                    continue
+
+            # Build base result
+            result = {
+                "document_id": item.get("document_id") or item.get("_id"),
+                "document_type": doc_type,
+                "title": item.get("title", ""),
+                "summary": item.get("summary", "")[:300] + "..." if len(item.get("summary", "")) > 300 else item.get("summary", ""),
+                "similarity_score": round(item.get("score", 0), 2),
+                "date": item.get("incident_date") or item.get("last_updated") or item.get("created_date")
+            }
+
+            # Add document-type-specific fields
+            if doc_type == "rca_report":
+                findings = item.get("findings", {})
+                result["key_findings"] = {
+                    "root_cause": findings.get("root_cause", ""),
+                    "corrective_actions": findings.get("corrective_actions", []),
+                    "effectiveness_score": item.get("metadata", {}).get("effectiveness_score")
+                }
+            elif doc_type == "technical_manual":
+                sections = item.get("sections", {})
+                # Extract solutions from first section with solutions
+                solutions = {}
+                for section_name, section_data in sections.items():
+                    if isinstance(section_data, dict) and "solutions" in section_data:
+                        solutions = section_data["solutions"]
+                        break
+                result["solutions"] = solutions
+
+            formatted_results.append(result)
+
+        # Limit final results
+        formatted_results = formatted_results[:limit]
+
+        logger.info(f"Returning {len(formatted_results)} knowledge base results")
+        return formatted_results if formatted_results else [{
+            "message": "No results match the specified filters",
+            "query": query,
+            "filters": {
+                "equipment_type": equipment_type,
+                "defect_type": defect_type,
+                "document_type": document_type
+            }
+        }]
+
+    except Exception as e:
+        logger.error(f"Error searching knowledge base: {e}", exc_info=True)
+        return [{
+            "error": True,
+            "message": f"Failed to search knowledge base: {str(e)}"
+        }]
+
+
 # Tool registry for LangGraph
-TOOLS = [query_alerts, query_wafer_info, query_time_series_data]
+TOOLS = [query_alerts, query_wafer_info, query_time_series_data, vector_search_knowledge_base]
 
 
 # Independent test suite

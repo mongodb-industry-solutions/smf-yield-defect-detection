@@ -122,3 +122,60 @@
 .textInput {
   flex: 1;
 }
+
+/* Example Queries Section */
+.exampleQueriesContainer {
+  padding: 12px 24px 16px;
+  border-top: 1px solid var(--gray-light-2);
+  background-color: var(--gray-light-3);
+}
+
+.exampleQueriesLabel {
+  font-size: 12px;
+  color: var(--gray-dark-1);
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.exampleQueriesGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.exampleQueryChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  background-color: white;
+  border: 1px solid var(--gray-light-1);
+  border-radius: 16px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: var(--gray-dark-2);
+  font-family: inherit;
+}
+
+.exampleQueryChip:hover:not(:disabled) {
+  background-color: var(--color-primary-light3);
+  border-color: var(--color-primary-light1);
+  color: var(--color-primary-dark2);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  transform: translateY(-1px);
+}
+
+.exampleQueryChip:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.exampleQueryChip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.exampleQueryChip span {
+  white-space: nowrap;
+}
