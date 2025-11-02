@@ -67,8 +67,8 @@ class EmbeddingPipeline:
         # Collections to process
         self.collections_config = {
             "historical_knowledge": {
-                "text_fields": ["title", "content", "summary"],
-                "metadata_fields": ["document_type", "process_area", "defect_type"]
+                "text_fields": ["title", "content"],
+                "metadata_fields": ["document_type", "defect_pattern", "equipment_id", "process_area"]
             },
             "wafer_defects": {
                 "text_fields": ["wafer_id", "lot_id", "description"],
@@ -261,8 +261,9 @@ class EmbeddingPipeline:
                         embedding_type="text",
                         metadata={
                             "document_type": doc.get("document_type"),
-                            "process_area": doc.get("process_area"),
-                            "defect_type": doc.get("defect_type")
+                            "defect_pattern": doc.get("defect_pattern"),
+                            "equipment_id": doc.get("equipment_id"),
+                            "process_area": doc.get("process_area")
                         }
                     )
                     

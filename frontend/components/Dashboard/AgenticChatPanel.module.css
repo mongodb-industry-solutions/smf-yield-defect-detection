@@ -21,6 +21,36 @@
   margin-top: 4px;
 }
 
+/* Session controls styling */
+.sessionControls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--gray-light-2);
+  background: var(--gray-light-3);
+}
+
+.sessionInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sessionText {
+  font-family: 'Source Code Pro', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  color: var(--gray-dark-2);
+  font-weight: 500;
+}
+
+.loadingText {
+  font-size: 11px;
+  color: var(--gray-base);
+  font-style: italic;
+  margin-left: 8px;
+}
+
 .messagesContainer {
   flex: 1;
   overflow-y: auto;

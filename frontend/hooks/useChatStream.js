@@ -1,16 +1,16 @@
 import { useState, useCallback } from 'react';
 import { chatAPI } from '../lib/api';
 
-export function useChatStream({ onToken, onToolCall, onToolResultData, onComplete, onError }) {
+export function useChatStream({ sessionId, onToken, onToolCall, onToolResultData, onComplete, onError }) {
   const [isConnected, setIsConnected] = useState(false);
 
   const sendMessage = useCallback(async (message) => {
-    console.log('🔵 useChatStream: sendMessage called with:', message);
+    console.log('🔵 useChatStream: sendMessage called with:', message, 'sessionId:', sessionId);
     setIsConnected(true);
 
     try {
       console.log('🔵 Calling chatAPI.streamChat...');
-      const response = await chatAPI.streamChat(message);
+      const response = await chatAPI.streamChat(message, sessionId);
       console.log('🔵 Got response:', response);
 
       const reader = response.body.getReader();
@@ -84,7 +84,7 @@ export function useChatStream({ onToken, onToolCall, onToolResultData, onComplet
       onError?.(error.message || 'Connection failed');
       setIsConnected(false);
     }
-  }, [onToken, onToolCall, onToolResultData, onComplete, onError]);
+  }, [sessionId, onToken, onToolCall, onToolResultData, onComplete, onError]);
 
   return {
     sendMessage,

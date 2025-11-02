@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from langchain_aws import ChatBedrock
 from langgraph.prebuilt import create_react_agent
-from langgraph.checkpoint.mongodb.aio import AsyncMongoDBSaver
+from langgraph.checkpoint.mongodb import MongoDBSaver
 
 from services.rca_chat_tools import TOOLS
 
@@ -41,7 +41,7 @@ _checkpointer = None
 
 
 def _get_agent():
-    """Get or create the LangGraph agent instance."""
+    """Get or create the LangGraph agent instance with MongoDB checkpointing."""
     global _agent, _checkpointer
 
     if _agent is not None:
@@ -60,12 +60,35 @@ def _get_agent():
     )
     logger.info(f"✅ Bedrock LLM initialized (region: {AWS_REGION})")
 
-    # Create ReAct agent WITHOUT checkpointing for now (will add later)
+    # Initialize MongoDB checkpointer for conversation memory
+    # Using MongoDBSaver (AsyncMongoDBSaver is deprecated)
+    try:
+        # Create checkpointer instance - use pymongo.MongoClient, not motor
+        from pymongo import MongoClient
+        
+        mongo_client = MongoClient(MONGODB_URI)
+        _checkpointer = MongoDBSaver(
+            mongo_client,  # pymongo client (not motor)
+            DATABASE_NAME,  # db_name (positional)
+        )
+        logger.info(f"✅ MongoDB checkpointer initialized (database: {DATABASE_NAME})")
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to initialize checkpointer: {e}")
+        logger.warning(f"⚠️ Error details: {type(e).__name__}")
+        logger.warning("⚠️ Continuing without conversation memory (agent will work but won't remember context)")
+        _checkpointer = None
+
+    # Create ReAct agent WITH checkpointing (if available)
     _agent = create_react_agent(
         llm,
-        TOOLS
+        TOOLS,
+        checkpointer=_checkpointer  # Will be None if checkpointing failed
     )
-    logger.info(f"✅ ReAct agent created with {len(TOOLS)} tools (no checkpointing)")
+    
+    if _checkpointer:
+        logger.info(f"✅ ReAct agent created with {len(TOOLS)} tools and MongoDB checkpointing")
+    else:
+        logger.info(f"✅ ReAct agent created with {len(TOOLS)} tools (no checkpointing)")
 
     return _agent
 
@@ -84,7 +107,7 @@ class ChatStreamEvent(BaseModel):
 
 async def chat_stream_generator(message: str, session_id: str) -> AsyncIterator[str]:
     """
-    Generate SSE stream for chat responses.
+    Generate SSE stream for chat responses with conversation memory.
 
     Yields Server-Sent Events in the format:
     data: {"type": "token", "content": "...", "timestamp": "..."}\\n\\n
@@ -92,9 +115,31 @@ async def chat_stream_generator(message: str, session_id: str) -> AsyncIterator[
     try:
         agent = _get_agent()
 
-        # Stream agent execution (no checkpointing for now)
+        # Configure thread for checkpointing (enables conversation memory)
+        config = {
+            "configurable": {
+                "thread_id": session_id,  # Use session_id as thread_id
+                "checkpoint_ns": "rca_chat"  # Namespace for organization
+            }
+        }
+
+        # Load previous conversation history from checkpoint (NEW - ENABLES MULTI-TURN MEMORY)
+        previous_messages = []
+        if _checkpointer is not None:
+            try:
+                checkpoint = await _checkpointer.aget_tuple(config)
+                if checkpoint and checkpoint.checkpoint:
+                    channel_values = checkpoint.checkpoint.get("channel_values", {})
+                    previous_messages = channel_values.get("messages", [])
+                    logger.info(f"[{session_id}] Loaded {len(previous_messages)} previous messages from checkpoint")
+            except Exception as e:
+                logger.warning(f"[{session_id}] Failed to load checkpoint history: {e}")
+                # Continue without history - don't fail the request
+
+        # Stream agent execution WITH config for memory
         async for event in agent.astream(
             {"messages": [("user", message)]},
+            config=config,  # Pass config for checkpointing
             stream_mode="values"
         ):
             # Extract messages from the event
@@ -134,6 +179,24 @@ async def chat_stream_generator(message: str, session_id: str) -> AsyncIterator[
 
                     # For query_wafer_info tool, send full result data with images
                     if tool_name == "query_wafer_info" and tool_result:
+                        try:
+                            # Parse tool result JSON
+                            result_data = json.loads(tool_result) if isinstance(tool_result, str) else tool_result
+
+                            # Send full data event for frontend visualization
+                            data_event = {
+                                "type": "tool_result_data",
+                                "tool_name": tool_name,
+                                "data": result_data,
+                                "timestamp": datetime.utcnow().isoformat()
+                            }
+                            yield f"data: {json.dumps(data_event)}\n\n"
+                            logger.info(f"Sent tool_result_data for {tool_name}")
+                        except (json.JSONDecodeError, Exception) as e:
+                            logger.warning(f"Failed to parse tool result for {tool_name}: {e}")
+
+                    # For vector_search_knowledge_base tool, send full result data
+                    if tool_name == "vector_search_knowledge_base" and tool_result:
                         try:
                             # Parse tool result JSON
                             result_data = json.loads(tool_result) if isinstance(tool_result, str) else tool_result
@@ -204,5 +267,127 @@ async def health_check():
     return {
         "status": "healthy",
         "agent_initialized": _agent is not None,
+        "checkpointing_enabled": _checkpointer is not None,
         "tools_count": len(TOOLS)
     }
+
+
+# ============================================================================
+# Phase 2: Conversation History Endpoints
+# ============================================================================
+
+@router.get("/history/{session_id}")
+async def get_conversation_history(session_id: str, limit: int = 50):
+    """
+    Get conversation history for a session from checkpointer.
+
+    Args:
+        session_id: Session/thread identifier
+        limit: Maximum number of messages to return (default 50)
+
+    Returns:
+        Conversation history with messages and metadata
+
+    Example:
+        GET /chat/history/test-123
+    """
+    try:
+        global _checkpointer
+
+        # Ensure checkpointer is initialized
+        if _checkpointer is None:
+            _get_agent()  # This initializes checkpointer
+
+        # If still None, checkpointing is not available
+        if _checkpointer is None:
+            return {
+                "session_id": session_id,
+                "messages": [],
+                "checkpointing_enabled": False,
+                "message": "Conversation memory not available (checkpointing disabled)"
+            }
+
+        # Get checkpoint data using async methods
+        config = {"configurable": {"thread_id": session_id}}
+        checkpoint = await _checkpointer.aget_tuple(config)
+
+        if not checkpoint or checkpoint.checkpoint is None:
+            return {
+                "session_id": session_id,
+                "messages": [],
+                "checkpointing_enabled": True,
+                "message": "No conversation history found for this session"
+            }
+
+        # Extract messages from checkpoint
+        messages = []
+        channel_values = checkpoint.checkpoint.get("channel_values", {})
+        if "messages" in channel_values:
+            for msg in channel_values["messages"]:
+                message_data = {
+                    "type": msg.__class__.__name__,
+                    "content": getattr(msg, "content", None)
+                }
+
+                # Include tool calls if present
+                if hasattr(msg, "tool_calls"):
+                    message_data["tool_calls"] = msg.tool_calls
+
+                messages.append(message_data)
+
+        logger.info(f"Retrieved {len(messages)} messages for session {session_id}")
+
+        return {
+            "session_id": session_id,
+            "messages": messages[-limit:],  # Return last N messages
+            "total_messages": len(messages),
+            "checkpointing_enabled": True,
+            "checkpoint_id": str(checkpoint.config.get("configurable", {}).get("checkpoint_id", ""))
+        }
+
+    except Exception as e:
+        logger.error(f"Error fetching conversation history: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/clear/{session_id}")
+async def clear_conversation(session_id: str):
+    """
+    Clear conversation history for a session.
+
+    Args:
+        session_id: Session/thread identifier to clear
+
+    Returns:
+        Deletion result with count of removed checkpoints
+
+    Example:
+        DELETE /chat/clear/test-123
+    """
+    try:
+        # Use pymongo for synchronous deletion (MongoDBSaver uses pymongo, not motor)
+        from pymongo import MongoClient
+
+        # Connect to MongoDB directly to clear checkpoint data
+        client = MongoClient(MONGODB_URI)
+        db = client[DATABASE_NAME]
+        collection = db["checkpoints"]  # Default collection name for MongoDBSaver
+
+        # Delete checkpoints for this thread_id
+        # LangGraph stores checkpoints with thread_id in the config
+        result = collection.delete_many({"thread_id": session_id})
+
+        client.close()
+
+        logger.info(f"Cleared {result.deleted_count} checkpoints for session {session_id}")
+
+        return {
+            "session_id": session_id,
+            "deleted_count": result.deleted_count,
+            "status": "cleared",
+            "message": f"Conversation history cleared ({result.deleted_count} checkpoints removed)"
+        }
+
+    except Exception as e:
+        logger.error(f"Error clearing session: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

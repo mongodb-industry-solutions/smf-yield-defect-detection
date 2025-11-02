@@ -7,6 +7,7 @@ import { Body, H3 } from '@leafygreen-ui/typography';
 import Icon from '@leafygreen-ui/icon';
 import styles from './AgenticChatPanel.module.css';
 import { useChatStream } from '../../hooks/useChatStream';
+import { chatAPI } from '../../lib/api';
 import WaferVisualization from './WaferVisualization';
 import MarkdownMessage from './MarkdownMessage';
 
@@ -74,13 +75,52 @@ const EXAMPLE_QUERIES = [
 ];
 
 export default function AgenticChatPanel() {
+  // Session management - persist across page refreshes
+  const [sessionId, setSessionId] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('chat_session_id');
+      if (stored) {
+        try {
+          const data = JSON.parse(stored);
+          // Reuse session if less than 24 hours old
+          const age = new Date() - new Date(data.created);
+          if (age < 24 * 60 * 60 * 1000) {
+            console.log('✅ Reusing existing session:', data.id);
+            return data.id;
+          } else {
+            console.log('⏰ Session expired, creating new one');
+          }
+        } catch (e) {
+          console.error('Failed to parse stored session:', e);
+        }
+      }
+    }
+    
+    // Create new session
+    const newId = typeof crypto !== 'undefined' && crypto.randomUUID 
+      ? crypto.randomUUID() 
+      : `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('chat_session_id', JSON.stringify({
+        id: newId,
+        created: new Date().toISOString()
+      }));
+    }
+    
+    console.log('✅ Created new session:', newId);
+    return newId;
+  });
+
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
   const [waferData, setWaferData] = useState(null);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true);
   const messagesEndRef = useRef(null);
 
   const { sendMessage, error } = useChatStream({
+    sessionId,  // Pass session ID to hook
     onToken: (token) => {
       setMessages(prev => {
         const lastMsg = prev[prev.length - 1];
@@ -131,6 +171,96 @@ export default function AgenticChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Load conversation history on mount
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        console.log('📜 Loading conversation history for session:', sessionId);
+        const history = await chatAPI.getChatHistory(sessionId);
+        
+        if (history.messages && history.messages.length > 0) {
+          console.log('📜 Found', history.messages.length, 'messages in history');
+          
+          // Convert backend message format to frontend format
+          const historicalMessages = history.messages.map(msg => {
+            if (msg.type === 'HumanMessage') {
+              return { 
+                role: 'user', 
+                content: msg.content 
+              };
+            } else if (msg.type === 'AIMessage') {
+              return { 
+                role: 'assistant', 
+                content: msg.content, 
+                isComplete: true 
+              };
+            } else if (msg.type === 'ToolMessage') {
+              return { 
+                role: 'tool', 
+                toolName: msg.name || 'unknown', 
+                toolArgs: {} 
+              };
+            }
+            return null;
+          }).filter(Boolean);
+          
+          setMessages(historicalMessages);
+          console.log('✅ Loaded', historicalMessages.length, 'messages from history');
+        } else {
+          console.log('📜 No history found, starting fresh');
+        }
+      } catch (error) {
+        console.error('Failed to load conversation history:', error);
+        // Don't fail - just start with empty messages
+      } finally {
+        setIsLoadingHistory(false);
+      }
+    };
+    
+    loadHistory();
+  }, [sessionId]);
+
+  // Clear conversation and start new session
+  const handleClearConversation = async () => {
+    if (isStreaming) {
+      console.log('⚠️ Cannot clear while streaming');
+      return;
+    }
+
+    try {
+      console.log('🔄 Clearing conversation for session:', sessionId);
+      
+      // Call backend to clear checkpoints
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api/backend';
+      await fetch(`${apiBase}/chat/clear/${sessionId}`, {
+        method: 'DELETE'
+      });
+      
+      // Create new session
+      const newId = typeof crypto !== 'undefined' && crypto.randomUUID 
+        ? crypto.randomUUID() 
+        : `session-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('chat_session_id', JSON.stringify({
+          id: newId,
+          created: new Date().toISOString()
+        }));
+      }
+      
+      // Reset state
+      setSessionId(newId);
+      setMessages([]);
+      setWaferData(null);
+      setInputValue('');
+      
+      console.log('✅ Conversation cleared, new session:', newId);
+    } catch (error) {
+      console.error('Failed to clear conversation:', error);
+      alert('Failed to clear conversation. Please try again.');
+    }
+  };
+
   const handleSend = async () => {
     console.log('🚀 handleSend called, inputValue:', inputValue, 'isStreaming:', isStreaming);
     if (!inputValue.trim() || isStreaming) {
@@ -179,6 +309,28 @@ export default function AgenticChatPanel() {
         <Body className={styles.headerSubtitle}>
           Ask questions about open alerts, wafer defects, and process anomalies
         </Body>
+      </div>
+
+      {/* Session controls */}
+      <div className={styles.sessionControls}>
+        <div className={styles.sessionInfo}>
+          <Icon glyph="Folder" size="small" />
+          <Body className={styles.sessionText}>
+            Session: {sessionId.slice(0, 8)}...
+          </Body>
+          {isLoadingHistory && (
+            <Body className={styles.loadingText}>(Loading history...)</Body>
+          )}
+        </div>
+        <Button
+          onClick={handleClearConversation}
+          variant="default"
+          size="small"
+          disabled={isStreaming}
+          leftGlyph={<Icon glyph="Refresh" />}
+        >
+          New Conversation
+        </Button>
       </div>
 
       <div className={styles.messagesContainer}>
