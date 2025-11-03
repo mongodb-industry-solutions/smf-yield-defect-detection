@@ -233,6 +233,17 @@ async def query_alerts(
 
     try:
         alerts = await db.alerts.aggregate(pipeline).to_list(10)
+
+        # Handle empty results explicitly (prevents agent from hanging)
+        if not alerts:
+            return [{
+                "message": "No open alerts found",
+                "equipment_id": equipment_id,
+                "wafer_id": wafer_id,
+                "hours_back": hours_back,
+                "status": "All clear - no open alerts in the specified time period"
+            }]
+
         return alerts
     except Exception as e:
         return [{"error": f"Failed to query alerts: {str(e)}"}]
