@@ -6,6 +6,7 @@ import ProcessHealthMatrix from './ProcessHealthMatrix';
 import AlertsPanel from './AlertsPanel';
 import DemoControlPanel from './DemoControlPanel';
 import DashboardModeToggle from './DashboardModeToggle';
+import ChartLayoutToggle from './ChartLayoutToggle';
 import UnifiedSearchPanel from './UnifiedSearchPanel';
 import AgenticChatPanel from './AgenticChatPanel';
 import LiveParticleMonitor from './LiveParticleMonitor';
@@ -20,6 +21,7 @@ import styles from './Dashboard.module.css';
 const Dashboard = ({ onModeChange }) => {
   const { refresh } = useDashboardData();
   const [dashboardMode, setDashboardMode] = useState('normal'); // 'normal' or 'search'
+  const [chartLayout, setChartLayout] = useState('grid'); // 'grid' or 'vertical'
 
   // Propagate mode changes to parent
   const handleModeChange = (newMode) => {
@@ -28,6 +30,12 @@ const Dashboard = ({ onModeChange }) => {
       onModeChange(newMode);
     }
   };
+  
+  // Handle layout changes
+  const handleLayoutChange = (newLayout) => {
+    setChartLayout(newLayout);
+  };
+  
   const [isMatrixCollapsed, setIsMatrixCollapsed] = useState(false);
   const [isAlertsCollapsed, setIsAlertsCollapsed] = useState(false);
 
@@ -71,13 +79,19 @@ const Dashboard = ({ onModeChange }) => {
           ) : (
             <>
               {/* Normal Mode: 5 Charts */}
-              <div className={styles.chartsRowThree}>
+              {/* Chart Layout Toggle - Only show in normal mode */}
+              <ChartLayoutToggle 
+                layout={chartLayout} 
+                onLayoutChange={handleLayoutChange}
+              />
+              
+              <div className={chartLayout === 'grid' ? styles.chartsRowThree : styles.chartsRowThreeVertical}>
                 <LiveParticleMonitor />
                 <LiveTemperatureMonitor />
                 <LiveRFPowerMonitor />
               </div>
 
-              <div className={styles.chartsRowTwo}>
+              <div className={chartLayout === 'grid' ? styles.chartsRowTwo : styles.chartsRowTwoVertical}>
                 <LiveWaferImageMapCompact />
                 <EquipmentMetricsChart />
               </div>

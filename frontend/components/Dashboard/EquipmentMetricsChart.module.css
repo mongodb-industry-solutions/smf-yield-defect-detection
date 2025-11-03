@@ -1,6 +1,10 @@
 .container {
-  width: 100%;
+  width: 100% !important;
   height: 100%;
+  min-height: 500px;
+  display: flex !important;
+  flex-direction: column;
+  max-width: 100%;
 }
 
 .card {
@@ -10,8 +14,10 @@
   padding: 0 !important;
   overflow: hidden !important;
   height: 100%;
+  flex: 1;
   display: flex;
   flex-direction: column;
+  width: 100% !important;
 }
 
 .header {

@@ -7,98 +7,69 @@ import Icon from '@leafygreen-ui/icon';
 import IconButton from '@leafygreen-ui/icon-button';
 import styles from './MongoDBOperationsConsole.module.css';
 
+/**
+ * MongoDBOperationsConsole Component
+ * 
+ * Displays hardcoded MongoDB operations that demonstrate the data pipeline flow:
+ * 1. Data streaming into time series collection
+ * 2. Writing to sensor_events for change streams
+ * 3. Change stream monitoring for threshold excursions
+ * 4. Alert creation and storage
+ * 5. Wafer defect image generation and storage
+ */
 const MongoDBOperationsConsole = ({
-  maxEvents = 20,
   autoScroll = true,
   pauseOnHover = true,
   defaultExpanded = false
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
-  const [operations, setOperations] = useState([]);
   const [isPaused, setIsPaused] = useState(false);
   const [expandedEvents, setExpandedEvents] = useState(new Set()); // Track which events are expanded
   const consoleBodyRef = useRef(null);
-  const wsRef = useRef(null);
-  const recentEventsRef = useRef(new Map()); // Track recent events for deduplication
 
-  // WebSocket connection for MongoDB operations
-  useEffect(() => {
-    const connectWebSocket = () => {
-      // Use same host as frontend for WebSocket connection
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.host;
-      const wsUrl = `${protocol}//${host}/ws/alerts`;
-
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        console.log('MongoDB Operations Console: WebSocket connected');
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-
-          // Filter for mongodb_operation messages
-          if (data.type === 'mongodb_operation') {
-            // DEDUPLICATION: Create unique key from operation_type + collection
-            const dedupeKey = `${data.operation_type}:${data.collection}`;
-            const now = Date.now();
-
-            // Check if we've seen this exact operation type recently (within 500ms)
-            const recentEvent = recentEventsRef.current.get(dedupeKey);
-            if (recentEvent && (now - recentEvent.timestamp) < 500) {
-              // Skip duplicate - already seen this operation recently
-              console.log(`Deduped: ${dedupeKey} (seen ${now - recentEvent.timestamp}ms ago)`);
-              return;
-            }
-
-            // Record this event for deduplication
-            recentEventsRef.current.set(dedupeKey, {
-              timestamp: now,
-              data: data
-            });
-
-            // Clean up old entries (older than 1 second)
-            for (const [key, value] of recentEventsRef.current.entries()) {
-              if (now - value.timestamp > 1000) {
-                recentEventsRef.current.delete(key);
-              }
-            }
-
-            setOperations(prev => {
-              const newOps = [...prev, data];
-              // Keep only last maxEvents
-              if (newOps.length > maxEvents) {
-                return newOps.slice(-maxEvents);
-              }
-              return newOps;
-            });
-          }
-        } catch (error) {
-          console.error('MongoDB Console: Error parsing WebSocket message:', error);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error('MongoDB Console: WebSocket error:', error);
-      };
-
-      ws.onclose = () => {
-        console.log('MongoDB Console: WebSocket closed, reconnecting in 3s...');
-        setTimeout(connectWebSocket, 3000);
-      };
-    };
-
-    connectWebSocket();
-
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
-  }, [maxEvents]);
+  // Hardcoded operations demonstrating the MongoDB pipeline
+  const [operations] = useState([
+    {
+      timestamp: new Date().toISOString(),
+      operation_type: 'insert',
+      collection: 'process_sensor_ts',
+      operation: 'insertOne',
+      document: { sensor_type: 'particle_count', value: 1250, equipment_id: 'ETCH_01' },
+      metadata: { execution_time_ms: 2 }
+    },
+    {
+      timestamp: new Date().toISOString(),
+      operation_type: 'insert',
+      collection: 'sensor_events',
+      operation: 'insertOne',
+      document: { event_type: 'threshold_excursion', equipment_id: 'ETCH_01' },
+      metadata: { execution_time_ms: 1 }
+    },
+    {
+      timestamp: new Date().toISOString(),
+      operation_type: 'change_stream',
+      collection: 'sensor_events',
+      operation: 'watch',
+      document: { change_detected: 'threshold_excursion' },
+      metadata: {}
+    },
+    {
+      timestamp: new Date().toISOString(),
+      operation_type: 'insert',
+      collection: 'alerts',
+      operation: 'insertOne',
+      document: { alert_type: 'equipment_excursion', severity: 'high', equipment_id: 'ETCH_01' },
+      metadata: { execution_time_ms: 5 }
+    },
+    {
+      timestamp: new Date().toISOString(),
+      operation_type: 'insert',
+      collection: 'wafer_defects',
+      operation: 'insertOne',
+      document: { wafer_id: 'W123', defect_pattern: 'edge_ring', image_generated: true },
+      metadata: { execution_time_ms: 45 }
+    }
+  ]);
 
   // Auto-scroll to bottom when new operations arrive
   useEffect(() => {

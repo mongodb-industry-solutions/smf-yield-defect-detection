@@ -1,0 +1,29 @@
+/* Chart Layout Toggle Container */
+.layoutToggleContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 0 4px;
+}
+
+/* Option content with icon and text */
+.optionContent {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .layoutToggleContainer {
+    justify-content: center;
+    margin-bottom: 12px;
+  }
+  
+  .optionContent span {
+    display: none;
+  }
+}
+

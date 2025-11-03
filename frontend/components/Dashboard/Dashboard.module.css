@@ -81,6 +81,21 @@
   margin-bottom: 16px;
 }
 
+/* Vertical Layout: Stack charts one above the other */
+.chartsRowThreeVertical {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 20px;
+  margin-bottom: 16px;
+  width: 100%;
+}
+
+.chartsRowThreeVertical > * {
+  min-height: 400px;
+  height: auto;
+}
+
 /* Second Row: Wafer Map and Equipment Metrics */
 .chartsRowTwo {
   display: grid;
@@ -89,6 +104,21 @@
   margin-top: 0;
   min-height: 460px;
   margin-bottom: 20px;
+}
+
+/* Vertical Layout: Stack charts one above the other */
+.chartsRowTwoVertical {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 0;
+  margin-bottom: 20px;
+  width: 100%;
+}
+
+.chartsRowTwoVertical > * {
+  min-height: 500px;
+  height: auto;
 }
 
 /* Bottom Visualizations Container - Legacy */
@@ -497,6 +527,6 @@
   align-items: flex-start;
   padding: 24px;
   width: 100%;
-  max-width: 900px;
+  max-width: 100%;
   margin: 0 auto;
 }

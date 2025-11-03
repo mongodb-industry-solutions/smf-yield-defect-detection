@@ -305,7 +305,7 @@ export default function AgenticChatPanel() {
   return (
     <div className={styles.chatContainer}>
       <div className={styles.chatHeader}>
-        <H3>Agentic RCA Chat</H3>
+        <H3>Agentic Analytics</H3>
         <Body className={styles.headerSubtitle}>
           Ask questions about open alerts, wafer defects, and process anomalies
         </Body>
