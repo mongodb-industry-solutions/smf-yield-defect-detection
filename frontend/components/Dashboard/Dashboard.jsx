@@ -23,6 +23,7 @@ const Dashboard = ({ onModeChange }) => {
   const { refresh } = useDashboardData();
   const [dashboardMode, setDashboardMode] = useState('normal'); // 'normal' or 'search'
   const [chartLayout, setChartLayout] = useState('grid'); // 'grid' or 'vertical'
+  const [pendingChatQuery, setPendingChatQuery] = useState(null);
 
   // Propagate mode changes to parent
   const handleModeChange = (newMode) => {
@@ -30,6 +31,17 @@ const Dashboard = ({ onModeChange }) => {
     if (onModeChange) {
       onModeChange(newMode);
     }
+  };
+
+  // Handle navigation from alert modal to chat with pre-populated query
+  const handleNavigateToChat = (query) => {
+    setPendingChatQuery(query);
+    handleModeChange('agentic');
+  };
+
+  // Clear pending query after it's been processed
+  const clearPendingQuery = () => {
+    setPendingChatQuery(null);
   };
   
   // Handle layout changes
@@ -88,7 +100,10 @@ const Dashboard = ({ onModeChange }) => {
             <>
               {/* Agentic AI Mode: Chat Interface */}
               <div className={styles.agenticContainer}>
-                <AgenticChatPanel />
+                <AgenticChatPanel
+                  pendingQuery={pendingChatQuery}
+                  onQueryProcessed={clearPendingQuery}
+                />
               </div>
             </>
           ) : (
@@ -128,6 +143,7 @@ const Dashboard = ({ onModeChange }) => {
             dashboardMode={dashboardMode}
             isCollapsed={isAlertsCollapsed}
             onToggle={() => setIsAlertsCollapsed(!isAlertsCollapsed)}
+            onNavigateToChat={handleNavigateToChat}
           />
         </div>
       </div>

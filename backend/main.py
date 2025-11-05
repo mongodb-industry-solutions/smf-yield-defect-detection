@@ -440,9 +440,13 @@ async def startup_event():
         from routers.monitoring import set_monitoring_tasks
         set_monitoring_tasks(monitoring_task)
 
+        # Start RCA monitoring loop (watches alerts collection for automatic RCA)
+        rca_monitoring_task = asyncio.create_task(monitoring_service.start_alert_rca_monitoring())
+        logger.info("✅ RCA monitoring loop auto-started (watches alerts collection)")
+
         logger.info("✅ Monitoring services initialized successfully on startup")
         logger.info("Services ready: ExcursionDetector, AlertManager, MonitoringService")
-        logger.info("✅ Monitoring loop auto-started (sensor events)")
+        logger.info("✅ Monitoring loops auto-started (sensor events + RCA alerts)")
 
         # Start sensor cleanup service (TTL for timeseries collection)
         sensor_cleanup_service = SensorCleanupService(MDB_URI, MDB_DATABASE_NAME)

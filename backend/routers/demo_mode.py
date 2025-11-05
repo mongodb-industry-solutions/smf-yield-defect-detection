@@ -483,224 +483,224 @@ async def demo_heartbeat():
         )
 
 
-@router.post("/demo/inject-excursion")
-async def inject_excursion(request: Dict[str, Any] = Body(...)):
-    """
-    Manually inject an excursion into the sensor data (physics-based causal model)
+# @router.post("/demo/inject-excursion")
+# async def inject_excursion(request: Dict[str, Any] = Body(...)):
+#     """
+#     Manually inject an excursion into the sensor data (physics-based causal model)
 
-    AUTO-PAUSES demo mode during injection to prevent collision/duplicate alerts.
+#     AUTO-PAUSES demo mode during injection to prevent collision/duplicate alerts.
 
-    PHYSICS-BASED MODEL: Particle count is CALCULATED from root cause (temperature or RF power).
-    This reflects the real causal relationship in semiconductor manufacturing.
+#     PHYSICS-BASED MODEL: Particle count is CALCULATED from root cause (temperature or RF power).
+#     This reflects the real causal relationship in semiconductor manufacturing.
 
-    Expected payload:
-    {
-        "equipment_id": "CMP_TOOL_01",     # Required
-        "excursion_type": "temperature" | "rf_power",  # Required: root cause type
-        "temperature": 72.0,                # Optional: explicit temperature value (°C)
-        "rf_power": 1600.0,                 # Optional: explicit RF power value (W)
-        "metadata": {...},                  # Optional: override metadata
-        "auto_resume_demo": false,          # Optional: auto-resume demo after injection
+#     Expected payload:
+#     {
+#         "equipment_id": "CMP_TOOL_01",     # Required
+#         "excursion_type": "temperature" | "rf_power",  # Required: root cause type
+#         "temperature": 72.0,                # Optional: explicit temperature value (°C)
+#         "rf_power": 1600.0,                 # Optional: explicit RF power value (W)
+#         "metadata": {...},                  # Optional: override metadata
+#         "auto_resume_demo": false,          # Optional: auto-resume demo after injection
 
-        # DISCOURAGED (testing only):
-        "particle_count": 2500              # Optional: bypass physics, logs warning
-    }
+#         # DISCOURAGED (testing only):
+#         "particle_count": 2500              # Optional: bypass physics, logs warning
+#     }
 
-    Returns information about:
-    - Injection status
-    - Equipment ID
-    - Excursion type and triggered values (including calculated particle count)
-    - Sensor event and timeseries IDs
-    - Demo mode state (paused/resumed)
-    - Physics calculation details
-    - Note about alert/wafer generation timing
-    """
-    logger.info(f"💉 POST /demo/inject-excursion - Injecting excursion: {request}")
+#     Returns information about:
+#     - Injection status
+#     - Equipment ID
+#     - Excursion type and triggered values (including calculated particle count)
+#     - Sensor event and timeseries IDs
+#     - Demo mode state (paused/resumed)
+#     - Physics calculation details
+#     - Note about alert/wafer generation timing
+#     """
+#     logger.info(f"💉 POST /demo/inject-excursion - Injecting excursion: {request}")
     
-    try:
-        service = get_demo_service()
+#     try:
+#         service = get_demo_service()
         
-        # === STEP 1: Pause demo mode if active to prevent collision ===
-        demo_was_active = service.demo_mode_active
-        auto_resume = request.get("auto_resume_demo", True)  # Default: auto-resume to allow multiple injections
+#         # === STEP 1: Pause demo mode if active to prevent collision ===
+#         demo_was_active = service.demo_mode_active
+#         auto_resume = request.get("auto_resume_demo", True)  # Default: auto-resume to allow multiple injections
         
-        logger.info(f"🔍 Demo mode check: active={demo_was_active}, auto_resume={auto_resume}")
+#         logger.info(f"🔍 Demo mode check: active={demo_was_active}, auto_resume={auto_resume}")
         
-        if demo_was_active:
-            logger.info("⏸️  Pausing demo mode to prevent collision with manual injection...")
-            stop_result = await service.stop_demo_mode()
-            logger.info(f"   ✅ Demo mode paused: {stop_result['status']}")
-            # Wait briefly for demo loop to fully stop
-            await asyncio.sleep(0.5)
+#         if demo_was_active:
+#             logger.info("⏸️  Pausing demo mode to prevent collision with manual injection...")
+#             stop_result = await service.stop_demo_mode()
+#             logger.info(f"   ✅ Demo mode paused: {stop_result['status']}")
+#             # Wait briefly for demo loop to fully stop
+#             await asyncio.sleep(0.5)
         
-        # Get equipment ID (required)
-        equipment_id = request.get("equipment_id")
-        if not equipment_id:
-            logger.error("❌ Missing required parameter: equipment_id")
-            raise HTTPException(status_code=400, detail="equipment_id is required")
+#         # Get equipment ID (required)
+#         equipment_id = request.get("equipment_id")
+#         if not equipment_id:
+#             logger.error("❌ Missing required parameter: equipment_id")
+#             raise HTTPException(status_code=400, detail="equipment_id is required")
         
-        # Generate base NORMAL metrics (not excursion to avoid random type selection)
-        metrics = service.generate_demo_metrics(equipment_id, is_excursion=False)
+#         # Generate base NORMAL metrics (not excursion to avoid random type selection)
+#         metrics = service.generate_demo_metrics(equipment_id, is_excursion=False)
 
-        # Store baseline particle count before modification
-        baseline_particle_count = metrics["particle_count"]
+#         # Store baseline particle count before modification
+#         baseline_particle_count = metrics["particle_count"]
 
-        # Get equipment type for threshold lookups
-        equipment_type = equipment_id.split("_")[0]  # CMP, ETCH, LITHO
+#         # Get equipment type for threshold lookups
+#         equipment_type = equipment_id.split("_")[0]  # CMP, ETCH, LITHO
 
-        # Apply specific excursion type (root cause) if requested
-        excursion_type = request.get("excursion_type", "temperature")  # Default to temperature
-        logger.info(f"   💉 Injecting {excursion_type} excursion for {equipment_id} (physics-based)")
+#         # Apply specific excursion type (root cause) if requested
+#         excursion_type = request.get("excursion_type", "temperature")  # Default to temperature
+#         logger.info(f"   💉 Injecting {excursion_type} excursion for {equipment_id} (physics-based)")
 
-        # PHYSICS-BASED MODEL: Apply root cause, then calculate particle count
-        if excursion_type == "rf_power":
-            # Calculate baseline for equipment type
-            from config.thresholds import get_thresholds
-            thresholds = get_thresholds()
-            baseline_rf = thresholds["rf_power_drift"].get(
-                equipment_type,
-                thresholds["rf_power_drift"]["CMP"]
-            )["baseline"]
+#         # PHYSICS-BASED MODEL: Apply root cause, then calculate particle count
+#         if excursion_type == "rf_power":
+#             # Calculate baseline for equipment type
+#             from config.thresholds import get_thresholds
+#             thresholds = get_thresholds()
+#             baseline_rf = thresholds["rf_power_drift"].get(
+#                 equipment_type,
+#                 thresholds["rf_power_drift"]["CMP"]
+#             )["baseline"]
 
-            # Apply RF power drift (use provided value or generate)
-            metrics["rf_power"] = request.get("rf_power", baseline_rf + random.uniform(120, 200))
-            logger.info(f"   ⚡ RF power set to: {metrics['rf_power']:.1f}W (baseline: {baseline_rf}W)")
+#             # Apply RF power drift (use provided value or generate)
+#             metrics["rf_power"] = request.get("rf_power", baseline_rf + random.uniform(120, 200))
+#             logger.info(f"   ⚡ RF power set to: {metrics['rf_power']:.1f}W (baseline: {baseline_rf}W)")
 
-        elif excursion_type == "temperature":
-            # Calculate baseline for equipment type
-            from config.thresholds import get_thresholds
-            thresholds = get_thresholds()
-            baseline_temp = thresholds["temperature_drift"].get(
-                equipment_type,
-                thresholds["temperature_drift"]["CMP"]
-            )["baseline"]
+#         elif excursion_type == "temperature":
+#             # Calculate baseline for equipment type
+#             from config.thresholds import get_thresholds
+#             thresholds = get_thresholds()
+#             baseline_temp = thresholds["temperature_drift"].get(
+#                 equipment_type,
+#                 thresholds["temperature_drift"]["CMP"]
+#             )["baseline"]
 
-            # Apply temperature drift (use provided value or generate)
-            metrics["temperature"] = request.get("temperature", baseline_temp + random.uniform(6, 10))
-            logger.info(f"   🌡️  Temperature set to: {metrics['temperature']:.1f}°C (baseline: {baseline_temp}°C)")
+#             # Apply temperature drift (use provided value or generate)
+#             metrics["temperature"] = request.get("temperature", baseline_temp + random.uniform(6, 10))
+#             logger.info(f"   🌡️  Temperature set to: {metrics['temperature']:.1f}°C (baseline: {baseline_temp}°C)")
 
-        # Check if explicit particle_count override provided (DISCOURAGED - bypasses physics)
-        if "particle_count" in request:
-            logger.warning(
-                f"⚠️  MANUAL PARTICLE COUNT OVERRIDE: {request['particle_count']} - "
-                f"Bypassing physics-based calculation (use for testing only)"
-            )
-            metrics["particle_count"] = request["particle_count"]
-        else:
-            # CALCULATE particle count from root cause (RECOMMENDED - physics-based)
-            metrics["particle_count"] = service.calculate_particle_count_from_root_cause(
-                equipment_type=equipment_type,
-                root_cause=f"{excursion_type}_drift",
-                root_cause_value=metrics["temperature"] if excursion_type == "temperature" else metrics["rf_power"],
-                baseline_particle_count=baseline_particle_count
-            )
-            logger.info(
-                f"   ✅ Physics calculation: {excursion_type} → particle_count={metrics['particle_count']} "
-                f"(baseline: {baseline_particle_count})"
-            )
+#         # Check if explicit particle_count override provided (DISCOURAGED - bypasses physics)
+#         if "particle_count" in request:
+#             logger.warning(
+#                 f"⚠️  MANUAL PARTICLE COUNT OVERRIDE: {request['particle_count']} - "
+#                 f"Bypassing physics-based calculation (use for testing only)"
+#             )
+#             metrics["particle_count"] = request["particle_count"]
+#         else:
+#             # CALCULATE particle count from root cause (RECOMMENDED - physics-based)
+#             metrics["particle_count"] = service.calculate_particle_count_from_root_cause(
+#                 equipment_type=equipment_type,
+#                 root_cause=f"{excursion_type}_drift",
+#                 root_cause_value=metrics["temperature"] if excursion_type == "temperature" else metrics["rf_power"],
+#                 baseline_particle_count=baseline_particle_count
+#             )
+#             logger.info(
+#                 f"   ✅ Physics calculation: {excursion_type} → particle_count={metrics['particle_count']} "
+#                 f"(baseline: {baseline_particle_count})"
+#             )
 
-        # Override any other specific metrics provided
-        for key in ["chamber_pressure", "flow_rate"]:
-            if key in request:
-                metrics[key] = request[key]
+#         # Override any other specific metrics provided
+#         for key in ["chamber_pressure", "flow_rate"]:
+#             if key in request:
+#                 metrics[key] = request[key]
         
-        # Generate or use provided metadata (use problematic batch for excursions)
-        metadata = request.get("metadata", service.generate_demo_metadata(is_excursion=True))
+#         # Generate or use provided metadata (use problematic batch for excursions)
+#         metadata = request.get("metadata", service.generate_demo_metadata(is_excursion=True))
         
-        # If slurry_batch is provided specifically, use it
-        if "slurry_batch" in request:
-            metadata["slurry_batch"] = request["slurry_batch"]
+#         # If slurry_batch is provided specifically, use it
+#         if "slurry_batch" in request:
+#             metadata["slurry_batch"] = request["slurry_batch"]
         
-        # Create the sensor data
-        data = {
-            "equipment_id": equipment_id,
-            "process_step": equipment_id.split("_")[0],
-            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
-            "metrics": metrics,
-            "metadata": metadata
-        }
+#         # Create the sensor data
+#         data = {
+#             "equipment_id": equipment_id,
+#             "process_step": equipment_id.split("_")[0],
+#             "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
+#             "metrics": metrics,
+#             "metadata": metadata
+#         }
         
-        # Write to both collections using SensorDataWriter
-        if mongodb_config:
-            writer = SensorDataWriter(
-                mongodb_uri=mongodb_config["mongodb_uri"],
-                database=mongodb_config["database_name"]
-            )
-            result = writer.write_sensor_data(data)
-            writer.close()
+#         # Write to both collections using SensorDataWriter
+#         if mongodb_config:
+#             writer = SensorDataWriter(
+#                 mongodb_uri=mongodb_config["mongodb_uri"],
+#                 database=mongodb_config["database_name"]
+#             )
+#             result = writer.write_sensor_data(data)
+#             writer.close()
             
-            if result["success"]:
-                logger.warning(f"🚨 Manual excursion injected for {equipment_id}: particle_count={metrics['particle_count']}")
+#             if result["success"]:
+#                 logger.warning(f"🚨 Manual excursion injected for {equipment_id}: particle_count={metrics['particle_count']}")
                 
-                excursion_details = []
-                if metrics["particle_count"] > 1000:
-                    excursion_details.append(f"Particle: {metrics['particle_count']}")
-                if abs(metrics["rf_power"] - 1450) > 100:
-                    excursion_details.append(f"RF Power: {metrics['rf_power']}")
-                if abs(metrics["temperature"] - 65) > 2:
-                    excursion_details.append(f"Temperature: {metrics['temperature']}")
+#                 excursion_details = []
+#                 if metrics["particle_count"] > 1000:
+#                     excursion_details.append(f"Particle: {metrics['particle_count']}")
+#                 if abs(metrics["rf_power"] - 1450) > 100:
+#                     excursion_details.append(f"RF Power: {metrics['rf_power']}")
+#                 if abs(metrics["temperature"] - 65) > 2:
+#                     excursion_details.append(f"Temperature: {metrics['temperature']}")
                 
-                # === STEP 3: Resume demo mode if it was active and auto_resume is enabled ===
-                demo_resume_status = None
-                if demo_was_active and auto_resume:
-                    # Brief pause for log ordering (alert creation happens asynchronously via change stream)
-                    logger.info("✅ Excursion injected - alert will be created asynchronously")
-                    await asyncio.sleep(0.1)
+#                 # === STEP 3: Resume demo mode if it was active and auto_resume is enabled ===
+#                 demo_resume_status = None
+#                 if demo_was_active and auto_resume:
+#                     # Brief pause for log ordering (alert creation happens asynchronously via change stream)
+#                     logger.info("✅ Excursion injected - alert will be created asynchronously")
+#                     await asyncio.sleep(0.1)
 
-                    logger.info("▶️  Resuming demo mode...")
-                    resume_result = await service.start_demo_mode(mode="charts")
-                    demo_resume_status = resume_result["status"]
-                    logger.info(f"   ✅ Demo mode resumed: {demo_resume_status}")
+#                     logger.info("▶️  Resuming demo mode...")
+#                     resume_result = await service.start_demo_mode(mode="charts")
+#                     demo_resume_status = resume_result["status"]
+#                     logger.info(f"   ✅ Demo mode resumed: {demo_resume_status}")
                 
-                return {
-                    "status": "excursion_injected",
-                    "message": f"Excursion injected for {equipment_id}",
-                    "equipment_id": equipment_id,
-                    "excursion_type": excursion_type,
-                    "excursions_triggered": excursion_details,
-                    "metrics": metrics,
-                    "metadata": metadata,
-                    "sensor_events_id": result.get("sensor_events"),
-                    "process_sensor_ts_id": result.get("process_sensor_ts"),
-                    "demo_mode": {
-                        "was_active": demo_was_active,
-                        "paused_for_injection": demo_was_active,
-                        "auto_resumed": demo_was_active and auto_resume,
-                        "resume_status": demo_resume_status
-                    },
-                    "note": "Alert creation and wafer generation are processing asynchronously. Check via WebSocket or API for updates."
-                }
-            else:
-                logger.error(f"❌ Failed to write excursion data: {result.get('errors', [])}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to write excursion data: {result.get('errors', [])}"
-                )
-        else:
-            raise HTTPException(status_code=500, detail="MongoDB config not available")
+#                 return {
+#                     "status": "excursion_injected",
+#                     "message": f"Excursion injected for {equipment_id}",
+#                     "equipment_id": equipment_id,
+#                     "excursion_type": excursion_type,
+#                     "excursions_triggered": excursion_details,
+#                     "metrics": metrics,
+#                     "metadata": metadata,
+#                     "sensor_events_id": result.get("sensor_events"),
+#                     "process_sensor_ts_id": result.get("process_sensor_ts"),
+#                     "demo_mode": {
+#                         "was_active": demo_was_active,
+#                         "paused_for_injection": demo_was_active,
+#                         "auto_resumed": demo_was_active and auto_resume,
+#                         "resume_status": demo_resume_status
+#                     },
+#                     "note": "Alert creation and wafer generation are processing asynchronously. Check via WebSocket or API for updates."
+#                 }
+#             else:
+#                 logger.error(f"❌ Failed to write excursion data: {result.get('errors', [])}")
+#                 raise HTTPException(
+#                     status_code=500,
+#                     detail=f"Failed to write excursion data: {result.get('errors', [])}"
+#                 )
+#         else:
+#             raise HTTPException(status_code=500, detail="MongoDB config not available")
             
-    except HTTPException:
-        # Resume demo mode if it was active and an error occurred
-        if 'demo_was_active' in locals() and demo_was_active and 'auto_resume' in locals() and auto_resume:
-            try:
-                logger.warning("⚠️  Error occurred, attempting to resume demo mode...")
-                await service.start_demo_mode(mode="charts")
-            except Exception as resume_error:
-                logger.error(f"❌ Failed to resume demo mode after error: {resume_error}")
-        raise
-    except Exception as e:
-        # Resume demo mode if it was active and an error occurred
-        if 'demo_was_active' in locals() and demo_was_active and 'auto_resume' in locals() and auto_resume:
-            try:
-                logger.warning("⚠️  Error occurred, attempting to resume demo mode...")
-                await service.start_demo_mode(mode="charts")
-            except Exception as resume_error:
-                logger.error(f"❌ Failed to resume demo mode after error: {resume_error}")
-        logger.error(f"❌ Error injecting excursion: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to inject excursion: {str(e)}"
-        )
+#     except HTTPException:
+#         # Resume demo mode if it was active and an error occurred
+#         if 'demo_was_active' in locals() and demo_was_active and 'auto_resume' in locals() and auto_resume:
+#             try:
+#                 logger.warning("⚠️  Error occurred, attempting to resume demo mode...")
+#                 await service.start_demo_mode(mode="charts")
+#             except Exception as resume_error:
+#                 logger.error(f"❌ Failed to resume demo mode after error: {resume_error}")
+#         raise
+#     except Exception as e:
+#         # Resume demo mode if it was active and an error occurred
+#         if 'demo_was_active' in locals() and demo_was_active and 'auto_resume' in locals() and auto_resume:
+#             try:
+#                 logger.warning("⚠️  Error occurred, attempting to resume demo mode...")
+#                 await service.start_demo_mode(mode="charts")
+#             except Exception as resume_error:
+#                 logger.error(f"❌ Failed to resume demo mode after error: {resume_error}")
+#         logger.error(f"❌ Error injecting excursion: {e}", exc_info=True)
+#         raise HTTPException(
+#             status_code=500,
+#             detail=f"Failed to inject excursion: {str(e)}"
+#         )
 
 @router.post("/demo/inject-next-cycle")
 async def inject_excursion_next_cycle(request: Dict[str, Any] = Body(...)):

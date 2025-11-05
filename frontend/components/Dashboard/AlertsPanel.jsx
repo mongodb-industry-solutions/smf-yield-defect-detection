@@ -13,7 +13,7 @@ import AlertAnalysisModal from './AlertAnalysisModal';
 import QueryTransparencyCard from '@/components/common/QueryTransparencyCard';
 import styles from './AlertsPanel.module.css';
 
-const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onToggle = () => {} }) => {
+const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onToggle = () => {}, onNavigateToChat = () => {} }) => {
   const { alerts: dataAlerts, refresh, isPreloaded } = useDashboardData();
   const [alerts, setAlerts] = useState([]);
   const [expandedAlerts, setExpandedAlerts] = useState(new Set());
@@ -559,7 +559,7 @@ const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onT
                                         openAnalysisModal(alert);
                                       }}
                                     >
-                                      Analyze Alert
+                                      Analyze
                                     </Button>
                                   </div>
                                 </div>
@@ -681,7 +681,7 @@ const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onT
                               openAnalysisModal(alert);
                             }}
                           >
-                            Analyze Alert
+                            Analyze
                           </Button>
                         </div>
                       </div>
@@ -702,6 +702,7 @@ const AlertsPanel = ({ dashboardMode, aiEnabled = true, isCollapsed = false, onT
         onClose={closeModal}
         onAlertFixed={handleAlertFixed}
         aiEnabled={aiEnabled}
+        onNavigateToChat={onNavigateToChat}
       />
     </div>
   );

@@ -10,13 +10,96 @@ import Card from '@leafygreen-ui/card';
 import { H2, H3, Body, Description } from '@leafygreen-ui/typography';
 import Code from '@leafygreen-ui/code';
 import { alertAPI } from '@/lib/api';
+import MarkdownMessage from './MarkdownMessage';
 import styles from './AlertAnalysisModal.module.css';
 
-const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed, aiEnabled = true }) => {
+const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed, aiEnabled = true, onNavigateToChat = () => {} }) => {
   const [activeTab, setActiveTab] = useState(0); // Start with Overview tab
   const [isFixing, setIsFixing] = useState(false);
   const [fixStatus, setFixStatus] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Parse and structure the RCA analysis text
+  const parseRCAAnalysis = (analysisText) => {
+    if (!analysisText) return null;
+
+    const sections = [];
+    const lines = analysisText.split('\n');
+    let currentSection = null;
+    let currentContent = [];
+
+    // Patterns to skip (conversational/process lines)
+    const skipPatterns = [
+      /^(First|Let me|I'll|I'm|Now|Next|Analyzing|Checking|Searching)/i,
+      /^(Using|Calling|Looking|Fetching|Retrieving)/i,
+      /tool(s)? (for|to)/i,
+      /available tool/i
+    ];
+
+    for (let line of lines) {
+      const trimmed = line.trim();
+
+      // Skip empty lines at the start
+      if (!currentSection && !trimmed) continue;
+
+      // Skip conversational/process lines
+      if (skipPatterns.some(pattern => pattern.test(trimmed))) continue;
+
+      // Check if this is a section header (uppercase words followed by colon or markdown header)
+      const sectionMatch = trimmed.match(/^(#{1,3}\s*)?([A-Z][A-Z\s]+):?\s*$/);
+      if (sectionMatch) {
+        // Save previous section
+        if (currentSection && currentContent.length > 0) {
+          sections.push({
+            title: currentSection,
+            content: currentContent.join('\n').trim()
+          });
+        }
+        // Start new section
+        currentSection = sectionMatch[2].trim();
+        currentContent = [];
+        continue;
+      }
+
+      // Add content to current section
+      if (currentSection) {
+        currentContent.push(line);
+      }
+    }
+
+    // Save last section
+    if (currentSection && currentContent.length > 0) {
+      sections.push({
+        title: currentSection,
+        content: currentContent.join('\n').trim()
+      });
+    }
+
+    return sections;
+  };
+
+  // Render a structured section
+  const renderSection = (section, index, totalSections) => {
+    const sectionStyle = {
+      marginBottom: '24px',
+      paddingBottom: '16px',
+      borderBottom: index < totalSections - 1 ? '1px solid var(--color-neutral-light2)' : 'none'
+    };
+
+    return (
+      <div key={index} style={sectionStyle}>
+        <H3 style={{
+          fontSize: '16px',
+          fontWeight: '600',
+          marginBottom: '12px',
+          color: 'var(--color-neutral-dark1)'
+        }}>
+          {section.title}
+        </H3>
+        <MarkdownMessage content={section.content} />
+      </div>
+    );
+  };
 
   useEffect(() => {
     if (alert && isOpen && !alert.correlation_data?.analysis_timestamp) {
@@ -305,80 +388,135 @@ const AlertAnalysisModal = ({ alert, isOpen, onClose, onAlertFixed, aiEnabled = 
             </div>
           </Tab>
 
-          <Tab name="Actions">
-            <div style={{ padding: '20px' }}>
-              <h3 style={{ marginBottom: '20px', color: '#1e2d3d' }}>Available Actions</h3>
+          <Tab name="Agent Analysis">
+            <div className={styles.tabContent}>
+              {alert.rca_analysis && !alert.rca_analysis.error ? (
+                <>
+                  {/* Parse and render structured analysis */}
+                  {(() => {
+                    const parsedSections = parseRCAAnalysis(alert.rca_analysis.analysis);
 
-              {/* Fix Equipment Action */}
-              <Card style={{ padding: '20px', marginBottom: '20px' }}>
-                <h4 style={{ marginTop: 0, marginBottom: '15px' }}>Fix Equipment Issue</h4>
-                <p style={{ color: '#5e6c84', marginBottom: '15px' }}>
-                  This action will inject healthy sensor data into the system, simulating a maintenance fix.
-                </p>
+                    return (
+                      <>
+                        {/* RCA Analysis Results */}
+                        <Card className={styles.card}>
+                          <H3 className={styles.sectionTitle}>Agent Analysis Results</H3>
 
-                <div style={{ background: '#e8f5e9', border: '1px solid #4caf50', borderRadius: '8px', padding: '15px', marginBottom: '20px' }}>
-                  <h5 style={{ marginTop: 0, marginBottom: '10px', color: '#2e7d32' }}>What this will do:</h5>
-                  <ul style={{ margin: 0, paddingLeft: '20px' }}>
-                    <li>Set particle count to healthy level (450)</li>
-                    <li>Normalize RF power to 1200W</li>
-                    <li>Reset temperature to 65°C</li>
-                    <li>Restore normal chamber pressure and flow rate</li>
-                    <li>Mark this alert as resolved</li>
-                  </ul>
-                </div>
+                          {/* Structured Sections */}
+                          {parsedSections && parsedSections.length > 0 ? (
+                            <div>
+                              {parsedSections.map((section, idx) =>
+                                renderSection(section, idx, parsedSections.length)
+                              )}
+                            </div>
+                          ) : (
+                            <div style={{ marginBottom: '16px' }}>
+                              <MarkdownMessage content={alert.rca_analysis.analysis || 'No analysis available.'} />
+                            </div>
+                          )}
 
-                {fixStatus && (
+                          {/* Tools Used */}
+                          {alert.rca_analysis.tools_used && alert.rca_analysis.tools_used.length > 0 && (
+                            <div style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--color-neutral-light2)' }}>
+                              <Body weight="medium" style={{ marginBottom: '8px' }}>Tools Used:</Body>
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                {alert.rca_analysis.tools_used.map((tool, idx) => (
+                                  <Badge key={idx} variant="blue">{tool}</Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Metadata */}
+                          <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--color-neutral-light2)' }}>
+                            {alert.rca_analysis.timestamp && (
+                              <Description style={{ marginBottom: '4px' }}>
+                                Analysis completed: {new Date(alert.rca_analysis.timestamp).toLocaleString()}
+                              </Description>
+                            )}
+                            {alert.rca_analysis.agent_model && (
+                              <Description>
+                                Model: {alert.rca_analysis.agent_model}
+                              </Description>
+                            )}
+                          </div>
+                        </Card>
+
+                        {/* Ask Agent for Details Button */}
+                        <Card className={styles.card}>
+                          <H3 className={styles.sectionTitle}>Need More Information?</H3>
+                          <Body style={{ marginBottom: '16px' }}>
+                            Connect with the AI agent for a deeper interactive analysis and ask follow-up questions.
+                          </Body>
+                          <Button
+                            variant="primary"
+                            leftGlyph={<Icon glyph="Chat" />}
+                            onClick={() => {
+                              const query = `Please provide more detailed analysis about alert ${alert.alert_id} for equipment ${alert.equipment_id}.
+
+Context:
+- Alert Type: ${alert.alert_type}
+- Equipment: ${alert.equipment_id}
+- Wafer ID: ${metadata.wafer_id || 'N/A'}
+- Lot ID: ${metadata.lot_id || 'N/A'}
+- Timestamp: ${alert.timestamp}
+
+The automatic RCA found: ${alert.rca_analysis.analysis.substring(0, 200)}...
+
+Please investigate further using all available tools and provide additional insights.`;
+                              onNavigateToChat(query);
+                              onClose();
+                            }}
+                          >
+                            Ask Agent for Details
+                          </Button>
+                        </Card>
+                      </>
+                    );
+                  })()}
+                </>
+              ) : alert.rca_analysis && alert.rca_analysis.error ? (
+                <Card className={styles.card}>
+                  <H3 className={styles.sectionTitle}>Analysis Error</H3>
+                  <Body style={{ color: 'var(--color-warning)' }}>
+                    An error occurred during automatic analysis: {alert.rca_analysis.error}
+                  </Body>
+                </Card>
+              ) : (
+                <Card className={styles.card}>
                   <div style={{
-                    padding: '12px',
-                    borderRadius: '6px',
-                    marginBottom: '20px',
-                    background: fixStatus.type === 'success' ? '#e8f5e9' : '#ffebee',
-                    color: fixStatus.type === 'success' ? '#2e7d32' : '#c62828',
-                    border: `1px solid ${fixStatus.type === 'success' ? '#4caf50' : '#ef5350'}`,
-                    fontWeight: '500'
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '40px 20px',
+                    textAlign: 'center'
                   }}>
-                    {fixStatus.message}
+                    <div style={{
+                      animation: 'spin 2s linear infinite',
+                      marginBottom: '20px'
+                    }}>
+                      <Icon glyph="Refresh" size="xlarge" style={{ color: 'var(--color-neutral-dark1)' }} />
+                    </div>
+                    <H3 className={styles.sectionTitle} style={{ marginBottom: '12px' }}>
+                      Analysis in Progress
+                    </H3>
+                    <Body style={{ color: 'var(--color-neutral-dark1)', maxWidth: '400px' }}>
+                      The AI agent is analyzing this alert and performing root cause analysis. This may take a few moments.
+                    </Body>
                   </div>
-                )}
-
-                <Button
-                  variant="primary"
-                  onClick={handleFix}
-                  disabled={isFixing || alert.status === 'resolved'}
-                  style={{
-                    width: '100%',
-                    padding: '12px',
-                    fontSize: '16px'
-                  }}
-                >
-                  {isFixing ? 'Fixing...' : alert.status === 'resolved' ? 'Already Resolved' : 'Fix Equipment'}
-                </Button>
-              </Card>
-
-              {/* Other Actions */}
-              <Card style={{ padding: '20px' }}>
-                <h4 style={{ marginTop: 0, marginBottom: '15px' }}>Other Actions</h4>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
-                  <Button
-                    variant="default"
-                    disabled={alert.status === 'acknowledged'}
-                  >
-                    Acknowledge Alert
-                  </Button>
-                  <Button
-                    variant="default"
-                    disabled={alert.status === 'resolved'}
-                  >
-                    Escalate to Manager
-                  </Button>
-                  <Button variant="default">
-                    Generate Report
-                  </Button>
-                  <Button variant="default">
-                    View Similar Issues
-                  </Button>
-                </div>
-              </Card>
+                  <style jsx>{`
+                    @keyframes spin {
+                      from {
+                        transform: rotate(0deg);
+                      }
+                      to {
+                        transform: rotate(360deg);
+                      }
+                    }
+                  `}</style>
+                </Card>
+              )}
             </div>
           </Tab>
         </Tabs>

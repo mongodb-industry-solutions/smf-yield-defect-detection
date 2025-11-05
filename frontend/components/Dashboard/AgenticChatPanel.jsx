@@ -74,7 +74,7 @@ const EXAMPLE_QUERIES = [
   }
 ];
 
-export default function AgenticChatPanel() {
+export default function AgenticChatPanel({ pendingQuery = null, onQueryProcessed = () => {} }) {
   // Session management - persist across page refreshes
   const [sessionId, setSessionId] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -219,6 +219,34 @@ export default function AgenticChatPanel() {
     
     loadHistory();
   }, [sessionId]);
+
+  // Handle pending query from alert modal navigation
+  useEffect(() => {
+    if (pendingQuery && !isStreaming && !isLoadingHistory) {
+      console.log('Received pending query from alert modal:', pendingQuery);
+      setInputValue(pendingQuery);
+
+      // Auto-send after a brief delay to allow UI to update
+      setTimeout(() => {
+        if (pendingQuery.trim()) {
+          setMessages(prev => [...prev, { role: 'user', content: pendingQuery }]);
+          setIsStreaming(true);
+
+          sendMessage(pendingQuery)
+            .then(() => {
+              console.log('Pending query sent successfully');
+            })
+            .catch((err) => {
+              console.error('Failed to send pending query:', err);
+              setIsStreaming(false);
+            });
+
+          // Clear the pending query
+          onQueryProcessed();
+        }
+      }, 300);
+    }
+  }, [pendingQuery, isStreaming, isLoadingHistory]);
 
   // Clear conversation and start new session
   const handleClearConversation = async () => {

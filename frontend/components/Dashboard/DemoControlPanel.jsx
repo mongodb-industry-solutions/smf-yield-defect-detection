@@ -176,6 +176,16 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
       const injectsIn = result?.injects_in_seconds || 5;
       setInjectionSuccess(`${excursionLabel}${valueStr} excursion scheduled for ${excursionForm.equipment_id}! Will inject in ~${injectsIn}s (no demo restart needed)`);
 
+      // Notify wafer map component to show loading state
+      const event = new CustomEvent('excursionInjected', {
+        detail: {
+          equipment_id: excursionForm.equipment_id,
+          excursion_type: excursionForm.excursion_type,
+          injects_in_seconds: injectsIn
+        }
+      });
+      window.dispatchEvent(event);
+
       // Demo continues running - no need to refresh status
 
       // Clear success message after 5 seconds

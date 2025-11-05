@@ -25,6 +25,16 @@ from services.websocket_manager import WebSocketManager, ConnectionType
 from services.wafer_generator import WaferGenerator
 from utils import convert_objectids
 
+# LangGraph agent for automatic RCA analysis
+import os
+from langchain_aws import ChatBedrock
+from langgraph.prebuilt import create_react_agent
+from langgraph.checkpoint.mongodb import MongoDBSaver
+from pymongo import MongoClient  # Sync client for LangGraph (required by MongoDBSaver)
+
+# Import RCA tools
+from services.rca_chat_tools import TOOLS
+
 # Import centralized threshold configuration
 from config.thresholds import (
     get_thresholds,
@@ -269,7 +279,296 @@ class MonitoringService:
 
         except Exception as e:
             logger.error(f"Error generating wafer defect for alert {excursion_data.get('alert_id')}: {e}")
-    
+
+    # ============================================================================
+    # Automatic RCA Analysis Methods
+    # ============================================================================
+
+    def _get_or_create_agent(self):
+        """
+        Initialize LangGraph ReAct agent for RCA analysis (lazy initialization).
+
+        Uses AWS Bedrock Claude 3.5 Sonnet with MongoDB checkpointing.
+        Agent is cached after first initialization for reuse.
+
+        Returns:
+            Tuple[agent, checkpointer] or (None, None) if initialization fails
+        """
+        # Check if agent already initialized (cache for reuse)
+        if hasattr(self, '_agent') and self._agent is not None:
+            return self._agent, self._checkpointer
+
+        try:
+            logger.info("Initializing LangGraph agent for automatic RCA analysis...")
+
+            # Get AWS region (same pattern as chat.py)
+            aws_region = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
+
+            # Initialize LLM (AWS Bedrock Claude 3.5 Sonnet)
+            llm = ChatBedrock(
+                model_id="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                region_name=aws_region,
+                model_kwargs={
+                    "temperature": 0.3,  # Lower temperature for precise RCA
+                    "max_tokens": 2048
+                }
+            )
+            logger.info(f"✅ Bedrock LLM initialized (region: {aws_region})")
+
+            # Initialize MongoDB checkpointer (SYNC pymongo client required by LangGraph)
+            try:
+                sync_mongo_client = MongoClient(self.mdb_uri)
+                checkpointer = MongoDBSaver(
+                    sync_mongo_client,
+                    self.mdb_database_name
+                )
+                logger.info(f"✅ MongoDB checkpointer initialized (database: {self.mdb_database_name})")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to initialize checkpointer: {e}")
+                logger.warning("⚠️ Continuing without conversation memory")
+                checkpointer = None
+
+            # Create ReAct agent
+            agent = create_react_agent(
+                llm,
+                TOOLS,
+                checkpointer=checkpointer
+            )
+
+            # Cache for reuse
+            self._agent = agent
+            self._checkpointer = checkpointer
+
+            logger.info(f"✅ RCA agent initialized with {len(TOOLS)} tools")
+            return agent, checkpointer
+
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize RCA agent: {e}", exc_info=True)
+            self._agent = None
+            self._checkpointer = None
+            return None, None
+
+    async def _run_automatic_rca_analysis(self, alert_id: str, equipment_id: str, excursion_data: Dict[str, Any]):
+        """
+        Perform automatic RCA analysis for a new alert using LangGraph agent.
+
+        This method:
+        1. Initializes the agent (lazy init)
+        2. Constructs RCA prompt with alert context
+        3. Streams agent execution
+        4. Stores RCA results in MongoDB alerts collection
+        5. Sends WebSocket notification with results
+
+        Args:
+            alert_id: Alert identifier (e.g., "ALT-20250805210512-...")
+            equipment_id: Equipment identifier (e.g., "CMP_TOOL_01")
+            excursion_data: Dictionary with excursion context (matches alert source_data)
+        """
+        try:
+            logger.info(f"🤖 Starting automatic RCA analysis for alert {alert_id}")
+
+            # Step 1: Get or create agent
+            agent, checkpointer = self._get_or_create_agent()
+            if agent is None:
+                logger.error(f"❌ Cannot perform RCA - agent initialization failed for alert {alert_id}")
+                return
+
+            # Step 2: Build RCA prompt with alert context
+            root_cause = excursion_data.get('root_cause', 'unknown')
+            excursion_type = excursion_data.get('excursion_type', 'unknown')
+            timestamp = excursion_data.get('timestamp')
+            metrics = excursion_data.get('metrics', {})
+            metadata = excursion_data.get('metadata', {})
+
+            # Get wafer_id and lot_id
+            wafer_id = metadata.get('wafer_id', 'N/A')
+            lot_id = metadata.get('lot_id', 'N/A')
+
+            timestamp_str = timestamp.isoformat() if hasattr(timestamp, 'isoformat') else str(timestamp)
+
+            prompt = f"""Analyze this alert and perform root cause analysis:
+
+Alert ID: {alert_id}
+Equipment: {equipment_id}
+Wafer ID: {wafer_id}
+Lot ID: {lot_id}
+Excursion Type: {excursion_type}
+Root Cause Indicator: {root_cause}
+Timestamp: {timestamp_str}
+
+Current Metrics:
+- Particle Count: {metrics.get('particle_count', 'N/A')}
+- Temperature: {metrics.get('temperature', 'N/A')}°C
+- RF Power: {metrics.get('rf_power', 'N/A')}W
+- Chamber Pressure: {metrics.get('chamber_pressure', 'N/A')} Torr
+- Flow Rate: {metrics.get('flow_rate', 'N/A')} sccm
+
+ANALYSIS INSTRUCTIONS:
+Use ALL available tools to investigate:
+- query_alerts: Check recent alerts for this equipment to identify patterns
+- query_wafer_info: Find this wafer's defect data and similar historical patterns
+- query_time_series_data: Analyze sensor behavior around the alert timestamp
+- vector_search_knowledge_base: Search for similar incidents in historical RCA reports
+
+OUTPUT FORMAT REQUIREMENTS:
+1. Skip all conversational text (no "First, let me...", "I'll analyze...", "Looking at...")
+2. Start directly with structured analysis
+3. Use sequential numbering (write as: 1., 2., 3., 4... NOT repeated 1., 1., 1., 1...)
+4. Structure with clear section headers in UPPERCASE followed by colon
+5. Be concise and actionable
+
+OUTPUT TEMPLATE:
+
+ANALYSIS SUMMARY
+
+1. Alert Details:
+   [Describe the alert specifics and immediate observations]
+
+2. Sensor Analysis:
+   [Describe sensor behavior and anomalies from time series data]
+
+3. Historical Pattern Matching:
+   [Describe similar cases found in knowledge base and their outcomes]
+
+4. Key Findings:
+   [Synthesize cross-tool evidence into key insights]
+
+ROOT CAUSE HYPOTHESIS
+
+[Clear statement of primary root cause with supporting evidence from tool results]
+
+CONFIDENCE SCORE
+
+[Percentage with rationale based on evidence strength]
+
+RECOMMENDED CORRECTIVE ACTIONS
+
+Immediate Actions:
+- [Specific action based on findings]
+- [Specific action based on findings]
+
+Short-term:
+- [Preventive measure]
+- [Process improvement]
+
+Provide your analysis following this exact structure."""
+
+            # Step 3: Configure agent with unique thread_id for this alert
+            config = {
+                "configurable": {
+                    "thread_id": f"auto_rca_{alert_id}",  # Unique thread per alert
+                    "checkpoint_ns": "automatic_rca"
+                }
+            }
+
+            # Step 4: Execute agent and collect results
+            logger.info(f"🔍 Executing RCA agent for alert {alert_id}...")
+
+            full_response = []
+            tool_calls = []
+
+            async for event in agent.astream(
+                {"messages": [("user", prompt)]},
+                config=config,
+                stream_mode="values"
+            ):
+                messages = event.get("messages", [])
+                if not messages:
+                    continue
+
+                last_message = messages[-1]
+
+                if hasattr(last_message, "type"):
+                    msg_type = last_message.type
+
+                    if msg_type == "ai":
+                        content = getattr(last_message, "content", "")
+                        if content:
+                            full_response.append(content)
+
+                    elif msg_type == "tool":
+                        tool_name = getattr(last_message, "name", "unknown")
+                        tool_calls.append(tool_name)
+                        logger.info(f"  🔧 Agent called tool: {tool_name}")
+
+            # Combine response
+            rca_analysis = "\n".join(full_response)
+
+            logger.info(f"✅ RCA analysis completed for alert {alert_id}")
+            logger.info(f"   Tools used: {', '.join(set(tool_calls))}")
+            logger.info(f"   Response length: {len(rca_analysis)} chars")
+
+            # Step 5: Store RCA results in MongoDB
+            await self._store_rca_results(alert_id, {
+                "analysis": rca_analysis,
+                "tools_used": list(set(tool_calls)),
+                "timestamp": datetime.now(timezone.utc),
+                "agent_model": "claude-3-5-sonnet-20241022-v2",
+                "automatic": True
+            })
+
+            # Step 6: Send WebSocket notification
+            await self.notify_websocket_clients({
+                "type": "rca_analysis_complete",
+                "alert_id": alert_id,
+                "equipment_id": equipment_id,
+                "analysis_summary": rca_analysis[:200] + "..." if len(rca_analysis) > 200 else rca_analysis,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            })
+
+            logger.info(f"📤 RCA results stored and broadcasted for alert {alert_id}")
+
+        except Exception as e:
+            logger.error(f"❌ Error during automatic RCA analysis for alert {alert_id}: {e}", exc_info=True)
+
+            # Store error state in MongoDB
+            try:
+                await self._store_rca_results(alert_id, {
+                    "error": str(e),
+                    "timestamp": datetime.now(timezone.utc),
+                    "automatic": True
+                })
+            except Exception as store_error:
+                logger.error(f"Failed to store RCA error: {store_error}")
+
+    async def _store_rca_results(self, alert_id: str, rca_data: Dict[str, Any]):
+        """
+        Store RCA analysis results in MongoDB alerts collection.
+
+        Updates the alert document with RCA analysis data in the 'rca_analysis' field.
+
+        Args:
+            alert_id: Alert identifier
+            rca_data: Dictionary containing RCA results (analysis, tools_used, timestamp, etc.)
+        """
+        try:
+            # Get async MongoDB connection
+            async_client = AsyncIOMotorClient(self.mdb_uri)
+            async_db = async_client[self.mdb_database_name]
+            alerts_collection = async_db["alerts"]
+
+            # Update alert with RCA analysis
+            result = await alerts_collection.update_one(
+                {"alert_id": alert_id},
+                {
+                    "$set": {
+                        "rca_analysis": rca_data,
+                        "rca_updated_at": datetime.now(timezone.utc)
+                    }
+                }
+            )
+
+            if result.modified_count > 0:
+                logger.info(f"✅ Stored RCA results for alert {alert_id}")
+            else:
+                logger.warning(f"⚠️ Alert {alert_id} not found or not modified")
+
+            async_client.close()
+
+        except Exception as e:
+            logger.error(f"❌ Failed to store RCA results for alert {alert_id}: {e}", exc_info=True)
+            raise
+
     # ============================================================================
     # Monitoring Loops
     # ============================================================================
@@ -404,6 +703,10 @@ class MonitoringService:
                                 # Record alert creation for deduplication tracking
                                 self._record_alert_creation(equipment_id, excursion_type)
 
+                                # NOTE: RCA analysis is triggered by start_alert_rca_monitoring()
+                                # which watches alerts collection for new inserts
+                                # This ensures RCA runs for every alert that actually gets created
+
                                 # Notify WebSocket clients
                                 await self.notify_websocket_clients({
                                     "type": "new_alert",
@@ -465,3 +768,90 @@ class MonitoringService:
             if 'async_client' in locals():
                 async_client.close()
             logger.info("Monitoring loop stopped")
+
+    async def start_alert_rca_monitoring(self):
+        """
+        Background task to watch alerts collection and trigger RCA for new alerts.
+
+        This separate monitoring loop ensures RCA analysis is triggered for every
+        alert that actually gets created, avoiding race conditions in sensor monitoring.
+        """
+        logger.info("Starting RCA monitoring loop - watching alerts collection")
+
+        try:
+            # Get async MongoDB connection
+            async_client = AsyncIOMotorClient(self.mdb_uri)
+            async_db = async_client[self.mdb_database_name]
+            alerts_collection = async_db["alerts"]
+
+            # Define change stream pipeline to watch for inserts only
+            pipeline = [
+                {"$match": {"operationType": "insert"}}
+            ]
+
+            # Start watching the alerts collection
+            async with alerts_collection.watch(pipeline) as stream:
+                logger.info("✅ RCA change stream connected - monitoring alerts collection")
+
+                while self.monitoring_active:
+                    try:
+                        # Wait for the next change event
+                        async for change in stream:
+                            if not self.monitoring_active:
+                                break
+
+                            # Get the newly created alert
+                            alert_doc = change.get("fullDocument")
+                            if not alert_doc:
+                                continue
+
+                            alert_id = alert_doc.get("alert_id")
+                            equipment_id = alert_doc.get("equipment_id")
+                            alert_type = alert_doc.get("alert_type")
+
+                            # Only trigger RCA for excursion alerts
+                            if alert_type != "excursion":
+                                logger.debug(f"Skipping RCA for non-excursion alert: {alert_id}")
+                                continue
+
+                            # Check if RCA already exists (avoid re-running)
+                            if "rca_analysis" in alert_doc:
+                                logger.debug(f"RCA already exists for alert {alert_id}, skipping")
+                                continue
+
+                            logger.info(f"🆕 New alert detected: {alert_id} - triggering RCA")
+
+                            # Build excursion data from alert's source_data
+                            source_data = alert_doc.get("source_data", {})
+                            excursion_data = {
+                                "equipment_id": equipment_id,
+                                "timestamp": alert_doc.get("timestamp"),
+                                "excursion_type": source_data.get("excursion_type", "particle_excursion"),
+                                "root_cause": source_data.get("root_cause"),
+                                "value": source_data.get("value"),
+                                "root_cause_value": source_data.get("root_cause_value"),
+                                "metrics": source_data.get("metrics", {}),
+                                "metadata": source_data.get("metadata", {}),
+                                "description": alert_doc.get("description")
+                            }
+
+                            # Launch automatic RCA analysis in background
+                            asyncio.create_task(self._run_automatic_rca_analysis(
+                                alert_id=alert_id,
+                                equipment_id=equipment_id,
+                                excursion_data=excursion_data
+                            ))
+                            logger.info(f"🚀 Launched automatic RCA analysis for {alert_id}")
+
+                    except Exception as e:
+                        logger.error(f"Error processing alert change stream event: {e}", exc_info=True)
+                        # Continue monitoring despite errors
+                        continue
+
+        except Exception as e:
+            logger.error(f"Failed to establish alert RCA change stream: {e}", exc_info=True)
+
+        finally:
+            if 'async_client' in locals():
+                async_client.close()
+            logger.info("RCA monitoring loop stopped")

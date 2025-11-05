@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import Card from '@leafygreen-ui/card';
 import Badge from '@leafygreen-ui/badge';
 import Button from '@leafygreen-ui/button';
+import Icon from '@leafygreen-ui/icon';
 import { SAMPLE_WAFER_MONGO_DATA } from '@/lib/sampleWaferData';
 import { waferAPI } from '@/lib/api';
 import styles from './LiveWaferImageMapCompact.module.css';
@@ -11,6 +12,7 @@ import styles from './LiveWaferImageMapCompact.module.css';
 const LiveWaferImageMapCompact = () => {
   const [waferData, setWaferData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isWaitingForNewWafer, setIsWaitingForNewWafer] = useState(false);
   const [selectedWafer, setSelectedWafer] = useState(0);
   const [showMongoPanel, setShowMongoPanel] = useState(false);
 
@@ -35,6 +37,7 @@ const LiveWaferImageMapCompact = () => {
 
         const stateStart = performance.now();
         setWaferData(data.wafers);
+        setIsWaitingForNewWafer(false); // Clear loading state when new wafer arrives
         const stateEnd = performance.now();
         console.log(`[LiveWaferImageMapCompact] 💾 State update completed in ${(stateEnd - stateStart).toFixed(0)}ms`);
       } else {
@@ -48,6 +51,7 @@ const LiveWaferImageMapCompact = () => {
       const totalTime = performance.now() - startTime;
       console.error(`[LiveWaferImageMapCompact] ❌ Error after ${totalTime.toFixed(0)}ms:`, error);
       setIsLoading(false);
+      setIsWaitingForNewWafer(false); // Clear loading state on error
     }
   };
 
@@ -69,6 +73,25 @@ const LiveWaferImageMapCompact = () => {
     });
     window.dispatchEvent(event);
   }, [showMongoPanel]);
+
+  // Listen for excursion injection events to show loading state
+  useEffect(() => {
+    const handleExcursionInjection = (event) => {
+      console.log('[LiveWaferImageMapCompact] Excursion injected, showing loading state');
+      setIsWaitingForNewWafer(true);
+
+      // Wait 8 seconds before fetching new wafer data
+      setTimeout(() => {
+        fetchWaferData();
+      }, 8000); // Wait 8 seconds then fetch
+    };
+
+    window.addEventListener('excursionInjected', handleExcursionInjection);
+
+    return () => {
+      window.removeEventListener('excursionInjected', handleExcursionInjection);
+    };
+  }, []);
 
   const currentWafer = waferData?.[selectedWafer];
 
@@ -139,15 +162,32 @@ const LiveWaferImageMapCompact = () => {
           <div className={styles.contentWrapper}>
             {/* Left: Wafer Image */}
             <div className={styles.imageSection}>
-              <div className={styles.imageContainer}>
+              <div className={styles.imageContainer} style={{ position: 'relative' }}>
                 {currentWafer && getWaferImageSrc(currentWafer) ? (
                   <img
                     src={getWaferImageSrc(currentWafer)}
                     alt={`Wafer ${currentWafer.wafer_id}`}
                     className={styles.waferImage}
+                    style={{ opacity: isWaitingForNewWafer ? 0.4 : 1, transition: 'opacity 0.3s ease' }}
                   />
                 ) : (
                   <div className={styles.noImage}>Loading wafer image...</div>
+                )}
+
+                {/* Loading overlay when waiting for new wafer */}
+                {isWaitingForNewWafer && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '50%',
+                    transform: 'translate(-50%, -50%)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 10
+                  }}>
+                    <Icon glyph="Clock" size="xlarge" style={{ color: 'var(--color-neutral-dark1)' }} />
+                  </div>
                 )}
               </div>
 

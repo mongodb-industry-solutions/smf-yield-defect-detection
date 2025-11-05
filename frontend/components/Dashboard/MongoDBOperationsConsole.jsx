@@ -189,7 +189,7 @@ const MongoDBOperationsConsole = ({
             <div className={styles.operationCommand}>
               {operation_type === 'change_stream' && (
                 <>
-                  <span className={styles.label}>Watch:</span> {collection} (timeseries)
+                  <span className={styles.label}>Watch:</span> {collection}
                 </>
               )}
               {operation_type === 'insert' && (
