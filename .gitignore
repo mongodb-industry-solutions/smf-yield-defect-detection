@@ -35,6 +35,7 @@ __pycache__/
 .Python
 build/
 develop-eggs/
+backend/plans
 dist/
 downloads/
 eggs/

@@ -62,6 +62,7 @@ class DemoModeService:
         # Demo mode state
         self.demo_mode_active = False
         self.demo_task: Optional[asyncio.Task] = None
+        self.last_activity_time: Optional[datetime] = None  # For auto-stop tracking
 
         # Lot processing scenario fields
         self.demo_scenario = "continuous"  # "continuous" or "lot_processing"
@@ -100,6 +101,51 @@ class DemoModeService:
             f"Excursion mode: {'Manual only' if demo_excursion_probability == 0 else f'{demo_excursion_probability * 100:.0f}% auto'}"
         )
         logger.info(f"   ♻️  SensorDataWriter: Persistent connection pool (avoids per-batch overhead)")
+
+        # Start auto-stop background task
+        asyncio.create_task(self._auto_stop_task())
+        logger.info(f"   🕐 Auto-stop task started (2-minute inactivity timeout)")
+
+    async def _auto_stop_task(self):
+        """
+        Background task to auto-stop demo when no users are active.
+        Checks every 30 seconds for inactivity.
+        Stops demo if no heartbeat for 2 minutes (120 seconds).
+        """
+        INACTIVITY_TIMEOUT_SECONDS = 120  # 2 minutes
+        CHECK_INTERVAL_SECONDS = 30  # Check every 30 seconds
+
+        logger.info("🕐 Auto-stop task running (checks every 30s, stops after 2min inactivity)")
+
+        while True:
+            try:
+                await asyncio.sleep(CHECK_INTERVAL_SECONDS)
+
+                # Only check if demo is active
+                if not self.demo_mode_active:
+                    continue
+
+                # Skip if no activity time set yet
+                if self.last_activity_time is None:
+                    continue
+
+                # Calculate idle time
+                idle_time = (datetime.now(timezone.utc) - self.last_activity_time).total_seconds()
+
+                # Check if exceeded inactivity timeout
+                if idle_time > INACTIVITY_TIMEOUT_SECONDS:
+                    logger.info(
+                        f"🛑 Auto-stopping demo mode due to inactivity "
+                        f"(idle for {idle_time:.0f}s, threshold: {INACTIVITY_TIMEOUT_SECONDS}s)"
+                    )
+                    await self.stop_demo_mode()
+                    # Reset activity time after stopping
+                    self.last_activity_time = None
+
+            except Exception as e:
+                logger.error(f"❌ Auto-stop task error: {e}", exc_info=True)
+                # Continue running even if error occurs
+                await asyncio.sleep(CHECK_INTERVAL_SECONDS)
 
     def get_status(self) -> Dict[str, Any]:
         """

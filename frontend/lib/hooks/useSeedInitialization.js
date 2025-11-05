@@ -103,6 +103,16 @@ export const useSeedInitialization = () => {
       // Brief pause for smooth transition
       await new Promise(resolve => setTimeout(resolve, 300));
 
+      // Phase 5: Ensure demo is started (on-demand auto-start)
+      console.log('🎬 Ensuring demo mode is started...');
+      try {
+        const demoStatus = await demoAPI.ensureDemoStarted();
+        console.log(`✅ Demo status: ${demoStatus.status} (active: ${demoStatus.active})`);
+      } catch (error) {
+        console.warn('⚠️ Failed to ensure demo started:', error);
+        // Non-fatal - dashboard can work without demo running
+      }
+
       // Complete
       setState({
         isInitializing: false,

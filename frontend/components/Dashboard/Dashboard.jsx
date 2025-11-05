@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import FabPulseBar from './FabPulseBar';
 import ProcessHealthMatrix from './ProcessHealthMatrix';
 import AlertsPanel from './AlertsPanel';
@@ -16,6 +16,7 @@ import LiveWaferImageMapCompact from './LiveWaferImageMapCompact';
 import EquipmentMetricsChart from './EquipmentMetricsChart';
 import MongoDBOperationsConsole from './MongoDBOperationsConsole';
 import { useDashboardData } from '@/contexts/DashboardDataProvider';
+import { demoAPI } from '@/lib/api';
 import styles from './Dashboard.module.css';
 
 const Dashboard = ({ onModeChange }) => {
@@ -38,6 +39,20 @@ const Dashboard = ({ onModeChange }) => {
   
   const [isMatrixCollapsed, setIsMatrixCollapsed] = useState(false);
   const [isAlertsCollapsed, setIsAlertsCollapsed] = useState(false);
+
+  // Heartbeat to keep demo alive (prevents auto-stop)
+  useEffect(() => {
+    // Send heartbeat every 30 seconds while dashboard is mounted
+    const heartbeatInterval = setInterval(() => {
+      demoAPI.sendHeartbeat().catch(err => {
+        console.warn('Heartbeat failed:', err);
+        // Non-fatal - just log and continue
+      });
+    }, 30000); // 30 seconds
+
+    // Cleanup on unmount
+    return () => clearInterval(heartbeatInterval);
+  }, []); // Run once on mount
 
   return (
     <div className={styles.dashboard}>

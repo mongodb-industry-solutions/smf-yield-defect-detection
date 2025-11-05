@@ -369,191 +369,119 @@ async def stop_demo_mode():
 @router.post("/demo/reset")
 async def reset_demo_to_healthy_state():
     """
-    Complete demo reset: Delete all demo data and restore healthy state
-    Stops demo mode, deletes auto-generated alerts, deletes demo wafers, and clears excursion data
+    DEPRECATED: This endpoint is no longer needed.
 
-    Returns information about:
-    - Demo stopped status
-    - Alerts deleted count (auto-generated alerts only)
-    - Wafers deleted count (wafers without embeddings)
-    - Excursion data cleared count
-    - Equipment status and expected KPI changes
+    Demo data now expires automatically via TTL (Time To Live):
+    - Alerts: 15 minutes
+    - Wafers: 20 minutes
+    - Sensors: 1 hour
+
+    This endpoint is maintained for backward compatibility but performs no action.
     """
-    logger.info("🔄 POST /demo/reset - Resetting demo to healthy state")
-    
+    logger.warning("⚠️ /demo/reset endpoint called - endpoint is deprecated (using TTL auto-cleanup)")
+
+    return {
+        "status": "deprecated",
+        "message": "Demo data auto-expires automatically. Manual reset is no longer needed.",
+        "ttl_configuration": {
+            "alerts": "15 minutes",
+            "wafers": "20 minutes",
+            "sensors": "1 hour"
+        },
+        "recommendation": "Remove reset button from frontend UI"
+    }
+
+
+@router.post("/api/demo/ensure-started")
+async def ensure_demo_started():
+    """
+    Idempotent endpoint to ensure demo mode is running.
+    Called by frontend when dashboard loads to auto-start demo on-demand.
+
+    Updates last activity time for auto-stop tracking.
+
+    Returns:
+        - status: "already_running" | "started"
+        - active: bool - True if demo is now running
+        - message: Status message
+    """
+    logger.info("🎬 POST /api/demo/ensure-started - Ensuring demo is running")
+
     try:
         service = get_demo_service()
-        
-        results = {
-            "alerts_deleted": 0,
-            "wafers_deleted": 0,
-            "healthy_sensors_injected": 0,
-            "healthy_wafers_generated": 0,
-            "new_yield": None,
-            "demo_stopped": False,
-            "excursion_data_cleared": 0
-        }
-        
-        # Step 0: Stop demo mode first to prevent new excursions
+
+        # Update last activity time (for auto-stop tracking)
+        service.last_activity_time = datetime.now(timezone.utc)
+
+        # Check if demo is already running
         if service.is_active():
-            logger.info("🛑 Stopping demo mode before reset...")
-            original_prob = DEMO_EXCURSION_PROBABILITY
-            await service.stop_demo_mode(restore_probability=original_prob)
-            results["demo_stopped"] = True
-            logger.info("✅ Demo mode stopped successfully")
-            
-            # Wait for monitoring service to process the stop
-            await asyncio.sleep(5)
-        
-        # Step 1: Delete all auto-generated alerts
-        if alert_manager_instance:
-            # Delete all auto-generated alerts (demo alerts)
-            delete_result = alert_manager_instance.alerts_collection.delete_many({
-                "auto_generated": True
-            })
-
-            results["alerts_deleted"] = delete_result.deleted_count
-            logger.info(f"✅ Demo reset: Deleted {results['alerts_deleted']} auto-generated alerts")
-        
-        # Step 1.5: Clear recent excursion sensor data
-        # This prevents monitoring service from re-detecting old excursions
-        try:
-            if mongodb_client_instance and mongodb_config:
-                sensor_collection = mongodb_client_instance[mongodb_config["database_name"]][
-                    mongodb_config["timeseries_collection"]
-                ]
-                
-                # Delete sensor readings with excursions from last 2 hours
-                cutoff_time = datetime.now(timezone.utc) - timedelta(hours=2)
-                delete_result = await sensor_collection.delete_many({
-                    "timestamp": {"$gte": cutoff_time},
-                    "$or": [
-                        {"metrics.particle_count": {"$gt": 1000}},
-                        {"metrics.rf_power": {"$gt": 1400}},
-                        {"metrics.temperature": {"$gt": 75}}
-                    ]
-                })
-                
-                results["excursion_data_cleared"] = delete_result.deleted_count
-                logger.info(f"✅ Cleared {delete_result.deleted_count} excursion sensor readings")
-        except Exception as e:
-            logger.error(f"❌ Error clearing excursion data: {e}")
-
-        # Step 1.6: Delete wafers without embeddings (demo-generated wafers)
-        try:
-            if mongodb_client_instance and mongodb_config:
-                wafer_collection = mongodb_client_instance[mongodb_config["database_name"]]["wafer_defects"]
-
-                # Delete wafers that don't have embedding field
-                delete_result = await wafer_collection.delete_many({
-                    "embedding": {"$exists": False}
-                })
-
-                results["wafers_deleted"] = delete_result.deleted_count
-                logger.info(f"✅ Deleted {delete_result.deleted_count} demo-generated wafers (no embeddings)")
-        except Exception as e:
-            logger.error(f"❌ Error deleting demo wafers: {e}")
-            results["wafers_deleted"] = 0
-
-        # Step 2: Inject healthy sensor data for all equipment
-        # NOTE: Sensor injection is DISABLED to prevent RF power drift detection
-        # Equipment health is determined by open alerts, not sensor values
-        # Sensor readings will update naturally with next monitoring cycle
-        equipment_ids = ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01","ETCH_02", "LITHO_02"]
-        
-        results["healthy_sensors_injected"] = 0  # Disabled
-        logger.info(f"ℹ️  Demo reset: Sensor injection disabled (equipment health determined by alerts)")
-        
-        # # Step 3: Generate healthy wafers to improve yield
-        # if mongodb_config:
-        #     wafer_generator = WaferGenerator(
-        #         mongodb_uri=mongodb_config["mongodb_uri"],
-        #         database=mongodb_config["database_name"],
-        #         s3_bucket_uri=os.getenv("S3_BUCKET_URI")
-        #     )
-            
-        #     # Generate 4 healthy wafers (one per equipment) with 95-98% yield
-        #     for i, equipment_id in enumerate(equipment_ids):
-        #         healthy_wafer_data = {
-        #             "alert_id": f"reset_{datetime.now().timestamp()}",
-        #             "equipment_id": equipment_id,
-        #             "excursion_type": "recovery",  # Will map to low defect rate
-        #             "severity": "low",
-        #             "timestamp": datetime.now(timezone.utc),
-        #             "metrics": {
-        #                 "particle_count": 400,
-        #                 "rf_power": 1200,
-        #                 "chamber_pressure": 45,
-        #                 "temperature": 65,
-        #                 "flow_rate": 200
-        #             }
-        #         }
-                
-        #         # Generate wafer with very low defect rate for high yield
-        #         wafer_doc = await wafer_generator.generate_excursion_wafer(healthy_wafer_data)
-                
-        #         # Override pattern to ensure healthy yield
-        #         wafer_doc["defect_summary"]["defect_pattern"] = "random"
-        #         wafer_doc["defect_summary"]["severity"] = "low"
-        #         # Ensure high yield (95-98%)
-        #         wafer_doc["defect_summary"]["yield_percentage"] = 95 + random.uniform(0, 3)
-        #         wafer_doc["defect_summary"]["total_defects"] = random.randint(5, 15)
-        #         wafer_doc["description"] = f"Post-recovery verification wafer from {equipment_id} - Equipment restored to healthy state"
-                
-        #         wafer_generator.wafer_collection.insert_one(wafer_doc)
-        #         results["healthy_wafers_generated"] += 1
-            
-        #     # Step 4: Calculate new average yield (before cleanup)
-        #     latest_wafers = list(wafer_generator.db["wafer_defects"].find()
-        #                        .sort("inspection_timestamp", -1)
-        #                        .limit(10))
-            
-        #     # Now cleanup after we're done with the database
-        #     wafer_generator.cleanup()
-            
-        #     if latest_wafers:
-        #         avg_yield = sum(w["defect_summary"]["yield_percentage"] for w in latest_wafers) / len(latest_wafers)
-        #         results["new_yield"] = round(avg_yield, 1)
-        
-        # Step 5: Wait for monitoring service to sync
-        # Give monitoring service time to process the healthy data
-        logger.info("⏳ Waiting for monitoring service to sync...")
-        await asyncio.sleep(3)
-        
-        # Verify no new alerts were created
-        new_alerts_count = 0
-        if alert_manager_instance:
-            new_alerts_count = alert_manager_instance.alerts_collection.count_documents({
-                "status": {"$in": ["open", "acknowledged"]},
-                "timestamp": {"$gte": datetime.now(timezone.utc) - timedelta(seconds=10)}
-            })
-            
-            if new_alerts_count > 0:
-                logger.warning(f"⚠️  Warning: {new_alerts_count} new alerts created during reset")
-                results["warning"] = f"{new_alerts_count} new alerts created during reset"
-        
-        logger.info(f"✅ Demo reset complete: {results}")
-        
-        return {
-            "status": "success",
-            "message": "Demo reset complete - all demo data cleared",
-            **results,
-            "equipment_status": "All equipment restored to healthy operating conditions",
-            "expected_kpi_changes": {
-                "yield": f"~{results['new_yield']}%" if results['new_yield'] else "95-98%",
-                "active_alerts": 0,  # All auto-generated alerts deleted
-                "equipment_health": "All healthy"
+            logger.info("✅ Demo already active - updating activity time")
+            status_info = service.get_status()
+            return {
+                "status": "already_running",
+                "active": True,
+                "message": "Demo mode is already active",
+                "interval_seconds": status_info.get("interval_seconds", 5),
+                "mode": status_info.get("mode", "charts")
             }
+
+        # Demo not running - start it
+        logger.info("▶️ Starting demo mode (on-demand)...")
+        result = await service.start_demo_mode(mode="charts")
+
+        return {
+            "status": "started",
+            "active": True,
+            "message": "Demo mode started successfully",
+            "interval_seconds": result.get("interval_seconds", 5),
+            "mode": result.get("mode", "charts")
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ Error during demo reset: {e}", exc_info=True)
+        logger.error(f"❌ Error ensuring demo started: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail=f"Demo reset failed: {str(e)}"
+            detail=f"Failed to ensure demo started: {str(e)}"
         )
+
+
+@router.post("/api/demo/heartbeat")
+async def demo_heartbeat():
+    """
+    Heartbeat endpoint to keep demo alive.
+    Frontend calls this periodically (every 30 seconds) while dashboard is open.
+
+    Updates last activity time to prevent auto-stop.
+
+    Returns:
+        - active: bool - Current demo status
+        - last_heartbeat: datetime - When heartbeat was received
+    """
+    try:
+        service = get_demo_service()
+
+        # Update last activity time
+        current_time = datetime.now(timezone.utc)
+        service.last_activity_time = current_time
+
+        is_active = service.is_active()
+
+        logger.debug(f"💓 Heartbeat received - demo active: {is_active}")
+
+        return {
+            "active": is_active,
+            "last_heartbeat": current_time.isoformat()
+        }
+
+    except Exception as e:
+        logger.error(f"❌ Error processing heartbeat: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Heartbeat failed: {str(e)}"
+        )
+
 
 @router.post("/demo/inject-excursion")
 async def inject_excursion(request: Dict[str, Any] = Body(...)):

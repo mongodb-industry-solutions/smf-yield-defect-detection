@@ -22,6 +22,7 @@ from services.websocket_manager import get_websocket_manager, ConnectionType
 from services.wafer_generator import WaferGenerator
 from services.sensor_data_writer import SensorDataWriter
 from services.monitoring_service import MonitoringService
+from services.sensor_cleanup_service import SensorCleanupService
 
 # Import routers
 from routers import demo_mode as demo_mode_router
@@ -442,6 +443,11 @@ async def startup_event():
         logger.info("✅ Monitoring services initialized successfully on startup")
         logger.info("Services ready: ExcursionDetector, AlertManager, MonitoringService")
         logger.info("✅ Monitoring loop auto-started (sensor events)")
+
+        # Start sensor cleanup service (TTL for timeseries collection)
+        sensor_cleanup_service = SensorCleanupService(MDB_URI, MDB_DATABASE_NAME)
+        asyncio.create_task(sensor_cleanup_service.start())
+        logger.info("✅ Sensor cleanup service started (runs hourly)")
 
         # Step 3: Initialize demo service
         demo_service_instance = _initialize_demo_service(alert_manager, mongodb_client)

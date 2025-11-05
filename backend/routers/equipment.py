@@ -135,12 +135,14 @@ async def get_equipment_status():
         query_time = (time.time() - query_start) * 1000
         logger.info(f"   📊 Equipment query completed in {query_time:.0f}ms, found {len(equipment_list)} equipment")
 
-        # Get all open alerts for equipment
+        # Get all open alerts for equipment (only from last 15 minutes)
         alerts_start = time.time()
+        fifteen_minutes_ago = datetime.utcnow() - timedelta(minutes=15)
         logger.info("   🚨 Fetching open alerts for equipment...")
         open_alerts = await alerts_collection.find({
             "status": {"$in": ["open", "acknowledged"]},
-            "equipment_id": {"$exists": True}
+            "equipment_id": {"$exists": True},
+            "timestamp": {"$gte": fifteen_minutes_ago}
         }).to_list(length=None)
         alerts_time = (time.time() - alerts_start) * 1000
         logger.info(f"   🚨 Alerts query completed in {alerts_time:.0f}ms, found {len(open_alerts)} open alerts")

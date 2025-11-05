@@ -31,8 +31,6 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     excursion_value: null // Optional explicit value (°C for temp, W for RF power)
   });
   const [injectionSuccess, setInjectionSuccess] = useState(null);
-  const [resetLoading, setResetLoading] = useState(false);
-  const [resetSuccess, setResetSuccess] = useState(null);
 
   // Helper function: Get threshold info for current equipment and excursion type
   const getCurrentThresholdInfo = () => {
@@ -190,31 +188,6 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     }
   };
 
-  // Handle demo reset
-  const handleReset = async () => {
-    setResetLoading(true);
-    setError(null);
-    setResetSuccess(null);
-
-    try {
-      const result = await demoAPI.reset();
-      setResetSuccess(`Reset complete! ${result.alerts_resolved} alerts resolved, ${result.healthy_wafers_generated} healthy wafers generated. New yield: ${result.new_yield}%`);
-
-      // Clear success message after 7 seconds
-      setTimeout(() => setResetSuccess(null), 7000);
-
-      // Trigger page refresh after 2 seconds to update all dashboards
-      setTimeout(() => {
-        window.location.reload();
-      }, 2000);
-    } catch (err) {
-      console.error('Error resetting demo:', err);
-      setError('Failed to reset demo');
-    } finally {
-      setResetLoading(false);
-    }
-  };
-
   // NORMAL MODE - Standard Demo Control Panel
   return (
     <Card className={styles.compactPanel}>
@@ -238,17 +211,6 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
             className={styles.compactToggle}
           >
             {loading ? '...' : (status?.active ? 'Stop' : 'Start')}
-          </Button>
-
-          <Button
-            variant="primary"
-            size="small"
-            disabled={resetLoading}
-            onClick={handleReset}
-            className={styles.compactReset}
-            style={{ marginLeft: '8px' }}
-          >
-            {resetLoading ? '...' : 'Reset Demo'}
           </Button>
         </div>
 
@@ -321,12 +283,7 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
         </div>
       </div>
 
-      {/* Success/Error messages */}
-      {resetSuccess && (
-        <div className={styles.compactSuccess} style={{ marginTop: '8px' }}>
-          ✅ {resetSuccess}
-        </div>
-      )}
+      {/* Error messages */}
       {error && (
         <div className={styles.compactError}>
           {error}

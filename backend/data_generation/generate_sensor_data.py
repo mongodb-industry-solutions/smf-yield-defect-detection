@@ -24,7 +24,7 @@ def generate_sensor_data(days: int = 30) -> List[Dict[str, Any]]:
     # Configuration
     start_date = datetime.now() - timedelta(days=days)
     end_date = datetime.now()
-    equipment_ids = ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01"]
+    equipment_ids = ["CMP_TOOL_01", "CMP_TOOL_02", "ETCH_01", "LITHO_01", "ETCH_02", "LITHO_02"]
     
     data = []
     current_date = start_date

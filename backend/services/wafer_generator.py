@@ -206,6 +206,7 @@ class WaferGenerator:
             "wafer_id": wafer_id,
             "lot_id": lot_id,
             "inspection_timestamp": inspection_time.isoformat() + "Z",
+            "inspection_timestamp_date": inspection_time,  # Date field for TTL index
             "ink_map": ink_map,
             "defect_summary": {
                 "total_dies": wafer_data["statistics"]["total_dies"],

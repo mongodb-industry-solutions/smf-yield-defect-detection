@@ -382,6 +382,16 @@ export const demoAPI = {
     return fetchAPI('/api/demo/initialize-seed', { method: 'POST' });
   },
 
+  // Ensure demo is started (idempotent, for on-demand auto-start)
+  ensureDemoStarted: async () => {
+    return fetchAPI('/api/demo/ensure-started', { method: 'POST' });
+  },
+
+  // Send heartbeat to keep demo alive
+  sendHeartbeat: async () => {
+    return fetchAPI('/api/demo/heartbeat', { method: 'POST' });
+  },
+
   // Get preloaded dashboard data
   getPreloadedData: async () => {
     return fetchAPI('/api/dashboard/preload');
