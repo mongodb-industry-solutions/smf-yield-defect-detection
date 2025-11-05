@@ -372,6 +372,14 @@ export const demoAPI = {
     });
   },
 
+  // Schedule excursion for next cycle (no demo restart)
+  injectExcursionNextCycle: async (data) => {
+    return fetchAPI('/demo/inject-next-cycle', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
   // Check seed status
   getSeedStatus: async () => {
     return fetchAPI('/api/demo/seed-status');

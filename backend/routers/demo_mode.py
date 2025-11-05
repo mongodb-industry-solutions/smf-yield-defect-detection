@@ -702,6 +702,85 @@ async def inject_excursion(request: Dict[str, Any] = Body(...)):
             detail=f"Failed to inject excursion: {str(e)}"
         )
 
+@router.post("/demo/inject-next-cycle")
+async def inject_excursion_next_cycle(request: Dict[str, Any] = Body(...)):
+    """
+    Schedule an excursion to be injected in the next demo cycle.
+
+    NO demo mode restart required - excursion is injected seamlessly in the
+    next batch generation cycle (~5 seconds).
+
+    Expected payload:
+    {
+        "equipment_id": "CMP_TOOL_01",
+        "excursion_type": "temperature" | "rf_power",
+        "temperature": 72.0,     // optional explicit value
+        "rf_power": 1600.0,      // optional explicit value
+        "particle_count": 2000   // optional explicit value
+    }
+
+    Returns:
+        - status: "scheduled"
+        - message: Confirmation message
+        - injects_in_seconds: Time until injection
+    """
+    logger.info(f"🎯 POST /demo/inject-next-cycle - Scheduling excursion: {request}")
+
+    try:
+        service = get_demo_service()
+
+        # Validate demo mode is active
+        if not service.is_active():
+            raise HTTPException(
+                status_code=400,
+                detail="Demo mode must be active to schedule excursions"
+            )
+
+        # Validate required fields
+        equipment_id = request.get("equipment_id")
+        excursion_type = request.get("excursion_type")
+
+        if not equipment_id:
+            raise HTTPException(
+                status_code=400,
+                detail="equipment_id is required"
+            )
+
+        if not excursion_type:
+            raise HTTPException(
+                status_code=400,
+                detail="excursion_type is required (temperature or rf_power)"
+            )
+
+        if excursion_type not in ["temperature", "rf_power"]:
+            raise HTTPException(
+                status_code=400,
+                detail="excursion_type must be 'temperature' or 'rf_power'"
+            )
+
+        # Schedule the excursion for next cycle
+        service.next_excursion[equipment_id] = request
+
+        logger.info(f"✅ Excursion scheduled for {equipment_id} ({excursion_type}) - will inject in next cycle")
+
+        return {
+            "status": "scheduled",
+            "message": f"Excursion scheduled for {equipment_id}",
+            "equipment_id": equipment_id,
+            "excursion_type": excursion_type,
+            "injects_in_seconds": service.demo_interval_seconds,
+            "note": "Will be injected in next demo cycle without restarting demo mode"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Error scheduling excursion: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to schedule excursion: {str(e)}"
+        )
+
 @router.post("/alerts/resolve-all")
 async def resolve_all_alerts():
     """

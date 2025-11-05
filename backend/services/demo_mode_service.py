@@ -63,6 +63,7 @@ class DemoModeService:
         self.demo_mode_active = False
         self.demo_task: Optional[asyncio.Task] = None
         self.last_activity_time: Optional[datetime] = None  # For auto-stop tracking
+        self.next_excursion: Dict[str, Dict[str, Any]] = {}  # Pending excursions to inject in next cycle
 
         # Lot processing scenario fields
         self.demo_scenario = "continuous"  # "continuous" or "lot_processing"
@@ -593,11 +594,40 @@ class DemoModeService:
                         excursion_equipment = random.choice(self.equipment_ids)
 
                 for equipment_id in self.equipment_ids:
-                    # Check if this equipment has excursion
-                    is_excursion = False
-                    metrics = self.generate_demo_metrics(equipment_id, False)  # Start with normal
+                    # Check for manual next-cycle excursion injection
+                    if equipment_id in self.next_excursion:
+                        scheduled_excursion = self.next_excursion.pop(equipment_id)
+                        logger.info(f"🎯 Injecting scheduled excursion for {equipment_id}: {scheduled_excursion['excursion_type']}")
 
-                    if equipment_id == excursion_equipment:
+                        # Generate base metrics then apply manual values
+                        metrics = self.generate_demo_metrics(equipment_id, False)
+                        excursion_type = scheduled_excursion.get('excursion_type')
+
+                        # Apply manual excursion values
+                        if excursion_type == 'temperature' and 'temperature' in scheduled_excursion:
+                            metrics['temperature'] = scheduled_excursion['temperature']
+                        elif excursion_type == 'rf_power' and 'rf_power' in scheduled_excursion:
+                            metrics['rf_power'] = scheduled_excursion['rf_power']
+
+                        # Calculate particle count based on root cause (physics model)
+                        if 'particle_count' not in scheduled_excursion:
+                            if excursion_type == 'temperature':
+                                temp_delta = abs(metrics['temperature'] - 23.0)
+                                metrics['particle_count'] = int(500 + (temp_delta * 50))
+                            elif excursion_type == 'rf_power':
+                                rf_delta = abs(metrics['rf_power'] - 1200)
+                                metrics['particle_count'] = int(500 + (rf_delta * 2))
+                        else:
+                            metrics['particle_count'] = scheduled_excursion['particle_count']
+
+                        is_excursion = True
+                        excursion_count += 1
+
+                    # Check if this equipment has excursion (scripted or random)
+                    elif equipment_id == excursion_equipment:
+                        metrics = self.generate_demo_metrics(equipment_id, False)  # Start with normal
+                        is_excursion = False
+
                         if excursion_details:
                             # Use scripted values
                             if excursion_details["type"] == "particle":
@@ -610,6 +640,11 @@ class DemoModeService:
 
                         if is_excursion:
                             excursion_count += 1
+
+                    # Normal case: no excursion
+                    else:
+                        is_excursion = False
+                        metrics = self.generate_demo_metrics(equipment_id, False)
 
                     # Generate metadata with lot information if applicable
                     metadata = self.generate_demo_metadata(is_excursion)

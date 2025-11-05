@@ -165,7 +165,7 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
         }
       }
 
-      const result = await demoAPI.injectExcursion(payload);
+      const result = await demoAPI.injectExcursionNextCycle(payload);
 
       const excursionLabel = excursionForm.excursion_type === 'rf_power' ? 'RF Power Drift' :
                              excursionForm.excursion_type === 'temperature' ? 'Temperature Drift' :
@@ -173,10 +173,10 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
       const valueStr = excursionForm.excursion_value
         ? ` (${excursionForm.excursion_value}${getCurrentThresholdInfo().unit})`
         : '';
-      setInjectionSuccess(`${excursionLabel}${valueStr} excursion injected on ${excursionForm.equipment_id}! (Particle count auto-calculated)`);
+      const injectsIn = result?.injects_in_seconds || 5;
+      setInjectionSuccess(`${excursionLabel}${valueStr} excursion scheduled for ${excursionForm.equipment_id}! Will inject in ~${injectsIn}s (no demo restart needed)`);
 
-      // Refresh demo status (excursion injection stops demo mode)
-      await fetchStatus();
+      // Demo continues running - no need to refresh status
 
       // Clear success message after 5 seconds
       setTimeout(() => setInjectionSuccess(null), 5000);
