@@ -201,8 +201,7 @@ async def unified_search(
     collections in parallel, providing a comprehensive view of relevant data.
     """
     try:
-        logger.info(f"🔍 Unified search request: '{request.query}' (mode: {request.search_mode}, equipment: {request.equipment_id})")
-
+        
         result = await service.search_all(
             query=request.query,
             limit_per_collection=request.limit_per_collection,
@@ -252,7 +251,6 @@ async def search_wafers(
     and characteristics based on the search query.
     """
     try:
-        logger.info(f"🔍 Wafer search request: '{request.query}' (mode: {request.search_mode})")
 
         result = await service.search_wafers(
             query=request.query,
@@ -309,8 +307,7 @@ async def search_process_context(
     manufacturing context related to the query.
     """
     try:
-        logger.info(f"🔍 Process context search request: '{request.query}'")
-        
+
         result = await service.search_process_context(
             query=request.query,
             context_types=request.context_types,
@@ -364,7 +361,6 @@ async def search_historical_knowledge(
     based on the search query.
     """
     try:
-        logger.info(f"🔍 Historical knowledge search request: '{request.query}' (mode: {request.search_mode})")
 
         result = await service.search_historical_knowledge(
             query=request.query,

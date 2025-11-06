@@ -724,7 +724,6 @@ async def inject_excursion_next_cycle(request: Dict[str, Any] = Body(...)):
         - message: Confirmation message
         - injects_in_seconds: Time until injection
     """
-    logger.info(f"🎯 POST /demo/inject-next-cycle - Scheduling excursion: {request}")
 
     try:
         service = get_demo_service()
@@ -761,7 +760,6 @@ async def inject_excursion_next_cycle(request: Dict[str, Any] = Body(...)):
         # Schedule the excursion for next cycle
         service.next_excursion[equipment_id] = request
 
-        logger.info(f"✅ Excursion scheduled for {equipment_id} ({excursion_type}) - will inject in next cycle")
 
         return {
             "status": "scheduled",

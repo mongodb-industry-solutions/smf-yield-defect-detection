@@ -326,8 +326,6 @@ async def websocket_agent_progress(websocket: WebSocket):
         connection_type=ConnectionType.AGENT
     )
 
-    logger.info(f"🔌 WebSocket /ws/agent - Client {client_id} connected for agent progress tracking")
-    logger.debug(f"⚙️ Using connection type: {ConnectionType.AGENT}")
 
     try:
         while True:
@@ -340,8 +338,6 @@ async def websocket_agent_progress(websocket: WebSocket):
 
     except WebSocketDisconnect:
         await ws_manager_instance.disconnect(client_id)
-        logger.info(f"🔌 WebSocket /ws/agent - Client {client_id} disconnected")
     except Exception as e:
-        logger.error(f"❌ WebSocket /ws/agent - Error for {client_id}: {e}", exc_info=True)
         await ws_manager_instance.disconnect(client_id)
 

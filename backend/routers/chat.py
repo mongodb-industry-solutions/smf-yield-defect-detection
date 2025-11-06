@@ -248,8 +248,6 @@ async def chat_stream(request: ChatRequest):
           -H "Content-Type: application/json" \\
           -d '{"message": "Show me recent open alerts", "session_id": "test-123"}'
     """
-    logger.info(f"[{request.session_id}] Chat request: {request.message[:50]}...")
-
     return StreamingResponse(
         chat_stream_generator(request.message, request.session_id),
         media_type="text/event-stream",
@@ -335,7 +333,6 @@ async def get_conversation_history(session_id: str, limit: int = 50):
 
                 messages.append(message_data)
 
-        logger.info(f"Retrieved {len(messages)} messages for session {session_id}")
 
         return {
             "session_id": session_id,
@@ -378,8 +375,6 @@ async def clear_conversation(session_id: str):
         result = collection.delete_many({"thread_id": session_id})
 
         client.close()
-
-        logger.info(f"Cleared {result.deleted_count} checkpoints for session {session_id}")
 
         return {
             "session_id": session_id,
