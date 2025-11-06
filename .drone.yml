@@ -94,110 +94,94 @@ steps:
       event:
         - push
 
-# ---
-# kind: pipeline
-# type: kubernetes
-# name: production-combined
-# platform:
-#   arch: arm64
+---
+kind: pipeline
+type: kubernetes
+name: production-combined
 
-# trigger:
-#   branch:
-#     - production
-#   event:
-#     - push
-#     - tag
+trigger:
+  branch:
+    - main
+  event:
+    - push
 
-# steps:
-#   # Step 1: Build and publish backend Docker image
-#   - name: publish-backend-prod
-#     image: plugins/kaniko-ecr
-#     settings:
-#       create_repository: true
-#       registry: 795250896452.dkr.ecr.us-east-1.amazonaws.com
-#       repo: industrysolutions/smf-yield-defect-backend-prod
-#       dockerfile: Dockerfile.backend
-#       context: .
-#       tags:
-#         - git-${DRONE_COMMIT_SHA:0:7}
-#         - prod-${DRONE_TAG}
-#         - latest
-#       access_key:
-#         from_secret: ecr_access_key
-#       secret_key:
-#         from_secret: ecr_secret_key
-#     when:
-#       event:
-#         - push
-#         - tag
+steps:
+  # Step 1: Build and publish backend Docker image
+  - name: publish-backend-prod
+    image: plugins/kaniko-ecr
+    settings:
+      create_repository: true
+      registry: 795250896452.dkr.ecr.us-east-1.amazonaws.com
+      repo: industrysolutions/smf-yield-defect-backend-prod
+      dockerfile: Dockerfile.backend
+      context: .
+      tags:
+        - git-${DRONE_COMMIT_SHA:0:7}
+        - latest
+      access_key:
+        from_secret: ecr_access_key
+      secret_key:
+        from_secret: ecr_secret_key
+    when:
+      event:
+        - push
 
-#   # Step 2: Build and publish frontend Docker image
-#   - name: publish-frontend-prod
-#     image: plugins/kaniko-ecr
-#     settings:
-#       create_repository: true
-#       registry: 795250896452.dkr.ecr.us-east-1.amazonaws.com
-#       repo: industrysolutions/smf-yield-defect-frontend-prod
-#       dockerfile: Dockerfile.frontend
-#       context: .
-#       tags:
-#         - git-${DRONE_COMMIT_SHA:0:7}
-#         - prod-${DRONE_TAG}
-#         - latest
-#       access_key:
-#         from_secret: ecr_access_key
-#       secret_key:
-#         from_secret: ecr_secret_key
-#     when:
-#       event:
-#         - push
-#         - tag
+  # Step 2: Build and publish frontend Docker image
+  - name: publish-frontend-prod
+    image: plugins/kaniko-ecr
+    settings:
+      create_repository: true
+      registry: 795250896452.dkr.ecr.us-east-1.amazonaws.com
+      repo: industrysolutions/smf-yield-defect-frontend-prod
+      dockerfile: Dockerfile.frontend
+      context: .
+      tags:
+        - git-${DRONE_COMMIT_SHA:0:7}
+        - latest
+      access_key:
+        from_secret: ecr_access_key
+      secret_key:
+        from_secret: ecr_secret_key
+    when:
+      event:
+        - push
 
-#   # Step 3: Deploy combined pod to production
-#   - name: deploy-combined-prod
-#     image: public.ecr.aws/kanopy/drone-helm:v3
-#     settings:
-#       chart: mongodb/web-app
-#       chart_version: 4.30.0
-#       add_repos: [mongodb=https://10gen.github.io/helm-charts]
-#       namespace: industrysolutions
-#       release: smf-yield-defect-prod
-#       values_files: ["environments/production-combined.yaml"]
-#       values:
-#         # Override sidecar backend image with newly built version
-#         - "sidecarContainers[0].image=795250896452.dkr.ecr.us-east-1.amazonaws.com/industrysolutions/smf-yield-defect-backend-prod:git-${DRONE_COMMIT_SHA:0:7}"
-
-#         # Set frontend image (main container)
-#         - "image.tag=git-${DRONE_COMMIT_SHA:0:7}"
-#         - "image.repository=795250896452.dkr.ecr.us-east-1.amazonaws.com/industrysolutions/smf-yield-defect-frontend-prod"
-
-#         # Ingress configuration
-#         - "ingress.enabled=true"
-#         - "ingress.hosts[0]=smf-yield-defect.industrysolutions.prod.corp.mongodb.com"
-
-#         # Enable service mesh (Istio)
-#         - "mesh.enabled=true"
-
-#         # Architecture preference
-#         - "arch=arm64"
-
-#         # Resource limits for production (higher than staging)
-#         - "resources.limits.memory=4Gi"
-#         - "resources.limits.cpu=2000m"
-#         - "resources.requests.memory=2Gi"
-#         - "resources.requests.cpu=1000m"
-
-#         # Ownership and data classification
-#         - "security.dataClassification=Internal"
-#         - "security.dataDesignation[0]=MI"
-#         - "ownership.driEmail=kiran.tulsulkar@mongodb.com"
-
-#       api_server: https://api.prod.corp.mongodb.com
-#       kubernetes_token:
-#         from_secret: production_kubernetes_token
-#     when:
-#       branch:
-#         - production
-#       event:
-#         - push
-#         - tag
+  # Step 3: Deploy combined pod to production
+  - name: deploy-combined-prod
+    image: public.ecr.aws/kanopy/drone-helm:v3
+    settings:
+      chart: mongodb/web-app
+      chart_version: 4.30.0
+      add_repos: [mongodb=https://10gen.github.io/helm-charts]
+      namespace: industrysolutions
+      release: smf-yield-defect-prod
+      values_files: ["environments/production-combined.yaml"]
+      values:
+        # Override sidecar backend image with newly built version
+        - "sidecarContainers[0].image=795250896452.dkr.ecr.us-east-1.amazonaws.com/industrysolutions/smf-yield-defect-backend-prod:git-${DRONE_COMMIT_SHA:0:7}"
+        # Set frontend image (main container)
+        - "image.tag=git-${DRONE_COMMIT_SHA:0:7}"
+        - "image.repository=795250896452.dkr.ecr.us-east-1.amazonaws.com/industrysolutions/smf-yield-defect-frontend-prod"
+        # Ingress configuration
+        - "ingress.enabled=true"
+        - "ingress.hosts[0]=smf-yield-defect.industrysolutions.prod.corp.mongodb.com"
+        # Enable service mesh (Istio)
+        - "mesh.enabled=true"
+        # Frontend container resources (main container)
+        - "resources.limits.cpu=1000m"
+        - "resources.limits.memory=1536Mi"
+        - "resources.requests.cpu=500m"
+        - "resources.requests.memory=768Mi"
+        # Backend sidecar resources
+        - "sidecarContainers[0].resources.limits.cpu=1000m"
+        - "sidecarContainers[0].resources.limits.memory=1536Mi"
+        - "sidecarContainers[0].resources.requests.cpu=500m"
+        - "sidecarContainers[0].resources.requests.memory=768Mi"
+      api_server: https://api.prod.corp.mongodb.com
+      kubernetes_token:
+        from_secret: production_kubernetes_token
+    when:
+      branch:
+        - main
+      event:
+        - push

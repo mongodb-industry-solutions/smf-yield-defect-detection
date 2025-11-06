@@ -1,11 +1,5 @@
-# Production Environment Configuration - Single Pod Deployment
-# Frontend (main container) + Backend (sidecar container)
-
-# ============================================================================
-# MAIN CONTAINER (Frontend) Environment Variables
-# ============================================================================
 env:
-  NODE_ENV: production
+  NODE_ENV: prod
 
   # Client-side API calls use Next.js proxy route (runs server-side)
   # The proxy route then uses INTERNAL_API_URL to reach backend via loopback
@@ -16,41 +10,32 @@ env:
   INTERNAL_API_URL: http://127.0.0.1:8000
   INTERNAL_WS_URL: ws://127.0.0.1:8000
 
-# ============================================================================
-# MAIN CONTAINER (Frontend) Secrets
-# ============================================================================
-envSecrets:
-  # No frontend-specific secrets needed currently
-  # Add here if needed for production
+  # Atlas Charts embed URLs (public, visible in browser anyway)
+  NEXT_PUBLIC_ATLAS_CHART_PARTICLE_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=ac775c70-1a0d-44e6-adb2-a1b20f9f7a5b&maxDataAge=10&theme=light&autoRefresh=true"
+  NEXT_PUBLIC_ATLAS_CHART_TEMPERATURE_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=ad4f54e1-707e-4c74-89c4-e0d622261ba6&maxDataAge=10&theme=light&autoRefresh=true"
+  NEXT_PUBLIC_ATLAS_CHART_RFPOWER_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=ca09b6cb-c40d-4fef-b834-53fb387c9993&maxDataAge=10&theme=light&autoRefresh=true"
+  NEXT_PUBLIC_ATLAS_CHART_METRICS_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=3f0e3f1a-e0bd-4de9-ba6c-c59980604a52&maxDataAge=10&theme=light&autoRefresh=true"
 
-# ============================================================================
-# SIDECAR CONTAINER (Backend) Configuration
-# ============================================================================
 sidecarContainers:
   - name: backend
-    # Image will be overridden by Drone pipeline with specific git SHA tag
     image: 795250896452.dkr.ecr.us-east-1.amazonaws.com/industrysolutions/smf-yield-defect-backend-prod:latest
-
-    # Expose backend port (must listen on 0.0.0.0 in Dockerfile)
     ports:
       - containerPort: 8000
         name: backend
-        protocol: TCP
 
-    # Backend environment variables
     env:
       # Application environment
       - name: NODE_ENV
-        value: production
+        value: staging
 
       - name: APP_NAME
-        value: smf-yield-defect-production
+        value: smf-yield-defect-prod
 
-      - name: DEMO_MODE_ENABLED
-        value: "false"  # Disable demo mode in production
+      - name: DEMO_EXCURSION_PROBABILITY
+        value: "0.0"
 
       - name: DEMO_INTERVAL_SECONDS
-        value: "60"
+        value: "5"
 
       - name: USE_AI_AGENTS
         value: "true"
@@ -78,77 +63,11 @@ sidecarContainers:
             name: smf-yield-secrets-prod
             key: VOYAGE_API_KEY
 
-      # AWS Credentials (optional - for S3 image storage)
-      # If using IRSA, these are not needed
-      - name: AWS_REGION
-        value: us-east-1
-
-      # Uncomment if NOT using IRSA:
-      # - name: AWS_ACCESS_KEY_ID
-      #   valueFrom:
-      #     secretKeyRef:
-      #       name: smf-yield-secrets-prod
-      #       key: AWS_ACCESS_KEY_ID
-
-      # - name: AWS_SECRET_ACCESS_KEY
-      #   valueFrom:
-      #     secretKeyRef:
-      #       name: smf-yield-secrets-prod
-      #       key: AWS_SECRET_ACCESS_KEY
-
-      # - name: S3_BUCKET_URI
-      #   valueFrom:
-      #     secretKeyRef:
-      #       name: smf-yield-secrets-prod
-      #       key: S3_BUCKET_URI
-
-    # Backend resource limits (higher for production)
-    resources:
-      limits:
-        memory: 2Gi
-        cpu: 1000m
-      requests:
-        memory: 1Gi
-        cpu: 500m
-
-# ============================================================================
-# Service Account Configuration (Optional - for AWS IRSA)
-# ============================================================================
-# Uncomment if using AWS IAM Roles for Service Accounts (IRSA)
-# serviceAccount:
-#   enabled: true
-#   irsa:
-#     accountId: "795250896452"
-#     roleName: "kanopy-prod-cicd-irsa"
-
-# ============================================================================
-# Health Probes
-# ============================================================================
-# Frontend health check - Kanopy will probe this endpoint
-probes:
+serviceAccount:
   enabled: true
-  path: /api/health  # Frontend health endpoint
-  liveness:
-    httpGet: true
-    initialDelaySeconds: 30
-    periodSeconds: 30
-    timeoutSeconds: 5
-    failureThreshold: 3
-  readiness:
-    httpGet: true
-    initialDelaySeconds: 20
-    periodSeconds: 10
-    timeoutSeconds: 3
-    failureThreshold: 3
+  irsa:
+    accountId: "275662791714"
+    roleName: "kanopy-prod-cicd-irsa"
 
-# ============================================================================
-# Services Configuration
-# ============================================================================
-services:
-  - name: http
-    port: 8080
-    targetPort: 8080  # Frontend runs on 8080 (Kanopy standard)
-    ingress: true
-    probes: true
-    protocol: TCP
-    type: ClusterIP
+
+
