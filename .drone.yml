@@ -188,7 +188,7 @@ steps:
         - "sidecarContainers[0].resources.requests.memory=768Mi"
       api_server: https://api.prod.corp.mongodb.com
       kubernetes_token:
-        from_secret: production_kubernetes_token
+        from_secret: prod_kubernetes_token
     when:
       branch:
         - main
