@@ -432,7 +432,7 @@ async def startup_event():
         
         # Step 2: Set monitoring as active and auto-start monitoring loop
         # Only start monitoring in production to prevent duplicate alerts
-        NODE_ENV = os.getenv("NODE_ENV", "production").lower()
+        NODE_ENV = os.getenv("NODE_ENV", "prod").lower()
 
         if NODE_ENV == "prod":
             monitoring_active = True
