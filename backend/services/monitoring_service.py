@@ -87,7 +87,8 @@ class MonitoringService:
         self.monitoring_active = False
 
         # Alert deduplication window (MongoDB-based, global across all instances)
-        self.deduplication_window_seconds = 5  # Skip alerts within 5 seconds
+        # Increased from 5 to 15 seconds for extra safety against race conditions
+        self.deduplication_window_seconds = 5  # Skip alerts within 15 seconds
 
         logger.info("✅ MonitoringService initialized")
         logger.info(f"   🔒 Alert Deduplication: {self.deduplication_window_seconds}s window (MongoDB-based)")

@@ -431,22 +431,33 @@ async def startup_event():
         monitoring_service = services['monitoring_service']
         
         # Step 2: Set monitoring as active and auto-start monitoring loop
-        monitoring_active = True
-        monitoring_service.monitoring_active = True
+        # Only start monitoring in production to prevent duplicate alerts
+        NODE_ENV = os.getenv("NODE_ENV", "production").lower()
 
-        monitoring_task = asyncio.create_task(monitoring_service.start_sensor_monitoring())
+        if NODE_ENV == "prod":
+            monitoring_active = True
+            monitoring_service.monitoring_active = True
 
-        # Register task with router to prevent duplicate monitoring loops
-        from routers.monitoring import set_monitoring_tasks
-        set_monitoring_tasks(monitoring_task)
+            monitoring_task = asyncio.create_task(monitoring_service.start_sensor_monitoring())
 
-        # Start RCA monitoring loop (watches alerts collection for automatic RCA)
-        rca_monitoring_task = asyncio.create_task(monitoring_service.start_alert_rca_monitoring())
-        logger.info("✅ RCA monitoring loop auto-started (watches alerts collection)")
+            # Register task with router to prevent duplicate monitoring loops
+            from routers.monitoring import set_monitoring_tasks
+            set_monitoring_tasks(monitoring_task)
 
-        logger.info("✅ Monitoring services initialized successfully on startup")
-        logger.info("Services ready: ExcursionDetector, AlertManager, MonitoringService")
-        logger.info("✅ Monitoring loops auto-started (sensor events + RCA alerts)")
+            # Start RCA monitoring loop (watches alerts collection for automatic RCA)
+            rca_monitoring_task = asyncio.create_task(monitoring_service.start_alert_rca_monitoring())
+            logger.info("✅ RCA monitoring loop auto-started (watches alerts collection)")
+
+            logger.info("✅ Monitoring services initialized successfully on startup")
+            logger.info("Services ready: ExcursionDetector, AlertManager, MonitoringService")
+            logger.info("✅ Monitoring loops auto-started (sensor events + RCA alerts)")
+            logger.info(f"🟢 Production instance - Monitoring ENABLED")
+        else:
+            monitoring_active = False
+            monitoring_service.monitoring_active = False
+            logger.info(f"🟡 {NODE_ENV.upper()} instance - Monitoring DISABLED to prevent duplicate alerts")
+            logger.info("This instance will still receive alert broadcasts via WebSocket from production")
+            logger.info("Services ready: ExcursionDetector, AlertManager, MonitoringService (monitoring disabled)")
 
         # Start sensor cleanup service (TTL for timeseries collection)
         sensor_cleanup_service = SensorCleanupService(MDB_URI, MDB_DATABASE_NAME)
