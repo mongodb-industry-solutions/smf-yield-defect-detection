@@ -186,9 +186,11 @@
 }
 
 .cardIcon {
-  font-size: 40px;
   margin-bottom: var(--spacing-md);
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary-dark2);
 }
 
 .cardTitle {
@@ -237,8 +239,11 @@
 }
 
 .mongoIcon {
-  font-size: 28px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-primary-dark2);
 }
 
 .mongoFeature strong {
