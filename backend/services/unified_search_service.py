@@ -61,8 +61,8 @@ class UnifiedSearchService:
         )
 
         # Vector index names
-        self.wafer_vector_index = "wafer_defects_vector_index"
-        self.knowledge_vector_index = "historical_knowledge_vector_index"
+        self.wafer_vector_index = "wafer_defects_vector_search"
+        self.knowledge_vector_index = "historical_knowledge_vector_search"
 
         # Text search index names (Atlas Search)
         self.wafer_text_index = "wafer_defects_text_index"
@@ -365,71 +365,42 @@ class UnifiedSearchService:
         limit: int
     ) -> List[Dict[str, Any]]:
         """
-        Build Vector Search pipeline for wafer defects
+        Build Vector Search pipeline for wafer defects using modern $vectorSearch syntax.
 
-        Uses compound query with filter clause for equipment filtering at database level.
+        Uses $vectorSearch operator (MongoDB 6.0.10+) with filters applied after vector search
+        for better recall and performance.
         """
         # Generate query embedding
         query_embedding = await self.embedding_service.generate_text_embedding(query)
         logger.info(f"   🧬 Query embedding generated ({len(query_embedding)} dimensions)")
 
-        # Build compound query with filter
-        search_query = {
-            "index": self.wafer_vector_index,
-            "knnBeta": {
-                "vector": query_embedding,
-                "path": "embedding",
-                "k": limit
+        # Build modern $vectorSearch pipeline
+        pipeline = [
+            {
+                "$vectorSearch": {
+                    "index": self.wafer_vector_index,
+                    "queryVector": query_embedding,
+                    "path": "embedding",
+                    "numCandidates": limit * 10,  # Over-retrieve for better recall
+                    "limit": limit * 2 if equipment_id else limit  # Get extras if filtering
+                }
+            },
+            {
+                "$addFields": {
+                    "score": {"$meta": "vectorSearchScore"}
+                }
             }
-        }
+        ]
 
-        # Add equipment filter using compound query
+        # Apply equipment filter AFTER vector search for better recall
         if equipment_id:
-            pipeline = [
-                {
-                    "$search": {
-                        "index": self.wafer_vector_index,
-                        "compound": {
-                            "must": [{
-                                "knnBeta": {
-                                    "vector": query_embedding,
-                                    "path": "embedding",
-                                    "k": limit * 3  # Get more candidates for filtering
-                                }
-                            }],
-                            "filter": [{
-                                "text": {
-                                    "query": equipment_id,
-                                    "path": "equipment_id"
-                                }
-                            }]
-                        }
-                    }
-                },
-                {
-                    "$addFields": {
-                        "score": {"$meta": "searchScore"}
-                    }
-                },
-                {
-                    "$limit": limit
-                }
-            ]
-            logger.info(f"   🔧 Equipment filter applied in query: {equipment_id}")
-        else:
-            pipeline = [
-                {
-                    "$search": search_query
-                },
-                {
-                    "$addFields": {
-                        "score": {"$meta": "searchScore"}
-                    }
-                },
-                {
-                    "$limit": limit
-                }
-            ]
+            pipeline.append({
+                "$match": {"equipment_id": equipment_id}
+            })
+            logger.info(f"   🔧 Equipment filter applied post-search: {equipment_id}")
+
+        # Final limit
+        pipeline.append({"$limit": limit})
 
         return pipeline
 
@@ -440,229 +411,127 @@ class UnifiedSearchService:
         limit: int
     ) -> List[Dict[str, Any]]:
         """
-        Build Hybrid Search pipeline using $rankFusion (MongoDB 8.1+)
+        Build Hybrid Search pipeline using $unionWith pattern (MongoDB 6.0+)
 
-        Combines text and vector search results for best of both worlds.
-        Equipment filter is applied AFTER $rankFusion using $match for reliability.
+        Combines text and vector search for comprehensive results:
+        - Text search: Exact keyword matching (BM25 algorithm)
+        - Vector search: Semantic similarity (cosine distance)
+        - Weighted score combination: Balances text vs semantic relevance
+
+        Pattern follows MongoDB best practices for hybrid search.
+        Compatible with MongoDB 6.0+ (not requiring 8.1+ for $rankFusion).
         """
         # Generate query embedding for vector search
         query_embedding = await self.embedding_service.generate_text_embedding(query)
         logger.info(f"   🧬 Query embedding generated ({len(query_embedding)} dimensions)")
 
-        # Build text search sub-pipeline (no filter - get more candidates)
-        text_search = {
-            "index": self.wafer_text_index,
-            "text": {
-                "query": query,
-                "path": ["description", "defect_summary.defect_pattern"],
-                "fuzzy": {
-                    "maxEdits": 1
-                }
-            }
-        }
+        # Weighting: 0.4 means vector search contributes 40% to final score
+        # Tune this based on your use case (0.2-0.5 recommended range)
+        VECTOR_WEIGHT = 0.4
 
-        # Build vector search sub-pipeline (no filter - get more candidates)
-        vector_search = {
-            "index": self.wafer_vector_index,
-            "knnBeta": {
-                "vector": query_embedding,
-                "path": "embedding",
-                "k": limit * 10  # Get many more candidates before filtering
-            }
-        }
-
-        # Use $rankFusion to combine results, then filter
+        # Build the aggregation pipeline
         pipeline = [
+            # Stage 1: Text search (main pipeline)
             {
-                "$rankFusion": {
-                    "input": {
-                        "pipelines": {
-                            "textSearch": [
-                                {"$search": text_search},
-                                {"$limit": limit * 10}  # More candidates
-                            ],
-                            "vectorSearch": [
-                                {"$search": vector_search},
-                                {"$limit": limit * 10}  # More candidates
-                            ]
+                "$search": {
+                    "index": self.wafer_text_index,
+                    "text": {
+                        "query": query,
+                        "path": ["description", "defect_summary.defect_pattern"],
+                        "fuzzy": {
+                            "maxEdits": 1
                         }
                     }
                 }
             },
             {
-                "$project": {
-                    "score": {"$meta": "searchScore"},
-                    "wafer_id": 1,
-                    "lot_id": 1,
-                    "equipment_id": 1,
-                    "description": 1,
-                    "defect_summary": 1,
-                    "defects": 1,
-                    "ink_map": 1,
-                    "inspection_timestamp": 1,
-                    "process_context": 1
+                "$addFields": {
+                    "text_score": {"$meta": "searchScore"}
+                }
+            },
+            {
+                "$limit": limit * 10  # Get extra candidates for better fusion
+            },
+
+            # Stage 2: Union with vector search subpipeline
+            {
+                "$unionWith": {
+                    "coll": "wafer_defects",
+                    "pipeline": [
+                        {
+                            "$vectorSearch": {
+                                "index": self.wafer_vector_index,
+                                "queryVector": query_embedding,
+                                "path": "embedding",
+                                "numCandidates": limit * 20,
+                                "limit": limit * 10
+                            }
+                        },
+                        {
+                            "$addFields": {
+                                "vector_score": {"$meta": "vectorSearchScore"}
+                            }
+                        }
+                    ]
+                }
+            },
+
+            # Stage 3: Deduplicate and merge scores
+            {
+                "$group": {
+                    "_id": "$_id",
+                    "doc": {"$first": "$$ROOT"},
+                    "text_score": {"$max": "$text_score"},
+                    "vector_score": {"$max": "$vector_score"}
+                }
+            },
+
+            # Stage 4: Restore document structure
+            {
+                "$replaceRoot": {"newRoot": "$doc"}
+            },
+
+            # Stage 5: Calculate weighted combined score
+            {
+                "$addFields": {
+                    "score": {
+                        "$add": [
+                            {"$ifNull": ["$text_score", 0]},
+                            {
+                                "$multiply": [
+                                    {"$ifNull": ["$vector_score", 0]},
+                                    VECTOR_WEIGHT
+                                ]
+                            }
+                        ]
+                    }
                 }
             }
         ]
 
-        # Apply equipment filter AFTER $rankFusion using $match
+        # Stage 6: Apply equipment filter if provided (post-search)
         if equipment_id:
             pipeline.append({
                 "$match": {
                     "equipment_id": equipment_id
                 }
             })
-            logger.info(f"   🔧 Equipment filter applied after RRF: {equipment_id}")
+            logger.info(f"   🔧 Equipment filter applied after hybrid search: {equipment_id}")
 
-        # Final limit after filtering
-        pipeline.append({"$limit": limit})
+        # Stage 7: Sort by combined score and limit
+        pipeline.extend([
+            {
+                "$sort": {"score": -1}
+            },
+            {
+                "$limit": limit
+            }
+        ])
 
-        logger.info(f"   🔀 Hybrid search: combining text + vector results with RRF scoring")
+        logger.info(f"   🔀 Hybrid search: text (BM25) + vector (cosine) with {VECTOR_WEIGHT} weighting")
 
         return pipeline
 
-    # async def search_process_context(
-    #     self,
-    #     query: str,
-    #     context_types: Optional[List[str]] = None,
-    #     limit: int = 10
-    # ) -> Dict[str, Any]:
-    #     """
-    #     Search process context using text-based search
-
-    #     Args:
-    #         query: Search query (e.g., "slurry batch", "padding wear")
-    #         context_types: Filter by types ["slurry_batch", "etch_recipe", "reticle"]
-    #         limit: Maximum number of results
-
-    #     Returns:
-    #         Dict containing:
-    #             - results: List of process context items with scores
-    #             - summary: Search statistics
-    #             - search_metadata: Query execution details
-    #     """
-    #     logger.info("🔍 search_process_context() - TEXT SEARCH")
-    #     logger.info(f"   Query: '{query}', Types: {context_types}, Limit: {limit}")
-
-    #     start_time = time.time()
-
-    #     try:
-    #         # Build MongoDB query using $regex for text matching
-    #         # Search across multiple text fields
-    #         query_filter = {
-    #             "$or": [
-    #                 {"context_id": {"$regex": query, "$options": "i"}},
-    #                 {"slurry_details.manufacturer": {"$regex": query, "$options": "i"}},
-    #                 {"slurry_details.composition": {"$regex": query, "$options": "i"}},
-    #                 {"recipe_details.recipe_name": {"$regex": query, "$options": "i"}},
-    #                 {"reticle_details.reticle_id": {"$regex": query, "$options": "i"}},
-    #                 {"known_issues": {"$regex": query, "$options": "i"}}
-    #             ]
-    #         }
-
-    #         # Add context type filter if specified
-    #         if context_types:
-    #             query_filter["context_type"] = {"$in": context_types}
-
-    #         # Execute query
-    #         cursor = self.db.process_context.find(query_filter).limit(limit)
-    #         results = await cursor.to_list(length=limit)
-
-    #         elapsed_ms = (time.time() - start_time) * 1000
-
-    #         # Format results
-    #         formatted_results = []
-    #         for doc in results:
-    #             # Convert ObjectId to string
-    #             if "_id" in doc:
-    #                 doc["_id"] = str(doc["_id"])
-
-    #             context_type = doc.get("context_type")
-    #             formatted = {
-    #                 "collection_source": "process_context",
-    #                 "context_type": context_type,
-    #                 "context_id": doc.get("context_id"),
-    #                 "is_problematic": doc.get("is_problematic", False),
-    #                 "known_issues": doc.get("known_issues", []),
-    #                 "score": 0.8,  # Fixed relevance score for text matches
-    #                 # Full nested objects for frontend visualization
-    #                 "slurry_details": doc.get("slurry_details", {}),
-    #                 "recipe_details": doc.get("recipe_details", {}),
-    #                 "reticle_details": doc.get("reticle_details", {})
-    #             }
-
-    #             # Add type-specific quick access fields (for backward compatibility)
-    #             if context_type == "slurry_batch":
-    #                 slurry = doc.get("slurry_details", {})
-    #                 formatted.update({
-    #                     "manufacturer": slurry.get("manufacturer"),
-    #                     "composition": slurry.get("composition"),
-    #                     "qc_status": slurry.get("qc_status"),
-    #                     "large_particle_count": slurry.get("large_particle_count")
-    #                 })
-    #             elif context_type == "etch_recipe":
-    #                 recipe = doc.get("recipe_details", {})
-    #                 formatted.update({
-    #                     "recipe_name": recipe.get("recipe_name"),
-    #                     "process_type": recipe.get("process_type")
-    #                 })
-    #             elif context_type == "reticle":
-    #                 reticle = doc.get("reticle_details", {})
-    #                 inspection = reticle.get("inspection_data", {})
-    #                 formatted.update({
-    #                     "reticle_id": reticle.get("reticle_id"),
-    #                     "layer": reticle.get("layer"),
-    #                     "defect_count": inspection.get("defect_count", 0)
-    #                 })
-
-    #             formatted_results.append(formatted)
-
-    #         # Calculate summary
-    #         problematic_count = sum([1 for r in formatted_results if r.get("is_problematic")])
-    #         types_found = list(set([r["context_type"] for r in formatted_results]))
-
-    #         summary = {
-    #             "total_found": len(formatted_results),
-    #             "problematic_items": problematic_count,
-    #             "context_types": types_found,
-    #             "execution_time_ms": round(elapsed_ms, 2)
-    #         }
-
-    #         logger.info(f"   ✅ Found {len(formatted_results)} process context items "
-    #                    f"({problematic_count} problematic)")
-
-    #         return {
-    #             "results": formatted_results,
-    #             "summary": summary,
-    #             "search_metadata": {
-    #                 "query": query,
-    #                 "context_types": context_types,
-    #                 "search_method": "text_regex_search",
-    #                 "execution_time_ms": round(elapsed_ms, 2)
-    #             }
-    #         }
-
-    #     except Exception as e:
-    #         elapsed_ms = (time.time() - start_time) * 1000
-    #         logger.error(f"   ❌ Process context search error: {e}", exc_info=True)
-
-    #         return {
-    #             "results": [],
-    #             "summary": {
-    #                 "total_found": 0,
-    #                 "problematic_items": 0,
-    #                 "context_types": [],
-    #                 "execution_time_ms": round(elapsed_ms, 2),
-    #                 "error": str(e)
-    #             },
-    #             "search_metadata": {
-    #                 "query": query,
-    #                 "context_types": context_types,
-    #                 "search_method": "text_regex_search",
-    #                 "execution_time_ms": round(elapsed_ms, 2),
-    #                 "error": str(e)
-    #             }
-    #         }
 
     async def search_historical_knowledge(
         self,
@@ -865,28 +734,28 @@ class UnifiedSearchService:
         limit: int
     ) -> List[Dict[str, Any]]:
         """
-        Build Vector Search pipeline for historical knowledge
+        Build Vector Search pipeline for historical knowledge using modern $vectorSearch
 
-        Uses $match stage for document type filtering (post-search).
+        Uses $match stage for document type filtering (post-search to preserve vector search quality).
         """
         # Generate query embedding
         query_embedding = await self.embedding_service.generate_text_embedding(query)
         logger.info(f"   🧬 Query embedding generated ({len(query_embedding)} dimensions)")
 
+        # Build modern $vectorSearch pipeline
         pipeline = [
             {
-                "$search": {
+                "$vectorSearch": {
                     "index": self.knowledge_vector_index,
-                    "knnBeta": {
-                        "vector": query_embedding,
-                        "path": "embedding",
-                        "k": limit * 2 if document_types else limit
-                    }
+                    "queryVector": query_embedding,
+                    "path": "embedding",
+                    "numCandidates": limit * 10,
+                    "limit": limit * 2 if document_types else limit
                 }
             },
             {
                 "$addFields": {
-                    "score": {"$meta": "searchScore"}
+                    "score": {"$meta": "vectorSearchScore"}
                 }
             }
         ]
@@ -911,81 +780,119 @@ class UnifiedSearchService:
         limit: int
     ) -> List[Dict[str, Any]]:
         """
-        Build Hybrid Search pipeline using $rankFusion (MongoDB 8.1+)
+        Build Hybrid Search pipeline for historical knowledge using $unionWith pattern
 
-        Combines text and vector search for historical knowledge.
-        Document type filter is applied AFTER $rankFusion using $match for reliability.
+        Combines text search (titles, content) with vector search (semantic similarity).
+        Document type filter is applied AFTER hybrid search to preserve quality.
+
+        Pattern follows MongoDB best practices for hybrid search (MongoDB 6.0+).
         """
         # Generate query embedding for vector search
         query_embedding = await self.embedding_service.generate_text_embedding(query)
         logger.info(f"   🧬 Query embedding generated ({len(query_embedding)} dimensions)")
 
-        # Build text search sub-pipeline (no filter - get more candidates)
-        text_search = {
-            "index": self.knowledge_text_index,
-            "text": {
-                "query": query,
-                "path": ["title", "content"],
-                "fuzzy": {
-                    "maxEdits": 1
-                }
-            }
-        }
+        # Higher weight for knowledge base (more semantic)
+        VECTOR_WEIGHT = 0.5
 
-        # Build vector search sub-pipeline (no filter - get more candidates)
-        vector_search = {
-            "index": self.knowledge_vector_index,
-            "knnBeta": {
-                "vector": query_embedding,
-                "path": "embedding",
-                "k": limit * 10  # Get many more candidates before filtering
-            }
-        }
-
-        # Use $rankFusion to combine results, then filter
         pipeline = [
+            # Stage 1: Text search (main pipeline)
             {
-                "$rankFusion": {
-                    "input": {
-                        "pipelines": {
-                            "textSearch": [
-                                {"$search": text_search},
-                                {"$limit": limit * 10}  # More candidates
-                            ],
-                            "vectorSearch": [
-                                {"$search": vector_search},
-                                {"$limit": limit * 10}  # More candidates
-                            ]
+                "$search": {
+                    "index": self.knowledge_text_index,
+                    "text": {
+                        "query": query,
+                        "path": ["title", "content"],
+                        "fuzzy": {
+                            "maxEdits": 1
                         }
                     }
                 }
             },
             {
-                "$project": {
-                    "score": {"$meta": "searchScore"},
-                    "title": 1,
-                    "content": 1,
-                    "document_type": 1,
-                    "metadata": 1,
-                    "findings": 1,
-                    "solutions": 1
+                "$addFields": {
+                    "text_score": {"$meta": "searchScore"}
+                }
+            },
+            {
+                "$limit": limit * 10
+            },
+
+            # Stage 2: Union with vector search subpipeline
+            {
+                "$unionWith": {
+                    "coll": "historical_knowledge",
+                    "pipeline": [
+                        {
+                            "$vectorSearch": {
+                                "index": self.knowledge_vector_index,
+                                "queryVector": query_embedding,
+                                "path": "embedding",
+                                "numCandidates": limit * 20,
+                                "limit": limit * 10
+                            }
+                        },
+                        {
+                            "$addFields": {
+                                "vector_score": {"$meta": "vectorSearchScore"}
+                            }
+                        }
+                    ]
+                }
+            },
+
+            # Stage 3: Deduplicate and merge scores
+            {
+                "$group": {
+                    "_id": "$_id",
+                    "doc": {"$first": "$$ROOT"},
+                    "text_score": {"$max": "$text_score"},
+                    "vector_score": {"$max": "$vector_score"}
+                }
+            },
+
+            # Stage 4: Restore document structure
+            {
+                "$replaceRoot": {"newRoot": "$doc"}
+            },
+
+            # Stage 5: Calculate weighted combined score
+            {
+                "$addFields": {
+                    "score": {
+                        "$add": [
+                            {"$ifNull": ["$text_score", 0]},
+                            {
+                                "$multiply": [
+                                    {"$ifNull": ["$vector_score", 0]},
+                                    VECTOR_WEIGHT
+                                ]
+                            }
+                        ]
+                    }
                 }
             }
         ]
 
-        # Apply document type filter AFTER $rankFusion using $match
+        # Stage 6: Apply document type filter if provided
         if document_types:
             pipeline.append({
                 "$match": {
                     "document_type": {"$in": document_types}
                 }
             })
-            logger.info(f"   📄 Document type filter applied after RRF: {document_types}")
+            logger.info(f"   📄 Document type filter applied after hybrid search: {document_types}")
 
-        # Final limit after filtering
-        pipeline.append({"$limit": limit})
+        # Stage 7: Sort and limit
+        pipeline.extend([
+            {
+                "$sort": {"score": -1}
+            },
+            {
+                "$limit": limit
+            }
+        ])
 
-        logger.info(f"   🔀 Hybrid search: combining text + vector results with RRF scoring")
+        logger.info(f"   🔀 Hybrid search: text + vector with {VECTOR_WEIGHT} weighting")
 
         return pipeline
 

@@ -131,21 +131,20 @@ async def _search_similar_wafers(
     historical patterns with known root causes.
     """
     # Build MongoDB Atlas Vector Search pipeline
-    # Note: knnBeta should be at top level, not nested in compound
+    # Using modern vectorSearch syntax with pure Vector Search index
     pipeline = [
         {
-            "$search": {
-                "index": "wafer_defects_vector_index",
-                "knnBeta": {
-                    "vector": query_embedding,
-                    "path": "embedding",
-                    "k": limit * 2  # Get extra candidates for better results
-                }
+            "$vectorSearch": {
+                "index": "wafer_defects_vector_search",
+                "queryVector": query_embedding,
+                "path": "embedding",
+                "numCandidates": limit * 10,  # Get extra candidates for better results
+                "limit": limit * 2
             }
         },
         {
             "$addFields": {
-                "score": {"$meta": "searchScore"}
+                "score": {"$meta": "vectorSearchScore"}
             }
         },
         {

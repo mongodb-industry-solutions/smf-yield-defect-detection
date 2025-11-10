@@ -31,8 +31,8 @@
     "MDB_TIMESERIES_TIMEFIELD": "timestamp",
     "MDB_TIMESERIES_GRANULARITY": "minutes",
     "MDB_EMBEDDINGS_COLLECTION": "wafer_defects",
-    "MDB_EMBEDDINGS_COLLECTION_VS_FIELD": "ink_map.image_embedding",
-    "MDB_VS_INDEX": "multimodal_defect_index",
+    "MDB_EMBEDDINGS_COLLECTION_VS_FIELD": "embedding",
+    "MDB_VS_INDEX": "wafer_defects_vector_search",
     "MDB_HISTORICAL_RECOMMENDATIONS_COLLECTION": "historical_knowledge",
     "MDB_PROCESS_CONTEXT_COLLECTION": "process_context",
     "SIMILAR_QUERIES": [

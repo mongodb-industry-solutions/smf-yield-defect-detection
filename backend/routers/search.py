@@ -393,8 +393,8 @@ async def search_health() -> Dict[str, Any]:
             "service": "UnifiedSearchService",
             "database": service.db.name,
             "vector_indexes": {
-                "wafer_defects": service.wafer_index,
-                "historical_knowledge": service.knowledge_index
+                "wafer_defects": service.wafer_vector_index,
+                "historical_knowledge": service.knowledge_vector_index
             }
         }
     except Exception as e:

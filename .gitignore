@@ -257,3 +257,11 @@ backend/enhanced/process_context_enhanced.json
 backend/scripts/cleanup_wafers_without_embeddings.py
 backend/routers/demo_mode.py.bak
 backend/agenti_ai_plan/README.md
+
+.claude/
+.cursor/
+.playwright-mcp/
+backend/data_generation/generate_wafer_images_fixed.py
+backend/wafer_defects_enhanced.json
+.gitignore
+backend/wafer_defects_fixed.json
