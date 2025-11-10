@@ -20,10 +20,100 @@ const UnifiedSearchPanel = () => {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState(null);
 
+  // Example queries to demonstrate search effectiveness for different modes
+  const exampleQueries = {
+    vector: [
+      {
+        query: "edge defects cooling temperature failures",
+        description: "Semantic: Find edge defects caused by thermal/cooling issues",
+        scope: "all",
+        mode: "vector"
+      },
+      {
+        query: "RF power drift systematic grid pattern",
+        description: "Semantic: Systematic defects from RF power instability",
+        scope: "all",
+        mode: "vector"
+      },
+      {
+        query: "particle contamination slurry batch cluster defects",
+        description: "Semantic: Clustered defects from contaminated slurry batches",
+        scope: "all",
+        mode: "vector"
+      },
+      {
+        query: "temperature gradient peripheral wafer defects",
+        description: "Semantic: Edge failures from temperature imbalance",
+        scope: "all",
+        mode: "vector"
+      }
+    ],
+    text: [
+      {
+        query: "CMP_TOOL_01 edge",
+        description: "Exact: Find all edge defects on CMP_TOOL_01",
+        scope: "all",
+        mode: "text"
+      },
+      {
+        query: "yield 65.9%",
+        description: "Exact: Find wafers with specific yield percentage",
+        scope: "wafers",
+        mode: "text"
+      },
+      {
+        query: "slurry_batch SB_2025_087",
+        description: "Exact: Find defects from specific slurry batch",
+        scope: "all",
+        mode: "text"
+      },
+      {
+        query: "RF power 2127W",
+        description: "Exact: Search for specific RF power readings",
+        scope: "all",
+        mode: "text"
+      }
+    ],
+    hybrid: [
+      {
+        query: "systematic pressure issues CMP equipment maintenance",
+        description: "Combined: Semantic concepts + keyword matching",
+        scope: "all",
+        mode: "hybrid"
+      },
+      {
+        query: "LITHO focus degradation lens optical coating",
+        description: "Combined: Equipment ID + semantic root cause analysis",
+        scope: "all",
+        mode: "hybrid"
+      },
+      {
+        query: "edge ring defects plasma density chamber cooling",
+        description: "Combined: Pattern type + technical diagnostics",
+        scope: "all",
+        mode: "hybrid"
+      },
+      {
+        query: "ETCH RF generator capacitor systematic failures",
+        description: "Combined: Equipment + component + failure mode",
+        scope: "all",
+        mode: "hybrid"
+      }
+    ]
+  };
+
+  // Handle example query click
+  const handleExampleClick = (example) => {
+    setQuery(example.query);
+    setSearchScope(example.scope);
+    setSearchMode(example.mode);
+  };
+
   // Filter state
   const [equipmentFilter, setEquipmentFilter] = useState('');
   const [limitFilter, setLimitFilter] = useState('10');
   const [showFilters, setShowFilters] = useState(false);
+  const [showExamples, setShowExamples] = useState(true);
 
   // Results state
   const [results, setResults] = useState(null);
@@ -146,6 +236,40 @@ const UnifiedSearchPanel = () => {
             {isSearching ? 'Searching...' : 'Search'}
           </Button>
         </div>
+
+        {/* Example Queries - Always available */}
+        <div className={styles.examplesToggle}>
+          <Button
+            size="small"
+            variant="default"
+            onClick={() => setShowExamples(!showExamples)}
+            leftGlyph={<Icon glyph={showExamples ? 'ChevronUp' : 'Lightbulb'} />}
+          >
+            {showExamples ? 'Hide' : 'Show'} Example Queries
+          </Button>
+        </div>
+
+        {showExamples && (
+          <div className={styles.examplesSection}>
+            <Body weight="medium" className={styles.examplesLabel}>
+              <Icon glyph="Lightbulb" size="small" /> Try these {searchMode} search queries:
+            </Body>
+            <div className={styles.exampleChips}>
+              {exampleQueries[searchMode]?.map((example, idx) => (
+                <button
+                  key={idx}
+                  className={styles.exampleChip}
+                  onClick={() => handleExampleClick(example)}
+                  title={example.description}
+                  disabled={isSearching}
+                >
+                  <Icon glyph="MagnifyingGlass" size="small" />
+                  <span>{example.query}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Search Scope Radio Buttons */}
         <div className={styles.scopeRow}>

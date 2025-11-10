@@ -247,6 +247,71 @@
   font-size: 16px;
 }
 
+/* Example Queries Section */
+.examplesToggle {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-start;
+}
+
+.examplesSection {
+  margin-top: 12px;
+  padding: 16px;
+  background: rgba(0, 104, 74, 0.02);
+  border-radius: 8px;
+  border: 1px solid rgba(0, 104, 74, 0.1);
+}
+
+.examplesLabel {
+  margin-bottom: 12px;
+  color: #001E2B;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.exampleChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.exampleChip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: #FFFFFF;
+  border: 1px solid #C1C7CD;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 12px;
+  color: #5C7080;
+  white-space: nowrap;
+}
+
+.exampleChip:hover:not(:disabled) {
+  background: #E3FCF7;
+  border-color: #00684A;
+  color: #00684A;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(0, 104, 74, 0.15);
+}
+
+.exampleChip:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.exampleChip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.exampleChip span {
+  font-weight: 500;
+}
+
 /* Responsive adjustments */
 @media (max-width: 1024px) {
   .resultsGrid {
