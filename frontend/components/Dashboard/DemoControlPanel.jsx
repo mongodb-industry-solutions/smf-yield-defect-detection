@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Card from '@leafygreen-ui/card';
 import Button from '@leafygreen-ui/button';
-import { demoAPI } from '@/lib/api';
+import Icon from '@leafygreen-ui/icon';
+import { demoAPI, alertAPI } from '@/lib/api';
 import styles from './DemoControlPanel.module.css';
 
 // Equipment-specific excursion thresholds (aligned with backend config/thresholds.py)
@@ -32,11 +33,122 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
   });
   const [injectionSuccess, setInjectionSuccess] = useState(null);
 
+  // Injection Flow State
+  const [injectionFlow, setInjectionFlow] = useState({
+    active: false,
+    currentStage: 0,
+    stages: [
+      'Anomaly Injected',
+      'Excursion Detected',
+      'Alert Created',
+      'Wafer Defect Created'
+    ]
+  });
+  const [alertCountBeforeInjection, setAlertCountBeforeInjection] = useState(0);
+  
+  // Refs for cleanup
+  const stageIntervalRef = useRef(null);
+  const alertPollingRef = useRef(null);
+
   // Helper function: Get threshold info for current equipment and excursion type
   const getCurrentThresholdInfo = () => {
     const equipmentType = excursionForm.equipment_id.split('_')[0]; // CMP, ETCH, LITHO
     return EXCURSION_THRESHOLDS[excursionForm.excursion_type][equipmentType];
   };
+
+  // Helper function: Clean up injection flow intervals
+  const cleanupInjectionFlow = () => {
+    if (stageIntervalRef.current) {
+      clearInterval(stageIntervalRef.current);
+      stageIntervalRef.current = null;
+    }
+    if (alertPollingRef.current) {
+      clearInterval(alertPollingRef.current);
+      alertPollingRef.current = null;
+    }
+  };
+
+  // Helper function: Complete injection flow
+  const completeInjectionFlow = () => {
+    cleanupInjectionFlow();
+    // Show all stages completed for a brief moment before hiding
+    setTimeout(() => {
+      setInjectionFlow({
+        active: false,
+        currentStage: 0,
+        stages: injectionFlow.stages
+      });
+    }, 1500);
+  };
+
+  // Helper function: Poll for new alerts
+  const startAlertPolling = (initialCount) => {
+    let pollCount = 0;
+    const maxPolls = 8; // 8 polls * 2s = 16 seconds max
+
+    alertPollingRef.current = setInterval(async () => {
+      pollCount++;
+      
+      try {
+        const alertsData = await alertAPI.getAlerts(null, 20);
+        const currentCount = alertsData?.alerts?.length || 0;
+        
+        // Check if new alert appeared
+        if (currentCount > initialCount) {
+          console.log('[InjectionFlow] New alert detected! Completing flow...');
+          completeInjectionFlow();
+        } else if (pollCount >= maxPolls) {
+          // Timeout after max polls
+          console.log('[InjectionFlow] Polling timeout reached, completing flow...');
+          completeInjectionFlow();
+        }
+      } catch (err) {
+        console.error('[InjectionFlow] Error polling alerts:', err);
+        // Continue polling despite error
+      }
+    }, 2000); // Poll every 2 seconds
+  };
+
+  // Helper function: Start injection flow animation
+  const startInjectionFlow = (initialAlertCount) => {
+    // Cancel any previous flow
+    cleanupInjectionFlow();
+    
+    // Start with first stage
+    setInjectionFlow({
+      active: true,
+      currentStage: 0,
+      stages: injectionFlow.stages
+    });
+
+    // Progress through stages every 1.5 seconds
+    let currentStage = 0;
+    stageIntervalRef.current = setInterval(() => {
+      currentStage++;
+      if (currentStage < injectionFlow.stages.length) {
+        setInjectionFlow(prev => ({
+          ...prev,
+          currentStage
+        }));
+      } else {
+        // All stages shown, just wait for alert polling to complete
+        if (stageIntervalRef.current) {
+          clearInterval(stageIntervalRef.current);
+          stageIntervalRef.current = null;
+        }
+      }
+    }, 1500); // 1.5 seconds per stage
+
+    // Start polling for new alerts
+    startAlertPolling(initialAlertCount);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupInjectionFlow();
+    };
+  }, []);
 
   // Fetch status function
   const fetchStatus = async () => {
@@ -150,6 +262,13 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
     setInjectionSuccess(null);
 
     try {
+      // Fetch current alert count before injection
+      const alertsData = await alertAPI.getAlerts(null, 20);
+      const currentAlertCount = alertsData?.alerts?.length || 0;
+      setAlertCountBeforeInjection(currentAlertCount);
+      
+      console.log('[InjectionFlow] Current alert count:', currentAlertCount);
+
       // Build payload with optional explicit excursion value
       const payload = {
         equipment_id: excursionForm.equipment_id,
@@ -167,6 +286,9 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
 
       const result = await demoAPI.injectExcursionNextCycle(payload);
 
+      // Start injection flow animation
+      startInjectionFlow(currentAlertCount);
+
       const excursionLabel = excursionForm.excursion_type === 'rf_power' ? 'RF Power Drift' :
                              excursionForm.excursion_type === 'temperature' ? 'Temperature Drift' :
                              'Root Cause';
@@ -174,7 +296,8 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
         ? ` (${excursionForm.excursion_value}${getCurrentThresholdInfo().unit})`
         : '';
       const injectsIn = result?.injects_in_seconds || 5;
-      setInjectionSuccess(`${excursionLabel}${valueStr} excursion scheduled for ${excursionForm.equipment_id}! Will inject in ~${injectsIn}s (no demo restart needed)`);
+      
+      console.log(`[InjectionFlow] ${excursionLabel}${valueStr} scheduled, will inject in ~${injectsIn}s`);
 
       // Notify wafer map component to show loading state
       const event = new CustomEvent('excursionInjected', {
@@ -186,13 +309,10 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
       });
       window.dispatchEvent(event);
 
-      // Demo continues running - no need to refresh status
-
-      // Clear success message after 5 seconds
-      setTimeout(() => setInjectionSuccess(null), 5000);
     } catch (err) {
       console.error('Error injecting excursion:', err);
       setError('Failed to inject excursion');
+      cleanupInjectionFlow(); // Clean up on error
     } finally {
       setLoading(false);
     }
@@ -292,6 +412,29 @@ const DemoControlPanel = ({ dashboardMode = 'normal', onAnalysisComplete }) => {
           )}
         </div>
       </div>
+
+      {/* Injection Flow Stages - Full Width Below Panel */}
+      {injectionFlow.active && (
+        <div className={styles.injectionFlowContainer}>
+          <div className={styles.injectionFlow}>
+            {injectionFlow.stages.map((stage, index) => (
+              index <= injectionFlow.currentStage && (
+                <div 
+                  key={index}
+                  className={`${styles.flowStage} ${styles.flowFadeIn}`}
+                >
+                  <Icon 
+                    glyph="Checkmark" 
+                    size="small"
+                    className={styles.flowStageIcon}
+                  />
+                  <span className={styles.flowStageText}>{stage}</span>
+                </div>
+              )
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Error messages */}
       {error && (

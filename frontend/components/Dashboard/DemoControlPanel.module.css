@@ -514,3 +514,67 @@
   color: #8B6914;
   animation: fadeInScale 0.3s ease;
 }
+
+/* ========================================
+   INJECTION FLOW STYLES
+   ======================================== */
+
+.injectionFlowContainer {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(0, 104, 74, 0.08);
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.injectionFlow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 12px;
+}
+
+.flowStage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  opacity: 0;
+}
+
+.flowStageIcon {
+  color: #00684a;
+  flex-shrink: 0;
+}
+
+.flowStageText {
+  font-size: 12px;
+  font-weight: 500;
+  color: #5A6C7D;
+  white-space: nowrap;
+}
+
+.flowFadeIn {
+  animation: flowFadeIn 0.2s ease forwards;
+}
+
+@keyframes flowFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Responsive: Stack vertically on smaller screens */
+@media (max-width: 768px) {
+  .injectionFlow {
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+  }
+}
