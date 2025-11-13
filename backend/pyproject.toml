@@ -1,7 +1,7 @@
 [project]
 name = "smf-backend"
 version = "0.1.0"
-description = "This repository hosts the Agentic Framework, designed to accelerate the development of quick agent solutions from scratch."
+description = "Backend API for semiconductor manufacturing yield optimization with AI-powered defect detection and root cause analysis"
 authors = [{name = "Julian Boronat", email = "julian.boronat@mongodb.com"}]
 requires-python = ">=3.10,<3.11"
 dependencies = [
