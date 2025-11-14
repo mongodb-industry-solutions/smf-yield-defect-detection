@@ -1,4 +1,4 @@
-# Semiconductor Manufacturing Yield Improvement & Defect Detection System
+# Agentic Yield Analytics for Semiconductor Manufacturing
 
 A MongoDB-powered system for semiconductor manufacturing yield optimization that demonstrates real-time defect detection, AI-powered root cause analysis, and semantic search capabilities. The system reduces defect detection time from hours to seconds, addressing critical industry challenges where yield loss costs $50B+ annually.
 

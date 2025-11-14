@@ -1,27 +1,31 @@
-# task-def.json
+# ============================================
+# PROJECT-SPECIFIC
+# ============================================
+
+# Task definitions
 **/task-def.json
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-brainstorm-ideas/
-backend/by_claude
-migration_scripts/
-backend/data_generation/old_Data
-backend/data_generation/equipment_wafer_defects
+# Config files
+**/config.yml
+**/config.yaml
+
+# Temporary scripts
 test_*
 fix_*
 check_*
 create_*
 debug_*
-# Config
-**/config.yml
-**/config.yaml
+
+# Project-specific directories
+backend/plans
+backend/backup/agent_*.py
+
+# Project-specific documentation
+*_*.md
+
+# ============================================
+# PYTHON
+# ============================================
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -35,7 +39,6 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-backend/plans
 dist/
 downloads/
 eggs/
@@ -75,17 +78,10 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
-cover/
-backend/backup
-backend/data_generation/cmp_*/
-
-# Legacy agent system (moved to backup/)
-backend/backup/agent_*.py
 
 # Translations
 *.mo
 *.pot
-*_*.md
 
 # Django stuff:
 *.log
@@ -194,74 +190,10 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-# Allow frontend lib directories
+# ============================================
+# FRONTEND/NODE
+# ============================================
+
+# Allow frontend lib directories (exceptions to lib/ ignore above)
 !frontend/lib/
 !frontend/app/lib/
-
-cicd-kanopy/
-*/for_help
-CLAUDE.md
-backend/data_generation/*.md
-backend/data_generation/*.json
-IMPLEMENTATION_PLAN.md
-IMPLEMENTATION_STATUS.md
-frontend/PHASE5_IMPLEMENTATION_PLAN.md
-backend/backend-integration-analysis.md
-backend-issues.md
-helm
-frontend/LIVE_MONITORING_ENHANCEMENT_PLAN.md
-
-# Demo mode planning documents
-DEMO_CONTROL_PANEL_PLAN.md
-DEMO_MODE_*.md
-**/demo_planning/
-ATLAS_CHARTS_SETUP.md
-.gitignore
-test-inject.html
-backend/analyze_excursion_rate.py
-backend/cleanup_incorrect_equipment_ids.py
-backend/DATA_MODEL_ANALYSIS.md
-backend/FEATURES.md
-backend/FEATURES.md
-backend/FEATURES.md
-backend/PARTICLE_THRESHOLD_ISSUE.md
-backend/migrate_alert_fields.py
-backend/monitor_demo.py
-backend/show_demo_data.py
-frontend/FRONTEND_RESTRUCTURE_PLAN.md
-frontend/IMPLEMENTATION_TRACKER.md
-.mcp.json
-backend/scripts/standardize_equipment_names.py
-backend/scripts/remove_etch_03.py
-backend/scripts/cleanup_etch_chamber_02.py
-backend/verify_pattern_matching.py
-backend/verify_historical_context_implementation.py
-backend/migrate_remove_preliminary_context.py
-backend/investigate_rca.py
-.augment
-backend/main.py.bak
-backend/main.py.before_cleanup
-.gitignore
-.gitignore
-backend/main.py.bak2
-.cursor/rules/markdown-files-save.mdc
-backend/alert_analysis.json
-backend/alert-analysis-ALT-20251023115737.md
-backend/alert.json
-smf-yield-defect.process_context.json
-backend/phase3_embedding_summary.json
-.gitignore
-backend/data_generation/enhanced/wafer_defects_enhanced.json
-backend/data_generation/enhanced/process_context_enhanced.json
-backend/enhanced/process_context_enhanced.json
-backend/scripts/cleanup_wafers_without_embeddings.py
-backend/routers/demo_mode.py.bak
-backend/agenti_ai_plan/README.md
-
-.claude/
-.cursor/
-.playwright-mcp/
-backend/data_generation/generate_wafer_images_fixed.py
-backend/wafer_defects_enhanced.json
-.gitignore
-backend/wafer_defects_fixed.json
