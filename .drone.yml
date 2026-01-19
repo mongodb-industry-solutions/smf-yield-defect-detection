@@ -75,16 +75,16 @@ steps:
         - "ingress.enabled=true"
         - "ingress.hosts[0]=smf-yield-defect.industrysolutions.staging.corp.mongodb.com"
         - "mesh.enabled=true"
-        # Frontend container resources (main container)
-        - "resources.limits.cpu=1000m"
-        - "resources.limits.memory=1536Mi"
-        - "resources.requests.cpu=500m"
-        - "resources.requests.memory=768Mi"
-        # Backend sidecar resources
-        - "sidecarContainers[0].resources.limits.cpu=1000m"
-        - "sidecarContainers[0].resources.limits.memory=1536Mi"
-        - "sidecarContainers[0].resources.requests.cpu=500m"
-        - "sidecarContainers[0].resources.requests.memory=768Mi"
+        # Frontend container resources (reduced based on observed usage)
+        - "resources.limits.cpu=500m"
+        - "resources.limits.memory=512Mi"
+        - "resources.requests.cpu=100m"
+        - "resources.requests.memory=256Mi"
+        # Backend sidecar resources (reduced based on observed usage)
+        - "sidecarContainers[0].resources.limits.cpu=500m"
+        - "sidecarContainers[0].resources.limits.memory=512Mi"
+        - "sidecarContainers[0].resources.requests.cpu=100m"
+        - "sidecarContainers[0].resources.requests.memory=256Mi"
       api_server: https://api.staging.corp.mongodb.com
       kubernetes_token:
         from_secret: staging_kubernetes_token
@@ -176,16 +176,16 @@ steps:
         - "ingress.hosts[0]=smf-yield-defect.industrysolutions.prod.corp.mongodb.com"
         # Enable service mesh (Istio)
         - "mesh.enabled=true"
-        # Frontend container resources (main container)
-        - "resources.limits.cpu=1000m"
-        - "resources.limits.memory=1536Mi"
-        - "resources.requests.cpu=500m"
-        - "resources.requests.memory=768Mi"
-        # Backend sidecar resources
-        - "sidecarContainers[0].resources.limits.cpu=1000m"
-        - "sidecarContainers[0].resources.limits.memory=1536Mi"
-        - "sidecarContainers[0].resources.requests.cpu=500m"
-        - "sidecarContainers[0].resources.requests.memory=768Mi"
+        # Frontend container resources (reduced based on observed usage)
+        - "resources.limits.cpu=500m"
+        - "resources.limits.memory=512Mi"
+        - "resources.requests.cpu=100m"
+        - "resources.requests.memory=256Mi"
+        # Backend sidecar resources (reduced based on observed usage)
+        - "sidecarContainers[0].resources.limits.cpu=500m"
+        - "sidecarContainers[0].resources.limits.memory=512Mi"
+        - "sidecarContainers[0].resources.requests.cpu=100m"
+        - "sidecarContainers[0].resources.requests.memory=256Mi"
       api_server: https://api.prod.corp.mongodb.com
       kubernetes_token:
         from_secret: prod_kubernetes_token
