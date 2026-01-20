@@ -1,14 +1,139 @@
 "use client";
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import Badge from '@leafygreen-ui/badge';
-import Icon from '@leafygreen-ui/icon';
 import styles from './Header.module.css';
+import InfoWizard from '../InfoWizard/InfoWizard';
+
+const infoWizardSections = [
+  {
+    heading: "Overview",
+    content: [
+      {
+        heading: "The Challenge",
+        body: "Yield issues remain one of the largest cost drivers in semiconductor manufacturing. Traditional monitoring detects problems hours or days late, and manual root cause analysis is slow, inconsistent, and hampered by siloed data.",
+      },
+      {
+        heading: "What This Demo Shows",
+        body: [
+          "Real-time sensor monitoring with instant anomaly alerts",
+          "AI-powered root cause analysis using vector search",
+          "Multimodal defect matching with Voyage AI embeddings",
+          "Unified data layer for time-series, vectors, and documents",
+        ],
+      },
+      {
+        image: {
+          src: "/architecture-diagram.png",
+          alt: "Architecture Diagram",
+          width: 700,
+        },
+      },
+    ],
+  },
+  {
+    heading: "Architecture",
+    content: [
+      {
+        heading: "Solution Architecture",
+        body: "MongoDB Atlas serves as the unified data layer — storing time-series telemetry, vector embeddings, and operational documents in one platform. Change Streams push real-time alerts to the frontend, while LangGraph agents query the knowledge base for autonomous root cause analysis.",
+      },
+      {
+        image: {
+          src: "/solution-architecture.png",
+          alt: "Solution Architecture Diagram",
+          width: 700,
+        },
+      },
+      {
+        heading: "Data Flow",
+        body: [
+          "Machine telemetry streams into MongoDB Time Series Collections",
+          "Excursion Detection System monitors thresholds and pushes alerts to MongoDB",
+          "LangGraph Root Cause Agent queries wafer defects, historical knowledge, and time-series data",
+          "AWS Bedrock provides LLM inference for autonomous analysis",
+          "Agent memory and checkpoints persist in MongoDB for conversation continuity",
+        ],
+      },
+      {
+        heading: "MongoDB Capabilities Used",
+        body: [
+          "Vector Search & Hybrid Search for semantic pattern matching",
+          "Aggregation Framework for complex data transformations",
+          "Voyage AI multimodal embeddings for defect images and manuals",
+          "Full Text Search across operation logs and reports",
+        ],
+      },
+    ],
+  },
+  {
+    heading: "Why MongoDB?",
+    content: [
+      {
+        heading: "Unified Agentic Data Layer",
+        body: [
+          "One platform for time-series telemetry, vector embeddings, and documents",
+          "No ETL pipelines between siloed databases",
+          "AI agents query all data types with a single connection",
+          "Agent memory and checkpoints persist for audit and resume",
+        ],
+      },
+      {
+        heading: "Real-Time Excursion Detection",
+        body: [
+          "Change Streams push threshold violations to the frontend in near real-time",
+          "Time Series Collections handle high-frequency sensor ingestion at scale",
+          "Push-based alerts trigger autonomous agent investigation without polling",
+        ],
+      },
+      {
+        heading: "Multimodal Defect Search",
+        body: [
+          "Vector Search finds similar defects using image + text embeddings",
+          "Discover patterns regardless of how defects were originally described",
+          "Voyage AI multimodal embeddings capture visual and textual context",
+        ],
+      },
+      {
+        heading: "Production-Ready at Scale",
+        body: [
+          "Time Series Collections optimized for high-volume sensor data ingestion",
+          "Flexible document model adapts to diverse manufacturing data",
+          "Built-in replication and sharding for high availability",
+        ],
+      },
+    ],
+  },
+  {
+    heading: "Talk Track",
+    content: [
+      {
+        heading: "Demo Script",
+        body: [
+          "Start by showing the live monitoring dashboard with real-time sensor feeds",
+          "Trigger an anomaly to demonstrate Change Streams alerting",
+          "Use the AI agent to perform root cause analysis on the alert",
+          "Show wafer image search using vector similarity",
+          "Highlight the MongoDB operations console showing actual queries",
+        ],
+      },
+      {
+        heading: "Key Talking Points",
+        body: [
+          "MongoDB handles ALL data types in one platform: time-series, documents, vectors, and images",
+          "No need for separate databases for analytics, AI, and operational data",
+          "Real-time capabilities enable proactive vs reactive maintenance",
+          "Vector Search + AI agents create intelligent, context-aware automation",
+        ],
+      },
+    ],
+  },
+];
 
 const Header = () => {
   const pathname = usePathname();
+  const [infoWizardOpen, setInfoWizardOpen] = useState(false);
 
   return (
     <header className={styles.header}>
@@ -86,6 +211,16 @@ const Header = () => {
             Live Monitoring
           </Link>
         </nav>
+
+        <div className={styles.actions}>
+          <InfoWizard
+            open={infoWizardOpen}
+            setOpen={setInfoWizardOpen}
+            tooltipText="Tell me more!"
+            iconGlyph="Wizard"
+            sections={infoWizardSections}
+          />
+        </div>
       </div>
     </header>
   );
