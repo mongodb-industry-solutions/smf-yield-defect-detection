@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Modal from "@leafygreen-ui/modal";
-import { H3, Body } from "@leafygreen-ui/typography";
+import { Subtitle, Body } from "@leafygreen-ui/typography";
 import Icon from "@leafygreen-ui/icon";
 import PropTypes from "prop-types";
 import styles from "./InfoWizard.module.css";
@@ -20,6 +20,7 @@ const InfoWizard = ({
   sections = [],
 }) => {
   const [selected, setSelected] = useState(0);
+  const [enlargedImage, setEnlargedImage] = useState(null);
 
   return (
     <>
@@ -45,55 +46,88 @@ const InfoWizard = ({
       <Modal
         open={open}
         setOpen={setOpen}
-        className={styles.modal} // Removed the `ref` prop
+        className={styles.modal}
       >
         <div className={styles.modalContent}>
           <Tabs aria-label="info wizard tabs" setSelected={setSelected} selected={selected}>
             {sections.map((tab, tabIndex) => (
               <Tab key={tabIndex} name={tab.heading}>
-                {tab.content.map((section, sectionIndex) => (
-                  <div key={sectionIndex} className={styles.section}>
-                    {section.heading && <H3 className={styles.modalH3}>{section.heading}</H3>}
-                    {
-                      section.body && section.isHTML === true
-                        ? <div className={styles.htmlRender}  dangerouslySetInnerHTML={{ __html: section.body }}></div>
-                        : section.body && Array.isArray(section.body)
-                          ? <ul className={styles.list}>
-                            {
-                              section.body.map((item, idx) => (
-                                typeof (item) == 'object'
-                                  ? <li>
-                                    {item.heading}
-                                    <ul className={styles.list}>
-                                      {
-                                        item.body.map((subItem, idx) => (
-                                          <li key={idx}><Body>{subItem}</Body></li>
-                                        ))
-                                      }
-                                    </ul>
-                                  </li>
-                                  : <li key={idx}><Body>{item}</Body></li>
-                              )
-                              )
-                            }
-                          </ul>
-                          : <Body>{section.body}</Body>
-                    }
+                <div className={styles.tabContent}>
+                  {tab.content.map((section, sectionIndex) => (
+                    <div key={sectionIndex} className={styles.section}>
+                      {section.heading && <Subtitle className={styles.sectionHeading}>{section.heading}</Subtitle>}
+                      {
+                        section.body && section.isHTML === true
+                          ? <div className={styles.htmlRender}  dangerouslySetInnerHTML={{ __html: section.body }}></div>
+                          : section.body && Array.isArray(section.body)
+                            ? <ul className={styles.list}>
+                              {
+                                section.body.map((item, idx) => (
+                                  typeof (item) == 'object'
+                                    ? <li key={idx}>
+                                      {item.heading}
+                                      <ul className={styles.list}>
+                                        {
+                                          item.body.map((subItem, subIdx) => (
+                                            <li key={subIdx}><Body>{subItem}</Body></li>
+                                          ))
+                                        }
+                                      </ul>
+                                    </li>
+                                    : <li key={idx}><Body>{item}</Body></li>
+                                )
+                                )
+                              }
+                            </ul>
+                            : <Body>{section.body}</Body>
+                      }
 
-                    {section.image && (
-                      <img
-                        src={section.image.src}
-                        alt={section.image.alt}
-                        width={section.image.width || 550}
-                        className={styles.modalImage}
-                      />
-                    )}
-                  </div>
-                ))}
+                      {section.image && (
+                        <div
+                          className={styles.imageContainer}
+                          onClick={() => setEnlargedImage(section.image)}
+                        >
+                          <img
+                            src={section.image.src}
+                            alt={section.image.alt}
+                            width={section.image.width || 550}
+                            className={styles.modalImage}
+                          />
+                          <div className={styles.zoomOverlay}>
+                            <Icon glyph="FullScreenEnter" size="large" />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </Tab>
             ))}
           </Tabs>
         </div>
+
+        {/* Lightbox for enlarged images */}
+        {enlargedImage && (
+          <div
+            className={styles.lightbox}
+            onClick={() => setEnlargedImage(null)}
+          >
+            <div className={styles.lightboxContent} onClick={(e) => e.stopPropagation()}>
+              <button
+                className={styles.lightboxClose}
+                onClick={() => setEnlargedImage(null)}
+                aria-label="Close enlarged image"
+              >
+                <Icon glyph="X" size="large" />
+              </button>
+              <img
+                src={enlargedImage.src}
+                alt={enlargedImage.alt}
+                className={styles.lightboxImage}
+              />
+            </div>
+          </div>
+        )}
       </Modal>
     </>
   );

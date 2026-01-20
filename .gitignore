@@ -19,6 +19,9 @@ debug_*
 # Project-specific directories
 backend/plans
 backend/backup/agent_*.py
+archive/
+for-other-content/
+.logs/
 
 # Project-specific documentation
 *_*.md
