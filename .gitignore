@@ -200,3 +200,4 @@ cython_debug/
 # Allow frontend lib directories (exceptions to lib/ ignore above)
 !frontend/lib/
 !frontend/app/lib/
+security_check.sh
