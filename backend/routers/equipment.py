@@ -147,39 +147,58 @@ async def get_equipment_status():
         alerts_time = (time.time() - alerts_start) * 1000
         logger.info(f"   🚨 Alerts query completed in {alerts_time:.0f}ms, found {len(open_alerts)} open alerts")
 
-        # Create a map of equipment_id to highest severity alert
+        # Create a map of equipment_id to highest severity alert (with frozen metrics)
         processing_start = time.time()
         logger.debug("⚙️ Processing alert severity mapping...")
         equipment_alerts = {}
         for alert in open_alerts:
             eq_id = alert.get("equipment_id")
             severity = alert.get("severity", "medium")
+            # Get the frozen metrics from when alert was created
+            alert_metrics = alert.get("source_data", {}).get("metrics")
+            alert_timestamp = alert.get("timestamp")
 
-            # Keep highest severity alert for each equipment
+            # Keep highest severity alert for each equipment (with its frozen metrics)
             if eq_id:
                 if eq_id not in equipment_alerts:
-                    equipment_alerts[eq_id] = severity
+                    equipment_alerts[eq_id] = {
+                        "severity": severity,
+                        "metrics": alert_metrics,
+                        "timestamp": alert_timestamp
+                    }
                 else:
                     # Priority: critical > high > medium > low
                     severity_priority = {"critical": 4, "high": 3, "medium": 2, "low": 1}
-                    current_priority = severity_priority.get(equipment_alerts[eq_id], 0)
+                    current_priority = severity_priority.get(equipment_alerts[eq_id]["severity"], 0)
                     new_priority = severity_priority.get(severity, 0)
                     if new_priority > current_priority:
-                        equipment_alerts[eq_id] = severity
+                        equipment_alerts[eq_id] = {
+                            "severity": severity,
+                            "metrics": alert_metrics,
+                            "timestamp": alert_timestamp
+                        }
 
-        # Add status based on alerts
+        # Add status based on alerts and freeze metrics if alert is open
         logger.debug("⚙️ Calculating equipment status based on alerts...")
         for eq in equipment_list:
             eq_id = eq.get("equipment_id")
             if eq_id in equipment_alerts:
+                alert_data = equipment_alerts[eq_id]
+                alert_severity = alert_data["severity"]
+
                 # Map alert severity to equipment status
-                alert_severity = equipment_alerts[eq_id]
                 if alert_severity == "critical":
                     eq["status"] = "critical"
                 elif alert_severity == "high":
                     eq["status"] = "warning"
                 else:
                     eq["status"] = "warning"  # medium/low alerts show as warning
+
+                # FREEZE METRICS: Use alert's metrics instead of live metrics
+                if alert_data.get("metrics"):
+                    eq["current_metrics"] = alert_data["metrics"]
+                    eq["last_update"] = alert_data.get("timestamp", eq.get("last_update"))
+                    logger.debug(f"🔒 Frozen metrics for {eq_id} (alert active)")
             else:
                 eq["status"] = "good"  # No open alerts
 

@@ -72,7 +72,7 @@ MDB_CHECKPOINTER_WRITES = MDB_CHECKPOINTER_COLLECTION + "_writes"
 
 # Demo Mode Configuration (used for service initialization)
 DEMO_MODE_ENABLED = os.getenv("DEMO_MODE_ENABLED", "false").lower() == "true"
-DEMO_INTERVAL_SECONDS = int(os.getenv("DEMO_INTERVAL_SECONDS", "60"))  # 60 seconds (1 minute) for continuous Atlas Charts visualization
+DEMO_INTERVAL_SECONDS = int(os.getenv("DEMO_INTERVAL_SECONDS", "10"))  # 10 seconds for responsive Health Matrix updates
 # DEMO_EXCURSION_PROBABILITY imported from config.demo_config
 
 # Demo Mode Global State - MOVED TO DemoModeService

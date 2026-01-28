@@ -303,24 +303,24 @@ class DemoModeService:
         base_metrics = {
             "CMP_TOOL": {
                 "particle_count": 450 + random.randint(-50, 50),  # [400-500] - realistic clean room range
-                "rf_power": 1450 + random.uniform(-20, 20),
-                "chamber_pressure": 45 + random.uniform(-2, 2),
-                "temperature": 65 + random.uniform(-1, 1),
-                "flow_rate": 200 + random.uniform(-10, 10)
+                "rf_power": 1450 + random.uniform(-50, 50),  # [1400-1500] - increased variance for visible changes
+                "chamber_pressure": 45 + random.uniform(-3, 3),
+                "temperature": 65 + random.uniform(-2, 2),
+                "flow_rate": 200 + random.uniform(-15, 15)
             },
             "ETCH": {
                 "particle_count": 400 + random.randint(-40, 40),  # [360-440] - realistic clean room range
-                "rf_power": 1200 + random.uniform(-15, 15),
-                "chamber_pressure": 35 + random.uniform(-1.5, 1.5),
-                "temperature": 70 + random.uniform(-1.5, 1.5),
-                "flow_rate": 150 + random.uniform(-8, 8)
+                "rf_power": 1200 + random.uniform(-40, 40),  # [1160-1240] - increased variance
+                "chamber_pressure": 35 + random.uniform(-2, 2),
+                "temperature": 70 + random.uniform(-2, 2),
+                "flow_rate": 150 + random.uniform(-12, 12)
             },
             "LITHO": {
                 "particle_count": 350 + random.randint(-30, 30),  # [320-380] - realistic clean room range
-                "rf_power": 800 + random.uniform(-10, 10),
-                "chamber_pressure": 25 + random.uniform(-1, 1),
-                "temperature": 22 + random.uniform(-0.5, 0.5),
-                "flow_rate": 100 + random.uniform(-5, 5)
+                "rf_power": 800 + random.uniform(-30, 30),  # [770-830] - increased variance
+                "chamber_pressure": 25 + random.uniform(-1.5, 1.5),
+                "temperature": 22 + random.uniform(-1, 1),
+                "flow_rate": 100 + random.uniform(-8, 8)
             }
         }
         
