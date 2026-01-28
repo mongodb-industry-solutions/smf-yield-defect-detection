@@ -8,6 +8,7 @@ import Tooltip from '@leafygreen-ui/tooltip';
 import IconButton from '@leafygreen-ui/icon-button';
 import QueryTransparencyCard from '@/components/common/QueryTransparencyCard';
 import EquipmentDetailsPanel from './EquipmentDetailsPanel';
+import LiveTimeSeriesModal from './LiveTimeSeriesModal';
 import { useDashboardData } from '@/contexts/DashboardDataProvider';
 import { equipmentAPI } from '@/lib/api';
 import styles from './ProcessHealthMatrix.module.css';
@@ -18,6 +19,7 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
   const [isLoading, setIsLoading] = useState(!isPreloaded);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [showQuery, setShowQuery] = useState(false);
+  const [showLiveData, setShowLiveData] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState(null);
 
   const fetchEquipmentStatus = async () => {
@@ -280,6 +282,13 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
                 <Icon glyph="TimeSeries" size="small" /> Time Series Collection
               </Badge>
               <IconButton
+                aria-label="View live data"
+                onClick={() => setShowLiveData(true)}
+                className={styles.liveDataButton}
+              >
+                <Icon glyph="Play" />
+              </IconButton>
+              <IconButton
                 aria-label="Show MongoDB query"
                 onClick={() => setShowQuery(!showQuery)}
                 className={styles.queryButton}
@@ -386,11 +395,6 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
                                 </div>
                               )}
 
-                              <div className={styles.equipmentFooter}>
-                                <span className={styles.lastUpdate}>
-                                  {formatTimestamp(eq.last_update)}
-                                </span>
-                              </div>
                             </div>
                           </div>
                         }
@@ -440,6 +444,12 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
         equipmentId={selectedEquipment}
         isOpen={!!selectedEquipment}
         onClose={() => setSelectedEquipment(null)}
+      />
+
+      {/* Live Time Series Data Modal */}
+      <LiveTimeSeriesModal
+        isOpen={showLiveData}
+        onClose={() => setShowLiveData(false)}
       />
     </div>
   );
