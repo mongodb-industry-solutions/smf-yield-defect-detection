@@ -61,8 +61,8 @@ export const DashboardDataProvider = ({ children, mode = 'normal', preloadedData
               equipmentList.push({
                 equipment_id: eq.equipment_id,
                 status: eq.status,
-                latest_metrics: eq.metrics,
-                latest_timestamp: eq.last_update,
+                metrics: eq.metrics,
+                last_update: eq.last_update,
                 process_step: eq.process_step || 'UNKNOWN'
               });
             });

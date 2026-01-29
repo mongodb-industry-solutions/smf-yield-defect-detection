@@ -1,0 +1,105 @@
+/* Modal z-index overrides to appear above FabPulseBar (z-index: 1001) */
+.modal {
+  z-index: 1100 !important;
+}
+
+.modal :global([role="presentation"]) {
+  z-index: 1099 !important;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.header h3 {
+  margin: 0;
+}
+
+.badges {
+  display: flex;
+  gap: 8px;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.equipmentLabel {
+  font-size: 13px;
+  color: var(--color-text-secondary, #5c6c75);
+}
+
+.codeContainer {
+  min-height: 300px;
+  max-height: 400px;
+  overflow: auto;
+  border: 1px solid var(--color-border, #e8edeb);
+  border-radius: 8px;
+  background: #1e2d3d;
+}
+
+.jsonDisplay {
+  margin: 0;
+  padding: 16px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #e0e4e7;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.loading,
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px;
+  color: #6b778c;
+  background: #1e2d3d;
+}
+
+.startButton {
+  margin-top: 8px;
+}
+
+.error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  color: var(--color-status-critical, #cf4a31);
+  background: #fef2f2;
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.footer {
+  display: flex;
+  gap: 24px;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-border, #e8edeb);
+  font-size: 12px;
+  color: var(--color-text-secondary, #5c6c75);
+}

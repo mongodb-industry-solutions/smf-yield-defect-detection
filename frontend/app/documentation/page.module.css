@@ -1,0 +1,188 @@
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 40px 48px;
+}
+
+.content {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e8edeb;
+  padding: 40px 48px;
+}
+
+.content [role="tablist"] {
+  margin-bottom: 8px;
+}
+
+.content [role="tab"] {
+  font-size: 15px;
+  padding: 14px 20px;
+  line-height: 1.4;
+}
+
+.content [role="tab"] > div {
+  height: auto;
+  overflow: visible;
+}
+
+.tabContent {
+  padding: 24px 0;
+}
+
+.section {
+  margin-bottom: 32px;
+}
+
+.section:last-child {
+  margin-bottom: 0;
+}
+
+.sectionHeading {
+  margin: 0 0 12px 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #001E2B;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.bodyText {
+  font-size: 16px;
+  line-height: 1.75;
+  color: #3D4F58;
+}
+
+.list {
+  margin: 8px 0;
+  padding-left: 28px;
+  list-style-type: disc;
+}
+
+.list li {
+  margin-bottom: 12px;
+  line-height: 1.75;
+  font-size: 16px;
+  color: #3D4F58;
+}
+
+.list li:last-child {
+  margin-bottom: 0;
+}
+
+.list .list {
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+.imageContainer {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  border-radius: 8px;
+  overflow: hidden;
+  margin: 16px 0;
+  transition: transform 0.2s ease;
+}
+
+.imageContainer:hover {
+  transform: scale(1.01);
+}
+
+.imageContainer:hover .zoomOverlay {
+  opacity: 1;
+}
+
+.image {
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  border-radius: 8px;
+  display: block;
+}
+
+.zoomOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 30, 43, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  border-radius: 8px;
+  color: white;
+}
+
+/* Lightbox styles */
+.lightbox {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 30, 43, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 24px;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.lightboxContent {
+  position: relative;
+  max-width: 95vw;
+  max-height: 95vh;
+}
+
+.lightboxClose {
+  position: absolute;
+  top: -40px;
+  right: 0;
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: white;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.lightboxClose:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.lightboxImage {
+  max-width: 90vw;
+  max-height: 85vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 768px) {
+  .container {
+    padding: 16px;
+  }
+
+  .content {
+    padding: 20px;
+  }
+}

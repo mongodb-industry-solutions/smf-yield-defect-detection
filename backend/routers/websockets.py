@@ -140,9 +140,9 @@ async def websocket_sensors(websocket: WebSocket):
 
     try:
         with get_mongodb_connector() as mdb_connector:
-            sensor_collection = mdb_connector.get_collection("sensor_events")  # Use real-time collection
-            last_update_time = datetime.utcnow()
-            logger.debug(f"⚙️ MongoDB connector established for /ws/sensors")
+            # Read from time series collection where demo mode writes
+            sensor_collection = mdb_connector.get_collection("process_sensor_ts")
+            logger.debug(f"⚙️ MongoDB connector established for /ws/sensors (process_sensor_ts)")
 
             while True:
                 # Use wait_for to handle both incoming messages and periodic updates
@@ -152,59 +152,42 @@ async def websocket_sensors(websocket: WebSocket):
                         websocket.receive_text(),
                         timeout=2.0
                     )
-                    
+
                     logger.debug(f"📥 Message from {client_id}: {data[:50]}..." if len(data) > 50 else f"📥 Message from {client_id}: {data}")
 
                     # Handle client messages (subscriptions, filters, etc.)
                     await ws_manager_instance.handle_client_message(client_id, data)
 
                 except asyncio.TimeoutError:
-                    # No message received, check if it's time to send sensor update
-                    logger.debug(f"⏱️  No message from {client_id}, checking for update...")
-                    current_time = datetime.utcnow()
-                    time_since_update = (current_time - last_update_time).total_seconds()
+                    # No message received, send latest sensor updates
+                    try:
+                        # Get latest 6 documents sorted by timestamp (newest first)
+                        sensors = list(sensor_collection.find().sort("timestamp", -1).limit(6))
+                        logger.debug(f"⚙️ Retrieved {len(sensors)} sensors from process_sensor_ts")
 
-                    if time_since_update >= 2.0:  # Send update every 2 seconds
-                        try:
-                            # Get latest sensor data
-                            pipeline = [
-                                {"$sort": {"timestamp": -1}},
-                                {"$group": {
-                                    "_id": "$equipment_id",
-                                    "latest": {"$first": "$$ROOT"}
-                                }},
-                                {"$replaceRoot": {"newRoot": "$latest"}},
-                                {"$limit": 10}
-                            ]
-
-                            sensors = list(sensor_collection.aggregate(pipeline))
-                            logger.debug(f"⚙️ Retrieved {len(sensors)} sensors from sensor_events")
-                            
+                        if sensors:
                             sensors = convert_objectids(sensors)
-                            logger.debug(f"⚙️ Processing data for client {client_id}")
+                            logger.debug(f"⚙️ Processing {len(sensors)} docs for client {client_id}")
 
-                            if sensors:
-                                # Send update to client
-                                success = await ws_manager_instance.send_json_to_client(
-                                    client_id,
-                                    {
-                                        "type": "sensor_update",
-                                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                                        "data": sensors
-                                    }
-                                )
-                                
-                                if success:
-                                    logger.debug(f"📊 Sent sensor update to {client_id}: {len(sensors)} sensors")
-                                else:
-                                    # If send failed, connection is likely dead
-                                    logger.warning(f"⚠️  Failed to send update to {client_id}")
-                                    break
+                            # Send update to client
+                            success = await ws_manager_instance.send_json_to_client(
+                                client_id,
+                                {
+                                    "type": "sensor_update",
+                                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                                    "data": sensors
+                                }
+                            )
 
-                            last_update_time = current_time
+                            if success:
+                                logger.debug(f"📊 Sent sensor update to {client_id}: {len(sensors)} sensors")
+                            else:
+                                # If send failed, connection is likely dead
+                                logger.warning(f"⚠️  Failed to send update to {client_id}")
+                                break
 
-                        except Exception as e:
-                            logger.error(f"❌ Error sending sensor update to {client_id}: {e}")
+                    except Exception as e:
+                        logger.error(f"❌ Error sending sensor update to {client_id}: {e}")
 
     except WebSocketDisconnect:
         await ws_manager_instance.disconnect(client_id)

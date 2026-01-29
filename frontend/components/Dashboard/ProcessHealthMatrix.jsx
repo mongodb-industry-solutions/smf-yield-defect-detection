@@ -8,6 +8,7 @@ import Tooltip from '@leafygreen-ui/tooltip';
 import IconButton from '@leafygreen-ui/icon-button';
 import QueryTransparencyCard from '@/components/common/QueryTransparencyCard';
 import EquipmentDetailsPanel from './EquipmentDetailsPanel';
+import LiveTimeSeriesModal from './LiveTimeSeriesModal';
 import { useDashboardData } from '@/contexts/DashboardDataProvider';
 import { equipmentAPI } from '@/lib/api';
 import styles from './ProcessHealthMatrix.module.css';
@@ -18,6 +19,7 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
   const [isLoading, setIsLoading] = useState(!isPreloaded);
   const [lastRefresh, setLastRefresh] = useState(new Date());
   const [showQuery, setShowQuery] = useState(false);
+  const [showLiveData, setShowLiveData] = useState(false);
   const [selectedEquipment, setSelectedEquipment] = useState(null);
 
   const fetchEquipmentStatus = async () => {
@@ -52,8 +54,8 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
           matrix[processType].push({
             equipment_id: eq.equipment_id,
             status: eq.status,
-            metrics: eq.last_reading || {},
-            last_update: eq.last_reading?.timestamp,
+            metrics: eq.metrics || {},
+            last_update: eq.last_update,
             process_step: processType
           });
         }
@@ -96,20 +98,52 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
     }
   }, []); // Empty deps - run once on mount, then interval takes over
 
+  // Equipment-specific baselines (aligned with backend thresholds.py)
+  const RF_POWER_BASELINES = {
+    CMP: 1450,
+    ETCH: 1200,
+    LITHO: 800
+  };
+
+  const TEMPERATURE_BASELINES = {
+    CMP: 65,
+    ETCH: 70,
+    LITHO: 22
+  };
+
+  // Get RF power status color based on drift from baseline
+  const getRfPowerColor = (rfPower, equipmentId) => {
+    if (!rfPower || !equipmentId) return 'inherit';
+    const processType = equipmentId.split('_')[0];
+    const baseline = RF_POWER_BASELINES[processType] || 1450;
+    const drift = Math.abs(rfPower - baseline);
+
+    if (drift > 100) return 'var(--color-status-critical)';  // > 100W drift
+    if (drift > 80) return 'var(--color-status-warning)';    // > 80W drift
+    return 'inherit';
+  };
+
+  // Get temperature status color based on drift from baseline
+  const getTemperatureColor = (temperature, equipmentId) => {
+    if (!temperature || !equipmentId) return 'inherit';
+    const processType = equipmentId.split('_')[0];
+    const baseline = TEMPERATURE_BASELINES[processType] || 65;
+    const drift = Math.abs(temperature - baseline);
+
+    if (drift > 5) return 'var(--color-status-critical)';   // > 5°C drift
+    if (drift > 3) return 'var(--color-status-warning)';    // > 3°C drift
+    return 'inherit';
+  };
+
   const calculateStatus = (metrics) => {
     if (!metrics) return 'unknown';
-    const { particle_count, rf_power, temperature } = metrics;
+    const { particle_count } = metrics;
 
-    // Critical thresholds
-    if (particle_count > 1000 || rf_power > 1400 || temperature > 75) {
+    // Critical thresholds (particle count only - status comes from backend alerts)
+    if (particle_count > 1000) {
       return 'critical';
     }
-    // Warning thresholds
-    if (particle_count > 800 || rf_power > 1350 || temperature > 70) {
-      return 'warning';
-    }
-    // Caution thresholds
-    if (particle_count > 600 || rf_power > 1300 || temperature > 68) {
+    if (particle_count > 800) {
       return 'warning';
     }
     return 'good';
@@ -248,6 +282,13 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
                 <Icon glyph="TimeSeries" size="small" /> Time Series Collection
               </Badge>
               <IconButton
+                aria-label="View live data"
+                onClick={() => setShowLiveData(true)}
+                className={styles.liveDataButton}
+              >
+                <Icon glyph="Play" />
+              </IconButton>
+              <IconButton
                 aria-label="Show MongoDB query"
                 onClick={() => setShowQuery(!showQuery)}
                 className={styles.queryButton}
@@ -329,8 +370,7 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
                                 <span
                                   className={styles.metricValue}
                                   style={{
-                                    color: eq.metrics?.rf_power > 1400 ? 'var(--color-status-critical)' :
-                                           eq.metrics?.rf_power > 1350 ? 'var(--color-status-warning)' : 'inherit'
+                                    color: getRfPowerColor(eq.metrics?.rf_power, eq.equipment_id)
                                   }}
                                 >
                                   {eq.metrics?.rf_power ? `${eq.metrics.rf_power.toFixed(0)}W` : 'N/A'}
@@ -342,8 +382,7 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
                                 <span
                                   className={styles.metricValue}
                                   style={{
-                                    color: eq.metrics?.temperature > 75 ? 'var(--color-status-critical)' :
-                                           eq.metrics?.temperature > 70 ? 'var(--color-status-warning)' : 'inherit'
+                                    color: getTemperatureColor(eq.metrics?.temperature, eq.equipment_id)
                                   }}
                                 >
                                   {eq.metrics?.temperature ? `${eq.metrics.temperature.toFixed(1)}°C` : 'N/A'}
@@ -356,11 +395,6 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
                                 </div>
                               )}
 
-                              <div className={styles.equipmentFooter}>
-                                <span className={styles.lastUpdate}>
-                                  {formatTimestamp(eq.last_update)}
-                                </span>
-                              </div>
                             </div>
                           </div>
                         }
@@ -410,6 +444,12 @@ const ProcessHealthMatrix = ({ isCollapsed = false, onToggle = () => {} }) => {
         equipmentId={selectedEquipment}
         isOpen={!!selectedEquipment}
         onClose={() => setSelectedEquipment(null)}
+      />
+
+      {/* Live Time Series Data Modal */}
+      <LiveTimeSeriesModal
+        isOpen={showLiveData}
+        onClose={() => setShowLiveData(false)}
       />
     </div>
   );

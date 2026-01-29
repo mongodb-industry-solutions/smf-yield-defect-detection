@@ -3,7 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import Badge from '@leafygreen-ui/badge';
+import Button from '@leafygreen-ui/button';
 import Icon from '@leafygreen-ui/icon';
 import styles from './Header.module.css';
 
@@ -86,6 +86,14 @@ const Header = () => {
             Live Monitoring
           </Link>
         </nav>
+
+        <div className={styles.actions}>
+          <Link href="/documentation">
+            <Button leftGlyph={<Icon glyph="Wizard" />}>
+              Tell me more!
+            </Button>
+          </Link>
+        </div>
       </div>
     </header>
   );
