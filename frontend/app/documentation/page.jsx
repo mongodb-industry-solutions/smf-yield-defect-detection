@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { H2, Subtitle, Body } from "@leafygreen-ui/typography";
+import { Subtitle, Body } from "@leafygreen-ui/typography";
 import { Tabs, Tab } from "@leafygreen-ui/tabs";
 import Icon from "@leafygreen-ui/icon";
 import styles from "./page.module.css";
@@ -27,7 +27,6 @@ const sections = [
         image: {
           src: "/architecture-diagram.png",
           alt: "Architecture Diagram",
-          width: 700,
         },
       },
     ],
@@ -43,7 +42,6 @@ const sections = [
         image: {
           src: "/solution-architecture.png",
           alt: "Solution Architecture Diagram",
-          width: 700,
         },
       },
       {
@@ -113,13 +111,6 @@ export default function DocumentationPage() {
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
-        <H2>Documentation</H2>
-        <Body className={styles.subtitle}>
-          Learn about the architecture, capabilities, and how to demo this application.
-        </Body>
-      </div>
-
       <div className={styles.content}>
         <Tabs aria-label="documentation tabs" setSelected={setSelected} selected={selected}>
           {sections.map((tab, tabIndex) => (
@@ -139,20 +130,20 @@ export default function DocumentationPage() {
                               <ul className={styles.list}>
                                 {item.body.map((subItem, subIdx) => (
                                   <li key={subIdx}>
-                                    <Body>{subItem}</Body>
+                                    <Body className={styles.bodyText}>{subItem}</Body>
                                   </li>
                                 ))}
                               </ul>
                             </li>
                           ) : (
                             <li key={idx}>
-                              <Body>{item}</Body>
+                              <Body className={styles.bodyText}>{item}</Body>
                             </li>
                           )
                         )}
                       </ul>
                     ) : section.body ? (
-                      <Body>{section.body}</Body>
+                      <Body className={styles.bodyText}>{section.body}</Body>
                     ) : null}
 
                     {section.image && (
@@ -163,7 +154,6 @@ export default function DocumentationPage() {
                         <img
                           src={section.image.src}
                           alt={section.image.alt}
-                          width={section.image.width || 550}
                           className={styles.image}
                         />
                         <div className={styles.zoomOverlay}>
