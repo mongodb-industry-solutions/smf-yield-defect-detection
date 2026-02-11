@@ -49,10 +49,11 @@ def _get_agent():
 
     logger.info("Initializing LangGraph ReAct agent...")
 
-    # Initialize LLM (AWS Bedrock Claude 3.5 Sonnet)
+    # Initialize LLM (AWS Bedrock Claude 3.5 Sonnet via Application Inference Profile)
     llm = ChatBedrock(
-        model_id="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+        model_id="arn:aws:bedrock:us-east-1:275662791714:application-inference-profile/z5m3g9h6o9ir",
         region_name=AWS_REGION,
+        provider="anthropic",  # Required when using inference profile ARN
         model_kwargs={
             "temperature": 0.3,
             "max_tokens": 2048
