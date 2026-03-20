@@ -71,3 +71,11 @@ serviceAccount:
 
 
 
+
+# Kanopy security and ownership (requires web-app chart v4.30.0+)
+security:
+  dataClassification: "Internal"
+  dataDesignation: ["MI"]
+
+ownership:
+  driEmail: javier.guajardo@mongodb.com
