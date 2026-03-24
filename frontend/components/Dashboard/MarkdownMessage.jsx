@@ -2,6 +2,7 @@
 
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/cjs/styles/prism';
 import styles from './MarkdownMessage.module.css';
@@ -10,6 +11,7 @@ export default function MarkdownMessage({ content }) {
   return (
     <div className={styles.markdownContent}>
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
           // Code blocks
           code({ node, inline, className, children, ...props }) {
