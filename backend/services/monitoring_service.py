@@ -311,6 +311,7 @@ class MonitoringService:
             llm = ChatBedrock(
                 model_id=COMPLETION_MODEL_ID,
                 region_name=aws_region,
+                provider="anthropic",  # Required when using inference profile ARN
                 model_kwargs={
                     "temperature": 0.3,  # Lower temperature for precise RCA
                     "max_tokens": 2048
