@@ -29,7 +29,7 @@ from utils import convert_objectids
 import os
 from langchain_aws import ChatBedrock
 
-COMPLETION_MODEL_ID = os.getenv("COMPLETION_MODEL_ID", "arn:aws:bedrock:us-east-1:275662791714:application-inference-profile/5i7652a9h0vb")
+COMPLETION_MODEL_ID = os.getenv("COMPLETION_MODEL_ID")
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.mongodb import MongoDBSaver
 from pymongo import MongoClient  # Sync client for LangGraph (required by MongoDBSaver)

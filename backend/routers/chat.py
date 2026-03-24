@@ -34,7 +34,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 MONGODB_URI = os.getenv("MONGODB_URI")
 DATABASE_NAME = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
 AWS_REGION = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
-COMPLETION_MODEL_ID = os.getenv("COMPLETION_MODEL_ID", "arn:aws:bedrock:us-east-1:275662791714:application-inference-profile/5i7652a9h0vb")
+COMPLETION_MODEL_ID = os.getenv("COMPLETION_MODEL_ID")
 
 # Global agent instance (initialized on first request)
 _agent = None
