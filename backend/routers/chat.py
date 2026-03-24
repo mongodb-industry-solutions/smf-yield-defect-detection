@@ -34,6 +34,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 MONGODB_URI = os.getenv("MONGODB_URI")
 DATABASE_NAME = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
 AWS_REGION = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
+COMPLETION_MODEL_ID = os.getenv("COMPLETION_MODEL_ID")
 
 # Global agent instance (initialized on first request)
 _agent = None
@@ -49,10 +50,11 @@ def _get_agent():
 
     logger.info("Initializing LangGraph ReAct agent...")
 
-    # Initialize LLM (AWS Bedrock Claude 3.5 Sonnet)
+    # Initialize LLM (AWS Bedrock via Application Inference Profile)
     llm = ChatBedrock(
-        model_id="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+        model_id=COMPLETION_MODEL_ID,
         region_name=AWS_REGION,
+        provider="anthropic",  # Required when using inference profile ARN
         model_kwargs={
             "temperature": 0.3,
             "max_tokens": 2048

@@ -28,6 +28,8 @@ from utils import convert_objectids
 # LangGraph agent for automatic RCA analysis
 import os
 from langchain_aws import ChatBedrock
+
+COMPLETION_MODEL_ID = os.getenv("COMPLETION_MODEL_ID")
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.mongodb import MongoDBSaver
 from pymongo import MongoClient  # Sync client for LangGraph (required by MongoDBSaver)
@@ -305,9 +307,9 @@ class MonitoringService:
             # Get AWS region (same pattern as chat.py)
             aws_region = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
 
-            # Initialize LLM (AWS Bedrock Claude 3.5 Sonnet)
+            # Initialize LLM (AWS Bedrock via Application Inference Profile)
             llm = ChatBedrock(
-                model_id="us.anthropic.claude-3-5-sonnet-20241022-v2:0",
+                model_id=COMPLETION_MODEL_ID,
                 region_name=aws_region,
                 model_kwargs={
                     "temperature": 0.3,  # Lower temperature for precise RCA
