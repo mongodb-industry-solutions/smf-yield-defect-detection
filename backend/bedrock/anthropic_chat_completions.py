@@ -16,7 +16,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-HAIKU_MODEL_ID = os.getenv("HAIKU_MODEL_ID")
+HAIKU_MODEL_ID = os.getenv("HAIKU_MODEL_ID", "arn:aws:bedrock:us-east-1:275662791714:application-inference-profile/qclfk75mhio2")
 
 
 class BedrockAnthropicChatCompletions(BedrockClient):
