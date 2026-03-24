@@ -56,18 +56,6 @@ sidecarContainers:
             name: smf-yield-secrets-staging
             key: MDB_DATABASE_NAME
 
-      # Bedrock model inference profiles
-      - name: COMPLETION_MODEL_ID
-        valueFrom:
-          secretKeyRef:
-            name: smf-yield-secrets-staging
-            key: COMPLETION_MODEL_ID
-      - name: HAIKU_MODEL_ID
-        valueFrom:
-          secretKeyRef:
-            name: smf-yield-secrets-staging
-            key: HAIKU_MODEL_ID
-
       # Voyage AI API Key (embeddings)
       - name: VOYAGE_API_KEY
         valueFrom:
@@ -80,9 +68,6 @@ serviceAccount:
   irsa:
     accountId: "275662791714"
     roleName: "kanopy-staging-cicd-irsa"
-
-
-
 
 # Kanopy security and ownership (requires web-app chart v4.30.0+)
 security:
