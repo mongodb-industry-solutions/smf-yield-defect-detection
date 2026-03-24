@@ -1,4 +1,5 @@
 import json
+import os
 
 from bedrock.client import BedrockClient
 from botocore.exceptions import ClientError
@@ -15,6 +16,8 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+HAIKU_MODEL_ID = os.getenv("HAIKU_MODEL_ID", "arn:aws:bedrock:us-east-1:275662791714:application-inference-profile/qclfk75mhio2")
+
 
 class BedrockAnthropicChatCompletions(BedrockClient):
     """ A class to generate chat completions using Bedrock's Anthropic text models"""
@@ -23,7 +26,7 @@ class BedrockAnthropicChatCompletions(BedrockClient):
     log: logging.Logger = logging.getLogger("BedrockAnthropicChatCompletions")
 
     def __init__(self, aws_access_key: Optional[str] = None, aws_secret_key: Optional[str] = None, region_name: Optional[str] = "us-east-1",
-                model_id: Optional[str] = "arn:aws:bedrock:us-east-1:275662791714:application-inference-profile/pnvyooa2q6ij") -> None:
+                model_id: Optional[str] = HAIKU_MODEL_ID) -> None:
         super().__init__(aws_access_key=aws_access_key, aws_secret_key=aws_secret_key, region_name=region_name)
         """
         Initialize the BedrockAnthropicChatCompletions class.
