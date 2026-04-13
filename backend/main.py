@@ -431,10 +431,10 @@ async def startup_event():
         monitoring_service = services['monitoring_service']
         
         # Step 2: Set monitoring as active and auto-start monitoring loop
-        # Only start monitoring in production to prevent duplicate alerts
+        # Monitoring enabled for prod and staging (separate databases, no duplicate alerts)
         NODE_ENV = os.getenv("NODE_ENV", "prod").lower()
 
-        if NODE_ENV == "prod":
+        if NODE_ENV in ("prod", "staging"):
             monitoring_active = True
             monitoring_service.monitoring_active = True
 
