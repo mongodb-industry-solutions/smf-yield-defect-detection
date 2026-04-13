@@ -11,10 +11,10 @@ env:
   INTERNAL_WS_URL: ws://127.0.0.1:8000
 
   # Atlas Charts embed URLs (public, visible in browser anyway)
-  NEXT_PUBLIC_ATLAS_CHART_PARTICLE_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=ac775c70-1a0d-44e6-adb2-a1b20f9f7a5b&maxDataAge=10&theme=light&autoRefresh=true"
-  NEXT_PUBLIC_ATLAS_CHART_TEMPERATURE_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=ad4f54e1-707e-4c74-89c4-e0d622261ba6&maxDataAge=10&theme=light&autoRefresh=true"
-  NEXT_PUBLIC_ATLAS_CHART_RFPOWER_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=ca09b6cb-c40d-4fef-b834-53fb387c9993&maxDataAge=10&theme=light&autoRefresh=true"
-  NEXT_PUBLIC_ATLAS_CHART_METRICS_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=3f0e3f1a-e0bd-4de9-ba6c-c59980604a52&maxDataAge=10&theme=light&autoRefresh=true"
+  NEXT_PUBLIC_ATLAS_CHART_PARTICLE_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=8192c26d-835f-4afa-8b0e-eae66ca0038b&maxDataAge=10&theme=light&autoRefresh=true"
+  NEXT_PUBLIC_ATLAS_CHART_TEMPERATURE_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=b63f30ea-c1cc-413c-943d-0eb1a968fac2&maxDataAge=10&theme=light&autoRefresh=true"
+  NEXT_PUBLIC_ATLAS_CHART_RFPOWER_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=65b9b85b-43b5-496d-83a6-d22dc8a5f1e6&maxDataAge=10&theme=light&autoRefresh=true"
+  NEXT_PUBLIC_ATLAS_CHART_METRICS_URL: "https://charts.mongodb.com/charts-jeffn-zsdtj/embed/charts?id=0d7cbfab-7205-46a0-a012-cef6c2f753ed&maxDataAge=10&theme=light&autoRefresh=true"
 
 sidecarContainers:
   - name: backend
