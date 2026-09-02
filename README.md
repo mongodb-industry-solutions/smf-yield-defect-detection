@@ -47,7 +47,7 @@ MongoDB Atlas serves as the unified data layer — storing time-series telemetry
 
 ## Tech Stack
 
-- **[MongoDB Atlas](https://www.mongodb.com/atlas)** for the unified data layer (time series telemetry, alerts, wafer defects, knowledge base, agent state)
+- **[MongoDB Atlas](https://www.mongodb.com/cloud/atlas/register?utm_campaign=devrel&utm_source=github&utm_medium=referral&utm_content=smf_yield_defect_detection&utm_term=learning.fuel)** for the unified data layer (time series telemetry, alerts, wafer defects, knowledge base, agent state)
 - **[MongoDB Atlas Vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/)** for multimodal defect similarity matching (wafer images + text)
 - **[MongoDB Atlas Search](https://www.mongodb.com/docs/atlas/atlas-search/)** for full-text search across historical knowledge and process context
 - **[MongoDB Change Streams](https://www.mongodb.com/docs/manual/changeStreams/)** for real-time sensor anomaly detection
@@ -76,7 +76,7 @@ Before you begin, ensure you have met the following requirements:
 
 ### Obtain Your MongoDB Connection String
 
-1. Set up a [MongoDB Atlas](https://www.mongodb.com/atlas) cluster if you don't have one already.
+1. Set up a [MongoDB Atlas](https://www.mongodb.com/cloud/atlas/register?utm_campaign=devrel&utm_source=github&utm_medium=referral&utm_content=smf_yield_defect_detection&utm_term=learning.fuel) cluster if you don't have one already.
 2. Locate your cluster, click **Connect**, and select **Connect your application**.
 3. Copy the connection string.
 
@@ -418,8 +418,8 @@ The dashboard provides three operational modes:
 
 ### MongoDB Resources
 
-- [MongoDB for Manufacturing](https://www.mongodb.com/solutions/industries/manufacturing)
-- [MongoDB Atlas](https://www.mongodb.com/atlas)
+- [MongoDB for Manufacturing](https://www.mongodb.com/solutions/industries/manufacturing?utm_campaign=devrel&utm_source=github&utm_medium=referral&utm_content=smf_yield_defect_detection&utm_term=learning.fuel)
+- [MongoDB Atlas](https://www.mongodb.com/cloud/atlas/register?utm_campaign=devrel&utm_source=github&utm_medium=referral&utm_content=smf_yield_defect_detection&utm_term=learning.fuel)
 - [MongoDB Atlas Vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/)
 - [MongoDB Atlas Search Documentation](https://www.mongodb.com/docs/atlas/atlas-search/)
 - [MongoDB Change Streams](https://www.mongodb.com/docs/manual/changeStreams/)
