@@ -55,7 +55,7 @@ config = ConfigLoader()
 # Get configuration values
 # MongoDB URI
 MDB_URI = os.getenv("MONGODB_URI")
-APP_NAME = os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection")
+APP_NAME = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
 # Database
 MDB_DATABASE_NAME = config.get("MDB_DATABASE_NAME")
 # Collections

@@ -22,7 +22,7 @@ from services.unified_search_service import UnifiedSearchService
 # Environment variables
 MONGODB_URI = os.getenv("MONGODB_URI")
 DATABASE_NAME = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
-APP_NAME = os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection")
+APP_NAME = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
 
 # Module-level MongoDB client (singleton pattern)
 _mongo_client: Optional[AsyncIOMotorClient] = None
@@ -131,7 +131,7 @@ async def _search_similar_wafers(
     Searches only OLD wafers (those with embeddings) to find
     historical patterns with known root causes.
     """
-    # Build MongoDB Atlas Vector Search pipeline
+    # Build MongoDB Vector Search pipeline
     # Using modern vectorSearch syntax with pure Vector Search index
     pipeline = [
         {

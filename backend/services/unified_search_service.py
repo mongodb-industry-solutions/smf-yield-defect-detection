@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 class SearchMode(str, Enum):
     """Search mode options for unified search"""
-    TEXT = "text"  # Atlas Search (full-text, BM25)
+    TEXT = "text"  # MongoDB Search (full-text, BM25)
     VECTOR = "vector"  # Vector similarity search
     HYBRID = "hybrid"  # Combined text + vector using $rankFusion
 
@@ -51,7 +51,7 @@ class UnifiedSearchService:
             database_name: Database name
         """
         self.mongodb_uri = mongodb_uri or os.getenv("MONGODB_URI")
-        self.appname = os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection")
+        self.appname = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
         self.client = AsyncIOMotorClient(self.mongodb_uri, appname=self.appname)
         self.db = self.client[database_name]
 
@@ -65,7 +65,7 @@ class UnifiedSearchService:
         self.wafer_vector_index = "wafer_defects_vector_search"
         self.knowledge_vector_index = "historical_knowledge_vector_search"
 
-        # Text search index names (Atlas Search)
+        # Text search index names (MongoDB Search)
         self.wafer_text_index = "wafer_defects_text_index"
         self.knowledge_text_index = "historical_knowledge_text_index"
 

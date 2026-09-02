@@ -30,7 +30,7 @@ class SensorDataWriter:
             mongodb_uri: MongoDB connection string
             database: Database name
         """
-        app_name = os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection")
+        app_name = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
 
         # Sync client for time series (better performance)
         self.client = MongoClient(mongodb_uri, appname=app_name)

@@ -34,7 +34,7 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 MONGODB_URI = os.getenv("MONGODB_URI")
 DATABASE_NAME = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
 AWS_REGION = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
-APP_NAME = os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection")
+APP_NAME = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
 COMPLETION_MODEL_ID = os.getenv("COMPLETION_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
 
 # Global agent instance (initialized on first request)

@@ -223,7 +223,7 @@ class DemoModeService:
             start_time = time.time()
             logger.info("🔄 Loading process context from MongoDB...")
             
-            async_client = AsyncIOMotorClient(self.mongodb_uri, appname=os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection"))
+            async_client = AsyncIOMotorClient(self.mongodb_uri, appname=os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor"))
             async_db = async_client[self.database_name]
 
             # Fetch problematic slurry batches
@@ -733,7 +733,7 @@ class DemoModeService:
             logger.info("🔄 Resetting demo collections...")
             
             # Get MongoDB connection
-            async_client = AsyncIOMotorClient(self.mongodb_uri, appname=os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection"))
+            async_client = AsyncIOMotorClient(self.mongodb_uri, appname=os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor"))
             async_db = async_client[self.database_name]
 
             # ========== STEP 1: CLEAR OLD DATA ==========

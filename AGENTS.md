@@ -106,7 +106,7 @@ Notable files:
 | `MONGODB_URI` | Yes | `mongodb+srv://...` | Atlas connection string; read by `backend/db/mdb.py` and every service/script. Flex or dedicated tier needed for Vector Search + Search indexes. |
 | `MDB_DATABASE_NAME` | No (default `smf-yield-defect`) | `smf-yield-defect` | Database name, read via `ConfigLoader` in `backend/db/mdb.py`. |
 | `DATABASE_NAME` | No (default `smf-yield-defect`) | `smf-yield-defect` | Same database name, referenced separately in `.env.example`; keep in sync with `MDB_DATABASE_NAME`. |
-| `APP_NAME` | No (default `devrel-fastapi-smf-yield-defect-detection`) | `devrel-fastapi-smf-yield-defect-detection` | Client `appName` reported to Atlas; set on the `MongoClient`/`AsyncIOMotorClient` in `backend/db/mdb.py` and `backend/main.py`. |
+| `APP_NAME` | No (default `devrel-demo-vectorsearch-langgraph-semiconductor`) | `devrel-demo-vectorsearch-langgraph-semiconductor` | Client `appName` reported to Atlas; set on the `MongoClient`/`AsyncIOMotorClient` in `backend/db/mdb.py` and `backend/main.py`. |
 | `AWS_REGION`, `AWS_DEFAULT_REGION` | No (default `us-east-1`) | `us-east-1` | AWS region for Bedrock. |
 | `AWS_PROFILE` | Recommended | `default` | AWS SSO/credentials profile with Bedrock access. Alternative to static keys. |
 | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | No | — | Static AWS credentials, only if not using `AWS_PROFILE`. |

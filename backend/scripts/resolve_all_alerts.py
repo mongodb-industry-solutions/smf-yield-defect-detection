@@ -15,7 +15,7 @@ def resolve_all_alerts():
     """Resolve all open alerts"""
 
     # Connect to MongoDB
-    client = MongoClient(os.getenv('MONGODB_URI'), appname=os.getenv('APP_NAME', 'devrel-fastapi-smf-yield-defect-detection'))
+    client = MongoClient(os.getenv('MONGODB_URI'), appname=os.getenv('APP_NAME', 'devrel-demo-vectorsearch-langgraph-semiconductor'))
     db = client['smf-yield-defect']
     alerts_collection = db['alerts']
 

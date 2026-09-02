@@ -57,7 +57,7 @@ class AlertManager:
             mongodb_uri: MongoDB connection string
             database_name: Database name
         """
-        app_name = os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection")
+        app_name = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
         self.client = MongoClient(mongodb_uri, appname=app_name)
         self.db = self.client[database_name]
         self.alerts_collection = self.db["alerts"]

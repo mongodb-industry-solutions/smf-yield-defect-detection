@@ -38,7 +38,7 @@ class EmbeddingPipeline:
             database_name: Database name
         """
         self.mongodb_uri = mongodb_uri or os.getenv("MONGODB_URI")
-        self.appname = os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection")
+        self.appname = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
         self.client = AsyncIOMotorClient(self.mongodb_uri, appname=self.appname)
         self.db = self.client[database_name]
         

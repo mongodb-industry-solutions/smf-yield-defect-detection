@@ -28,7 +28,7 @@ class SensorCleanupService:
             mongodb_uri: MongoDB connection string
             database_name: Database name containing process_sensor_ts collection
         """
-        app_name = os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection")
+        app_name = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
         self.client = AsyncIOMotorClient(mongodb_uri, appname=app_name)
         self.db = self.client[database_name]
         self.sensor_collection = self.db["process_sensor_ts"]

@@ -122,7 +122,7 @@ class MonitoringService:
         # Use synchronous MongoDB client from alert_manager for immediate check
         # (AlertManager uses sync MongoClient for performance)
         import pymongo
-        sync_client = pymongo.MongoClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection"))
+        sync_client = pymongo.MongoClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor"))
         sync_db = sync_client[self.mdb_database_name]
         alerts_collection = sync_db["alerts"]
 
@@ -318,7 +318,7 @@ class MonitoringService:
 
             # Initialize MongoDB checkpointer (SYNC pymongo client required by LangGraph)
             try:
-                sync_mongo_client = MongoClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection"))
+                sync_mongo_client = MongoClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor"))
                 checkpointer = MongoDBSaver(
                     sync_mongo_client,
                     self.mdb_database_name
@@ -544,7 +544,7 @@ Provide your analysis following this exact structure."""
         """
         try:
             # Get async MongoDB connection
-            async_client = AsyncIOMotorClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection"))
+            async_client = AsyncIOMotorClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor"))
             async_db = async_client[self.mdb_database_name]
             alerts_collection = async_db["alerts"]
 
@@ -583,7 +583,7 @@ Provide your analysis following this exact structure."""
 
         try:
             # Get async MongoDB connection
-            async_client = AsyncIOMotorClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection"))
+            async_client = AsyncIOMotorClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor"))
             async_db = async_client[self.mdb_database_name]
             sensor_events_collection = async_db["sensor_events"]
 
@@ -781,7 +781,7 @@ Provide your analysis following this exact structure."""
 
         try:
             # Get async MongoDB connection
-            async_client = AsyncIOMotorClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection"))
+            async_client = AsyncIOMotorClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor"))
             async_db = async_client[self.mdb_database_name]
             alerts_collection = async_db["alerts"]
 
