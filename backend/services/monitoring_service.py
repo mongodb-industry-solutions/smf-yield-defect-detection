@@ -27,9 +27,9 @@ from utils import convert_objectids
 
 # LangGraph agent for automatic RCA analysis
 import os
-from langchain_aws import ChatBedrock
+from langchain_aws import ChatBedrockConverse
 
-COMPLETION_MODEL_ID = os.getenv("COMPLETION_MODEL_ID", "arn:aws:bedrock:us-east-1:275662791714:application-inference-profile/5i7652a9h0vb")
+COMPLETION_MODEL_ID = os.getenv("COMPLETION_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.mongodb import MongoDBSaver
 from pymongo import MongoClient  # Sync client for LangGraph (required by MongoDBSaver)
@@ -122,7 +122,7 @@ class MonitoringService:
         # Use synchronous MongoDB client from alert_manager for immediate check
         # (AlertManager uses sync MongoClient for performance)
         import pymongo
-        sync_client = pymongo.MongoClient(self.mdb_uri)
+        sync_client = pymongo.MongoClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection"))
         sync_db = sync_client[self.mdb_database_name]
         alerts_collection = sync_db["alerts"]
 
@@ -308,20 +308,17 @@ class MonitoringService:
             aws_region = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
 
             # Initialize LLM (AWS Bedrock via Application Inference Profile)
-            llm = ChatBedrock(
-                model_id=COMPLETION_MODEL_ID,
+            llm = ChatBedrockConverse(
+                model=COMPLETION_MODEL_ID,
                 region_name=aws_region,
-                provider="anthropic",  # Required when using inference profile ARN
-                model_kwargs={
-                    "temperature": 0.3,  # Lower temperature for precise RCA
-                    "max_tokens": 2048
-                }
+                temperature=0.3,  # Lower temperature for precise RCA
+                max_tokens=2048
             )
             logger.info(f"✅ Bedrock LLM initialized (region: {aws_region})")
 
             # Initialize MongoDB checkpointer (SYNC pymongo client required by LangGraph)
             try:
-                sync_mongo_client = MongoClient(self.mdb_uri)
+                sync_mongo_client = MongoClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection"))
                 checkpointer = MongoDBSaver(
                     sync_mongo_client,
                     self.mdb_database_name
@@ -547,7 +544,7 @@ Provide your analysis following this exact structure."""
         """
         try:
             # Get async MongoDB connection
-            async_client = AsyncIOMotorClient(self.mdb_uri)
+            async_client = AsyncIOMotorClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection"))
             async_db = async_client[self.mdb_database_name]
             alerts_collection = async_db["alerts"]
 
@@ -586,7 +583,7 @@ Provide your analysis following this exact structure."""
 
         try:
             # Get async MongoDB connection
-            async_client = AsyncIOMotorClient(self.mdb_uri)
+            async_client = AsyncIOMotorClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection"))
             async_db = async_client[self.mdb_database_name]
             sensor_events_collection = async_db["sensor_events"]
 
@@ -784,7 +781,7 @@ Provide your analysis following this exact structure."""
 
         try:
             # Get async MongoDB connection
-            async_client = AsyncIOMotorClient(self.mdb_uri)
+            async_client = AsyncIOMotorClient(self.mdb_uri, appname=os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection"))
             async_db = async_client[self.mdb_database_name]
             alerts_collection = async_db["alerts"]
 
