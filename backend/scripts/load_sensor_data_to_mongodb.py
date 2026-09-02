@@ -33,7 +33,8 @@ def load_sensor_data_to_mongodb(days: int = 30):
         raise ValueError("MONGODB_URI environment variable not set")
 
     print(f"🔧 Connecting to MongoDB ({database_name})...")
-    client = MongoClient(mongodb_uri)
+    app_name = os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection")
+    client = MongoClient(mongodb_uri, appname=app_name)
     db = client[database_name]
     collection = db["process_sensor_ts"]
 

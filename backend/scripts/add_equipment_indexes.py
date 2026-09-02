@@ -14,7 +14,7 @@ def add_performance_indexes():
     """Add indexes for equipment status queries"""
 
     # Connect to MongoDB
-    client = MongoClient(os.getenv('MONGODB_URI'))
+    client = MongoClient(os.getenv('MONGODB_URI'), appname=os.getenv('APP_NAME', 'devrel-fastapi-smf-yield-defect-detection'))
     db = client['smf-yield-defect']
     sensor_collection = db['process_sensor_ts']
 

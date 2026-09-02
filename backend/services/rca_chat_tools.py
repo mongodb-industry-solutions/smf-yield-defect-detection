@@ -22,6 +22,7 @@ from services.unified_search_service import UnifiedSearchService
 # Environment variables
 MONGODB_URI = os.getenv("MONGODB_URI")
 DATABASE_NAME = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
+APP_NAME = os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection")
 
 # Module-level MongoDB client (singleton pattern)
 _mongo_client: Optional[AsyncIOMotorClient] = None
@@ -37,7 +38,7 @@ def _get_db():
     """Get async MongoDB database instance."""
     global _mongo_client
     if _mongo_client is None:
-        _mongo_client = AsyncIOMotorClient(MONGODB_URI)
+        _mongo_client = AsyncIOMotorClient(MONGODB_URI, appname=APP_NAME)
     return _mongo_client[DATABASE_NAME]
 
 

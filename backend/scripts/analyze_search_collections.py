@@ -23,6 +23,7 @@ class SearchServiceAnalyzer:
     def __init__(self):
         self.mongodb_uri = os.getenv("MONGODB_URI")
         self.database_name = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
+        self.appname = os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection")
         self.client = None
         self.db = None
 
@@ -34,7 +35,7 @@ class SearchServiceAnalyzer:
 
     async def connect(self):
         """Connect to MongoDB"""
-        self.client = AsyncIOMotorClient(self.mongodb_uri)
+        self.client = AsyncIOMotorClient(self.mongodb_uri, appname=self.appname)
         self.db = self.client[self.database_name]
         print(f"✓ Connected to MongoDB: {self.database_name}")
 

@@ -29,7 +29,8 @@ class DocumentCollectionCreator:
         """Initialize MongoDB connection."""
         self.mongodb_uri = os.getenv("MONGODB_URI", "mongodb://localhost:27017/")
         self.database_name = "smf-yield-defect"
-        self.client = MongoClient(self.mongodb_uri)
+        self.appname = os.getenv("APP_NAME", "devrel-fastapi-smf-yield-defect-detection")
+        self.client = MongoClient(self.mongodb_uri, appname=self.appname)
         self.db = self.client[self.database_name]
         logger.info(f"Connected to MongoDB database: {self.database_name}")
     

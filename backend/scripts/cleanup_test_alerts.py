@@ -15,7 +15,7 @@ def cleanup_test_alerts():
     """Remove alerts for test equipment and keep only real equipment alerts"""
 
     # Connect to MongoDB
-    client = MongoClient(os.getenv('MONGODB_URI'))
+    client = MongoClient(os.getenv('MONGODB_URI'), appname=os.getenv('APP_NAME', 'devrel-fastapi-smf-yield-defect-detection'))
     db = client['smf-yield-defect']
     alerts_collection = db['alerts']
     sensor_collection = db['process_sensor_ts']
