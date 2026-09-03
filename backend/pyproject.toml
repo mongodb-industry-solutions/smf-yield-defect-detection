@@ -3,7 +3,7 @@ name = "smf-backend"
 version = "0.1.0"
 description = "Backend API for semiconductor manufacturing yield optimization with AI-powered defect detection and root cause analysis"
 authors = [{name = "Julian Boronat", email = "julian.boronat@mongodb.com"}]
-requires-python = ">=3.10,<3.11"
+requires-python = ">=3.10,<3.13"
 dependencies = [
     "pymongo>=4.10.1",
     "motor>=3.3.2",

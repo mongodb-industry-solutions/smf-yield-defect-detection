@@ -53,7 +53,7 @@ class UnifiedSearchRequest(BaseModel):
     )
     search_mode: str = Field(
         default="vector",
-        description="Search mode: 'text' (Atlas Search), 'vector' (Vector Search), or 'hybrid' (Combined)",
+        description="Search mode: 'text' (MongoDB Search), 'vector' (Vector Search), or 'hybrid' (Combined)",
         example="vector"
     )
     equipment_id: Optional[str] = Field(
@@ -83,7 +83,7 @@ class WaferSearchRequest(BaseModel):
     )
     search_mode: str = Field(
         default="vector",
-        description="Search mode: 'text' (Atlas Search), 'vector' (Vector Search), or 'hybrid' (Combined)",
+        description="Search mode: 'text' (MongoDB Search), 'vector' (Vector Search), or 'hybrid' (Combined)",
         example="vector"
     )
 
@@ -128,7 +128,7 @@ class HistoricalKnowledgeSearchRequest(BaseModel):
     )
     search_mode: str = Field(
         default="vector",
-        description="Search mode: 'text' (Atlas Search), 'vector' (Vector Search), or 'hybrid' (Combined)",
+        description="Search mode: 'text' (MongoDB Search), 'vector' (Vector Search), or 'hybrid' (Combined)",
         example="vector"
     )
 
@@ -179,7 +179,7 @@ class UnifiedSearchResponse(BaseModel):
     - "edge defects caused by temperature drift"
 
     **Search Modes:**
-    - text: Atlas Search (full-text search with BM25 ranking)
+    - text: MongoDB Search (full-text search with BM25 ranking)
     - vector: Vector Search (semantic similarity using embeddings)
     - hybrid: Hybrid Search (combines text and vector using $rankFusion)
 

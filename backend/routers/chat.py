@@ -18,7 +18,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from langchain_aws import ChatBedrock
+from langchain_aws import ChatBedrockConverse
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.mongodb import MongoDBSaver
 
@@ -34,7 +34,8 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 MONGODB_URI = os.getenv("MONGODB_URI")
 DATABASE_NAME = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
 AWS_REGION = os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1"))
-COMPLETION_MODEL_ID = os.getenv("COMPLETION_MODEL_ID", "arn:aws:bedrock:us-east-1:275662791714:application-inference-profile/5i7652a9h0vb")
+APP_NAME = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
+COMPLETION_MODEL_ID = os.getenv("COMPLETION_MODEL_ID", "us.anthropic.claude-sonnet-4-5-20250929-v1:0")
 
 # Global agent instance (initialized on first request)
 _agent = None
@@ -51,14 +52,11 @@ def _get_agent():
     logger.info("Initializing LangGraph ReAct agent...")
 
     # Initialize LLM (AWS Bedrock via Application Inference Profile)
-    llm = ChatBedrock(
-        model_id=COMPLETION_MODEL_ID,
+    llm = ChatBedrockConverse(
+        model=COMPLETION_MODEL_ID,
         region_name=AWS_REGION,
-        provider="anthropic",  # Required when using inference profile ARN
-        model_kwargs={
-            "temperature": 0.3,
-            "max_tokens": 2048
-        }
+        temperature=0.3,
+        max_tokens=2048
     )
     logger.info(f"✅ Bedrock LLM initialized (region: {AWS_REGION})")
 
@@ -68,7 +66,7 @@ def _get_agent():
         # Create checkpointer instance - use pymongo.MongoClient, not motor
         from pymongo import MongoClient
         
-        mongo_client = MongoClient(MONGODB_URI)
+        mongo_client = MongoClient(MONGODB_URI, appname=APP_NAME)
         _checkpointer = MongoDBSaver(
             mongo_client,  # pymongo client (not motor)
             DATABASE_NAME,  # db_name (positional)
@@ -158,7 +156,18 @@ async def chat_stream_generator(message: str, session_id: str) -> AsyncIterator[
 
                 if msg_type == "ai":
                     # AI response token
-                    content = getattr(last_message, "content", "")
+                    # ChatBedrockConverse returns content as a list of blocks
+                    # (e.g. [{"type": "text", "text": "..."}, {"type": "tool_use", ...}])
+                    # rather than a plain string, so extract just the text parts.
+                    raw_content = getattr(last_message, "content", "")
+                    if isinstance(raw_content, list):
+                        content = "".join(
+                            block.get("text", "")
+                            for block in raw_content
+                            if isinstance(block, dict) and block.get("type") == "text"
+                        )
+                    else:
+                        content = raw_content
                     if content:
                         stream_event = ChatStreamEvent(
                             type="token",
@@ -368,7 +377,7 @@ async def clear_conversation(session_id: str):
         from pymongo import MongoClient
 
         # Connect to MongoDB directly to clear checkpoint data
-        client = MongoClient(MONGODB_URI)
+        client = MongoClient(MONGODB_URI, appname=APP_NAME)
         db = client[DATABASE_NAME]
         collection = db["checkpoints"]  # Default collection name for MongoDBSaver
 

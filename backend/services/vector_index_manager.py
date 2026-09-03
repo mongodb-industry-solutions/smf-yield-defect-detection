@@ -1,6 +1,6 @@
 """
 Vector Index Manager for Phase 3
-Manages MongoDB Atlas Vector Search indexes
+Manages MongoDB Vector Search indexes
 """
 
 import os
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class VectorIndexManager:
-    """Manages MongoDB Atlas Vector Search indexes"""
+    """Manages MongoDB Vector Search indexes"""
     
     def __init__(self, mongodb_uri: str = None, database_name: str = "smf-yield-defect"):
         """
@@ -30,7 +30,8 @@ class VectorIndexManager:
             database_name: Database name
         """
         self.mongodb_uri = mongodb_uri or os.getenv("MONGODB_URI")
-        self.client = AsyncIOMotorClient(self.mongodb_uri)
+        self.appname = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
+        self.client = AsyncIOMotorClient(self.mongodb_uri, appname=self.appname)
         self.db = self.client[database_name]
         
         # Vector index configurations
@@ -109,7 +110,7 @@ class VectorIndexManager:
             }
         }
 
-        # Text search index configurations (Atlas Search for full-text)
+        # Text search index configurations (MongoDB Search for full-text)
         self.text_indexes = {
             "wafer_defects_text_index": {
                 "collection": "wafer_defects",

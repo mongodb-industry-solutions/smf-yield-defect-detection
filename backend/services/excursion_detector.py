@@ -17,7 +17,8 @@ class ExcursionDetector:
     def __init__(self, mongodb_uri: str = None, database: str = "smf-yield-defect"):
         """Initialize the excursion detector with MongoDB connection"""
         self.mongodb_uri = mongodb_uri or os.getenv("MONGODB_URI")
-        self.client = AsyncIOMotorClient(self.mongodb_uri)
+        self.appname = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
+        self.client = AsyncIOMotorClient(self.mongodb_uri, appname=self.appname)
         self.db = self.client[database]
         self.alerts_collection = self.db.alerts
         # Use sensor_events collection for real-time monitoring (supports change streams)
