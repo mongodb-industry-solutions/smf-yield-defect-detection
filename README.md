@@ -6,8 +6,8 @@ Demonstrates how MongoDB Atlas's unified data platform — combining time series
 
 - **Time Series Collections**: MongoDB's native time series collections store high-frequency sensor telemetry (particle counts, RF power, temperature) from CMP, ETCH, and LITHO equipment with automatic bucketing and efficient temporal queries — no separate time series database needed.
 - **Change Streams for Real-Time Detection**: The Excursion Detector uses MongoDB Change Streams to monitor incoming sensor data in real time. When readings breach configurable thresholds, alerts fire within seconds — replacing batch jobs that traditionally take hours.
-- **Atlas Vector Search for Defect Matching**: Multimodal embeddings from Voyage AI encode both wafer defect images and text descriptions into a shared vector space. Atlas Vector Search finds similar historical defects by visual pattern, enabling "show me defects that look like this" queries without a separate vector database.
-- **Atlas Search for Knowledge Retrieval**: Full-text search over historical RCA reports, troubleshooting guides, and process context documents. The LangGraph agent uses this to pull relevant remediation steps during root cause analysis.
+- **MongoDB Vector Search for Defect Matching**: Multimodal embeddings from Voyage AI encode both wafer defect images and text descriptions into a shared vector space. MongoDB Vector Search finds similar historical defects by visual pattern, enabling "show me defects that look like this" queries without a separate vector database.
+- **MongoDB Search for Knowledge Retrieval**: Full-text search over historical RCA reports, troubleshooting guides, and process context documents. The LangGraph agent uses this to pull relevant remediation steps during root cause analysis.
 - **Flexible Document Model**: Sensor readings, wafer defect maps, alert documents, agent conversation checkpoints, and knowledge base articles all live in the same cluster — each with its own natural schema. No impedance mismatch, no ETL pipelines between systems.
 - **LangGraph Agent Persistence**: MongoDB stores LangGraph checkpoints and conversation memory, giving the RCA agent durable state across sessions. Resume an investigation days later with full context intact.
 
@@ -48,8 +48,8 @@ MongoDB Atlas serves as the unified data layer — storing time-series telemetry
 ## Tech Stack
 
 - **[MongoDB Atlas](https://www.mongodb.com/cloud/atlas/register?utm_campaign=devrel&utm_source=github&utm_medium=referral&utm_content=smf_yield_defect_detection&utm_term=learning.fuel)** for the unified data layer (time series telemetry, alerts, wafer defects, knowledge base, agent state)
-- **[MongoDB Atlas Vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/)** for multimodal defect similarity matching (wafer images + text)
-- **[MongoDB Atlas Search](https://www.mongodb.com/docs/atlas/atlas-search/)** for full-text search across historical knowledge and process context
+- **[MongoDB Vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/)** for multimodal defect similarity matching (wafer images + text)
+- **[MongoDB Search](https://www.mongodb.com/docs/atlas/atlas-search/)** for full-text search across historical knowledge and process context
 - **[MongoDB Change Streams](https://www.mongodb.com/docs/manual/changeStreams/)** for real-time sensor anomaly detection
 - **[LangGraph](https://langchain-ai.github.io/langgraph/)** for the agentic RCA workflow (ReAct agent with tool use)
 - **[AWS Bedrock](https://aws.amazon.com/bedrock/)** (Anthropic Claude 3.5 Sonnet) for AI-powered root cause analysis
@@ -67,7 +67,7 @@ Before you begin, ensure you have met the following requirements:
 - **Python 3.10** or higher
 - **Node.js 18** or higher (20.x recommended)
 - **uv** (install via [uv's official documentation](https://docs.astral.sh/uv/getting-started/installation/))
-- **MongoDB Atlas** cluster (M10 or higher for Atlas Vector Search)
+- **MongoDB Atlas** cluster (M10 or higher for MongoDB Vector Search)
 - **AWS credentials** with Bedrock access (for Claude 3.5 Sonnet)
 - **Voyage AI API key** for multimodal embedding generation (get one at [Voyage AI's dashboard](https://dash.voyageai.com/api-keys))
 - **Docker & Docker Compose** (optional, for containerized deployment)
@@ -122,9 +122,9 @@ The demo auto-seeds data on first launch. When you open the dashboard, it checks
 
 > No manual data import is required. The `/seed/initialize` endpoint handles everything, and the frontend calls it automatically on first load.
 
-### Create Atlas Vector Search Indexes
+### Create MongoDB Vector Search Indexes
 
-The system requires two Atlas Vector Search indexes for semantic similarity queries. Create these in the Atlas UI under **Database** → **Atlas Search**.
+The system requires two MongoDB Vector Search indexes for semantic similarity queries. Create these in the Atlas UI under **Database** → **MongoDB Search**.
 
 **1. `wafer_defects_vector_search`** — Vector Search index on `wafer_defects`
 
@@ -176,11 +176,11 @@ Index name: `historical_knowledge_vector_search`
 }
 ```
 
-### Create Atlas Search Indexes
+### Create MongoDB Search Indexes
 
-The system also uses Atlas Search (full-text) indexes for keyword-based queries.
+The system also uses MongoDB Search (full-text) indexes for keyword-based queries.
 
-**3. `wafer_defects_text_index`** — Atlas Search index on `wafer_defects`
+**3. `wafer_defects_text_index`** — MongoDB Search index on `wafer_defects`
 
 Index name: `wafer_defects_text_index`
 
@@ -192,7 +192,7 @@ Index name: `wafer_defects_text_index`
 }
 ```
 
-**4. `historical_knowledge_text_index`** — Atlas Search index on `historical_knowledge`
+**4. `historical_knowledge_text_index`** — MongoDB Search index on `historical_knowledge`
 
 Index name: `historical_knowledge_text_index`
 
@@ -204,12 +204,12 @@ Index name: `historical_knowledge_text_index`
 }
 ```
 
-#### How to Create Atlas Vector Search Indexes (indexes 1–2)
+#### How to Create MongoDB Vector Search Indexes (indexes 1–2)
 
 1. Go to [Atlas](https://cloud.mongodb.com/) and select your cluster.
-2. Click **Atlas Search** in the left sidebar.
+2. Click **MongoDB Search** in the left sidebar.
 3. Click **Create Search Index**.
-4. Select **Atlas Vector Search** as the index type, then click **Next**.
+4. Select **MongoDB Vector Search** as the index type, then click **Next**.
 5. Choose the **JSON Editor** for the configuration method.
 6. Select the target collection (e.g., `wafer_defects`).
 7. Set the **Index Name** (e.g., `wafer_defects_vector_search`).
@@ -217,10 +217,10 @@ Index name: `historical_knowledge_text_index`
 9. Click **Next**, review the settings, then click **Create Search Index**.
 10. Repeat for the second vector search index.
 
-#### How to Create Atlas Search Indexes (indexes 3–4)
+#### How to Create MongoDB Search Indexes (indexes 3–4)
 
-1. From the **Atlas Search** page, click **Create Search Index**.
-2. Select **Atlas Search** as the index type, then click **Next**.
+1. From the **MongoDB Search** page, click **Create Search Index**.
+2. Select **MongoDB Search** as the index type, then click **Next**.
 3. Choose the **JSON Editor** for the configuration method.
 4. Select the target collection (e.g., `wafer_defects`).
 5. Set the **Index Name** (e.g., `wafer_defects_text_index`).
@@ -388,7 +388,7 @@ When a threshold is breached, an alert document is created in MongoDB and pushed
 
 Wafer defect records include both structured data (lot ID, equipment, yield percentage) and unstructured data (defect images, text descriptions). Voyage AI's multimodal model (`voyage-multimodal-3`) generates 1024-dimensional embeddings that encode both visual patterns and textual context into a shared vector space.
 
-Atlas Vector Search then enables queries like:
+MongoDB Vector Search then enables queries like:
 - "Find wafers with cluster defects similar to this one"
 - "Show me historical defects from CMP_TOOL_01 with edge patterns"
 - Natural language descriptions that match against both image and text embeddings
@@ -420,8 +420,8 @@ The dashboard provides three operational modes:
 
 - [MongoDB for Manufacturing](https://www.mongodb.com/solutions/industries/manufacturing?utm_campaign=devrel&utm_source=github&utm_medium=referral&utm_content=smf_yield_defect_detection&utm_term=learning.fuel)
 - [MongoDB Atlas](https://www.mongodb.com/cloud/atlas/register?utm_campaign=devrel&utm_source=github&utm_medium=referral&utm_content=smf_yield_defect_detection&utm_term=learning.fuel)
-- [MongoDB Atlas Vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/)
-- [MongoDB Atlas Search Documentation](https://www.mongodb.com/docs/atlas/atlas-search/)
+- [MongoDB Vector Search](https://www.mongodb.com/docs/atlas/atlas-vector-search/)
+- [MongoDB Search Documentation](https://www.mongodb.com/docs/atlas/atlas-search/)
 - [MongoDB Change Streams](https://www.mongodb.com/docs/manual/changeStreams/)
 - [MongoDB Time Series Collections](https://www.mongodb.com/docs/manual/core/timeseries-collections/)
 - [MongoDB LeafyGreen UI](https://github.com/mongodb/leafygreen-ui)

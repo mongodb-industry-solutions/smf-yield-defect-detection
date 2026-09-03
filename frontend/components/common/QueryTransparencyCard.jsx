@@ -117,7 +117,7 @@ const QueryTransparencyCard = ({
             <Body className={styles.calloutText}>
               This query demonstrates MongoDB's {queryType === 'aggregation' ? 'powerful aggregation pipeline' :
               queryType === 'vector' ? 'vector search capabilities' :
-              queryType === 'search' ? 'Atlas Search features' : 'flexible document model'}
+              queryType === 'search' ? 'MongoDB Search features' : 'flexible document model'}
             </Body>
           </div>
         </div>

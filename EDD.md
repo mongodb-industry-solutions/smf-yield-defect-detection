@@ -271,7 +271,7 @@ erDiagram
 
 1. **Two competing vector-index definitions for the same collections.**
    `backend/scripts/mdb_vector_search_idx_creator.py` creates indexes using the modern
-   `"type": "vectorSearch"` Atlas Search index syntax (matches the README's manual setup
+   `"type": "vectorSearch"` MongoDB Search index syntax (matches the README's manual setup
    instructions), but `backend/services/vector_index_manager.py` defines a second, unused set
    of indexes (`wafer_defects_vector_index`, `historical_knowledge_vector_index`,
    `alerts_vector_index`) using the deprecated `"type": "knnVector"` mapping syntax and

@@ -189,7 +189,7 @@ export const VectorSearchQueryDisplay = (props) => (
   <QueryDisplay
     feature="vectorSearch"
     title="Vector Search Query"
-    description="MongoDB Atlas Vector Search for semantic similarity using embeddings"
+    description="MongoDB Vector Search for semantic similarity using embeddings"
     {...props}
   />
 );

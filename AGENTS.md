@@ -5,7 +5,7 @@ Guidance for AI coding agents working in this repository.
 This is a FastAPI (Python, async Motor driver) + Next.js 15 demo that detects semiconductor
 yield excursions from time-series sensor data and runs a LangGraph agent for root cause
 analysis. MongoDB Atlas is the only datastore — time series collections, Change Streams,
-Atlas Vector Search, and Atlas Search all live in one cluster (database `smf-yield-defect`).
+MongoDB Vector Search, and MongoDB Search all live in one cluster (database `smf-yield-defect`).
 
 ## Build and test commands
 
@@ -32,7 +32,7 @@ make logs-backend / make logs-frontend  # follow container logs
 make lint              # currently just lint-frontend: cd frontend && npm run lint (next lint)
 cd backend && uv run python scripts/mdb_document_coll_creator.py     # create wafer_defects/process_context/historical_knowledge collections + indexes
 cd backend && uv run python scripts/mdb_timeseries_coll_creator.py   # create the process_sensor_ts time series collection
-cd backend && uv run python scripts/mdb_vector_search_idx_creator.py # create the wafer_defects_vector_search Atlas Vector Search index
+cd backend && uv run python scripts/mdb_vector_search_idx_creator.py # create the wafer_defects_vector_search MongoDB Vector Search index
 ```
 
 **There is no automated test suite in this repository.** There is no `test`/`pytest` target in
@@ -89,7 +89,7 @@ Notable files:
   `sensor_events`, and `embedding_cache` are the exceptions — those collection names are
   hardcoded in their owning service files (see EDD.md).
 - `backend/scripts/mdb_vector_search_idx_creator.py` — creates the `wafer_defects_vector_search`
-  Atlas Vector Search index. There is no equivalent script for the
+  MongoDB Vector Search index. There is no equivalent script for the
   `historical_knowledge_vector_search` index; it must be created manually (see README and
   EDD.md "Known inconsistencies").
 - `backend/services/vector_index_manager.py` — defines a second, apparently unused set of
