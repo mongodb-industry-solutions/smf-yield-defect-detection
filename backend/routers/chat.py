@@ -55,6 +55,7 @@ def _get_agent():
     llm = ChatBedrockConverse(
         model=COMPLETION_MODEL_ID,
         region_name=AWS_REGION,
+        provider="anthropic",  # Required when using inference profile ARN
         temperature=0.3,
         max_tokens=2048
     )
