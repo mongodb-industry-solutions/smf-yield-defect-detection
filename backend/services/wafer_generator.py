@@ -35,7 +35,8 @@ class WaferGenerator:
         """
         self.mongodb_uri = mongodb_uri
         self.database = database
-        self.client = MongoClient(mongodb_uri)
+        app_name = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
+        self.client = MongoClient(mongodb_uri, appname=app_name)
         self.db = self.client[database]
         self.wafer_collection = self.db["wafer_defects"]
 

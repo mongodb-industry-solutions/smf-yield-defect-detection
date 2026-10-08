@@ -29,7 +29,7 @@ sidecarContainers:
         value: staging
 
       - name: APP_NAME
-        value: smf-yield-defect-staging
+        value: devrel-demo-vectorsearch-langgraph-semiconductor-staging
 
       - name: DEMO_EXCURSION_PROBABILITY
         value: "0.0"

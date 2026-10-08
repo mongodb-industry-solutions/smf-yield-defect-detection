@@ -55,6 +55,7 @@ config = ConfigLoader()
 # Get configuration values
 # MongoDB URI
 MDB_URI = os.getenv("MONGODB_URI")
+APP_NAME = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
 # Database
 MDB_DATABASE_NAME = config.get("MDB_DATABASE_NAME")
 # Collections
@@ -219,7 +220,7 @@ def _initialize_core_services():
     
     # Initialize async MongoDB client
     logger.info("📊 Creating MongoDB async client...")
-    mongo_client = AsyncIOMotorClient(MDB_URI)
+    mongo_client = AsyncIOMotorClient(MDB_URI, appname=APP_NAME)
     logger.info("   ✅ MongoDB async client created")
     
     # Initialize monitoring services
@@ -431,10 +432,10 @@ async def startup_event():
         monitoring_service = services['monitoring_service']
         
         # Step 2: Set monitoring as active and auto-start monitoring loop
-        # Only start monitoring in production to prevent duplicate alerts
+        # Monitoring enabled for prod and staging (separate databases, no duplicate alerts)
         NODE_ENV = os.getenv("NODE_ENV", "prod").lower()
 
-        if NODE_ENV == "prod":
+        if NODE_ENV in ("prod", "staging"):
             monitoring_active = True
             monitoring_service.monitoring_active = True
 

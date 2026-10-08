@@ -7,6 +7,7 @@ older than 1 hour, while preserving normal baseline readings for historical char
 """
 import asyncio
 import logging
+import os
 from datetime import datetime, timedelta, timezone
 from motor.motor_asyncio import AsyncIOMotorClient
 
@@ -27,7 +28,8 @@ class SensorCleanupService:
             mongodb_uri: MongoDB connection string
             database_name: Database name containing process_sensor_ts collection
         """
-        self.client = AsyncIOMotorClient(mongodb_uri)
+        app_name = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
+        self.client = AsyncIOMotorClient(mongodb_uri, appname=app_name)
         self.db = self.client[database_name]
         self.sensor_collection = self.db["process_sensor_ts"]
         self.ttl_hours = 1  # Delete sensors older than 1 hour

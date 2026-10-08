@@ -46,7 +46,8 @@ class EmbeddingService:
         
         # MongoDB connection
         self.mongodb_uri = mongodb_uri or os.getenv("MONGODB_URI")
-        self.client = AsyncIOMotorClient(self.mongodb_uri)
+        self.appname = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
+        self.client = AsyncIOMotorClient(self.mongodb_uri, appname=self.appname)
         self.db = self.client[database_name]
         
         # Collections  
@@ -448,7 +449,7 @@ class EmbeddingService:
         try:
             collection = self.db[collection_name]
             
-            # MongoDB Atlas Vector Search query
+            # MongoDB Vector Search query
             pipeline = [
                 {
                     "$vectorSearch": {

@@ -11,7 +11,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-MDB_URI = os.getenv("MDB_URI")
+MDB_URI = os.getenv("MONGODB_URI")
 MDB_DATABASE_NAME = os.getenv("MDB_DATABASE_NAME", "smf_yield_defect_detection")
 
 # Collections to fetch
