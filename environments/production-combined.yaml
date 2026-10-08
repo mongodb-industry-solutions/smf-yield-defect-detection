@@ -29,7 +29,7 @@ sidecarContainers:
         value: prod
 
       - name: APP_NAME
-        value: smf-yield-defect-prod
+        value: devrel-demo-vectorsearch-langgraph-semiconductor-prod
 
       - name: DEMO_EXCURSION_PROBABILITY
         value: "0.0"

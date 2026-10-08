@@ -23,6 +23,7 @@ class SearchServiceAnalyzer:
     def __init__(self):
         self.mongodb_uri = os.getenv("MONGODB_URI")
         self.database_name = os.getenv("MDB_DATABASE_NAME", "smf-yield-defect")
+        self.appname = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
         self.client = None
         self.db = None
 
@@ -34,7 +35,7 @@ class SearchServiceAnalyzer:
 
     async def connect(self):
         """Connect to MongoDB"""
-        self.client = AsyncIOMotorClient(self.mongodb_uri)
+        self.client = AsyncIOMotorClient(self.mongodb_uri, appname=self.appname)
         self.db = self.client[self.database_name]
         print(f"✓ Connected to MongoDB: {self.database_name}")
 
@@ -63,7 +64,7 @@ class SearchServiceAnalyzer:
             return []
 
     async def get_search_indexes(self, collection_name: str) -> List[Dict[str, Any]]:
-        """Get Atlas Search indexes"""
+        """Get MongoDB Search indexes"""
         try:
             result = await self.db.command({
                 "aggregate": collection_name,
@@ -424,7 +425,7 @@ class SearchServiceAnalyzer:
             recommendations.append({
                 "priority": "CRITICAL",
                 "category": "Text Search Index",
-                "issue": "No Atlas Search text index found",
+                "issue": "No MongoDB Search text index found",
                 "recommendation": f"Run: uv run python scripts/create_text_search_indexes.py",
                 "impact": "Text search mode will fail"
             })

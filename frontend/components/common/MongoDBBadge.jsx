@@ -49,7 +49,7 @@ const MongoDBBadge = ({
     switch(feature) {
       case 'changeStreams': return 'Change Streams';
       case 'vectorSearch': return 'Vector Search';
-      case 'atlasSearch': return 'Atlas Search';
+      case 'atlasSearch': return 'MongoDB Search';
       case 'timeSeries': return 'Time Series';
       case 'aggregation': return 'Aggregation';
       case 'transactions': return 'Transactions';

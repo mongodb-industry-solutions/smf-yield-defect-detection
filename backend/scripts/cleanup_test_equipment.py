@@ -14,7 +14,7 @@ def cleanup_test_equipment():
     """Remove test/debug equipment entries from process_sensor_ts collection"""
 
     # Connect to MongoDB
-    client = MongoClient(os.getenv('MONGODB_URI'))
+    client = MongoClient(os.getenv('MONGODB_URI'), appname=os.getenv('APP_NAME', 'devrel-demo-vectorsearch-langgraph-semiconductor'))
     db = client['smf-yield-defect']
     sensor_collection = db['process_sensor_ts']
 

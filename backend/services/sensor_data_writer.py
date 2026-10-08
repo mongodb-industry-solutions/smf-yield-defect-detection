@@ -4,6 +4,7 @@ Implements dual-write pattern for both real-time monitoring and historical analy
 """
 
 import logging
+import os
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from pymongo import MongoClient
@@ -29,12 +30,14 @@ class SensorDataWriter:
             mongodb_uri: MongoDB connection string
             database: Database name
         """
+        app_name = os.getenv("APP_NAME", "devrel-demo-vectorsearch-langgraph-semiconductor")
+
         # Sync client for time series (better performance)
-        self.client = MongoClient(mongodb_uri)
+        self.client = MongoClient(mongodb_uri, appname=app_name)
         self.db = self.client[database]
 
         # Async client for real-time events
-        self.async_client = AsyncIOMotorClient(mongodb_uri)
+        self.async_client = AsyncIOMotorClient(mongodb_uri, appname=app_name)
         self.async_db = self.async_client[database]
 
         # Collections
