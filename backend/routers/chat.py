@@ -42,6 +42,21 @@ _agent = None
 _checkpointer = None
 
 
+def _content_to_text(content):
+    """
+    ChatBedrockConverse returns content as a list of blocks
+    (e.g. [{"type": "text", "text": "..."}, {"type": "tool_use", ...}])
+    rather than a plain string, so extract just the text parts.
+    """
+    if isinstance(content, list):
+        return "".join(
+            block.get("text", "")
+            for block in content
+            if isinstance(block, dict) and block.get("type") == "text"
+        )
+    return content
+
+
 def _get_agent():
     """Get or create the LangGraph agent instance with MongoDB checkpointing."""
     global _agent, _checkpointer
@@ -157,18 +172,7 @@ async def chat_stream_generator(message: str, session_id: str) -> AsyncIterator[
 
                 if msg_type == "ai":
                     # AI response token
-                    # ChatBedrockConverse returns content as a list of blocks
-                    # (e.g. [{"type": "text", "text": "..."}, {"type": "tool_use", ...}])
-                    # rather than a plain string, so extract just the text parts.
-                    raw_content = getattr(last_message, "content", "")
-                    if isinstance(raw_content, list):
-                        content = "".join(
-                            block.get("text", "")
-                            for block in raw_content
-                            if isinstance(block, dict) and block.get("type") == "text"
-                        )
-                    else:
-                        content = raw_content
+                    content = _content_to_text(getattr(last_message, "content", ""))
                     if content:
                         stream_event = ChatStreamEvent(
                             type="token",
@@ -336,7 +340,7 @@ async def get_conversation_history(session_id: str, limit: int = 50):
             for msg in channel_values["messages"]:
                 message_data = {
                     "type": msg.__class__.__name__,
-                    "content": getattr(msg, "content", None)
+                    "content": _content_to_text(getattr(msg, "content", None))
                 }
 
                 # Include tool calls if present
