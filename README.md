@@ -64,7 +64,7 @@ MongoDB Atlas serves as the unified data layer — storing time-series telemetry
 
 Before you begin, ensure you have met the following requirements:
 
-- **Python 3.10** or higher
+- **Python 3.11** or higher
 - **Node.js 18** or higher (20.x recommended)
 - **uv** (install via [uv's official documentation](https://docs.astral.sh/uv/getting-started/installation/))
 - **MongoDB Atlas** cluster (M10 or higher for MongoDB Vector Search)
